@@ -23,8 +23,9 @@
 //
 // A dial-back costs the phone the agent's whole connect to the relay (TCP, TLS, upgrade) after
 // the relay has asked for it. So the agent may also open spares ahead of time: a spare is filed as
-// the agent side of a pair whose client has not arrived, and the next admitted client that needs
-// no enrolment check is paired with one at once, the spare told `paired` before any frame.
+// the agent side of a pair whose client has not arrived, under a pair tag no dial id can take
+// (SPARE_PAIR), and the next admitted client that needs no enrolment check is paired with one at
+// once, the spare told `paired` before any frame.
 //
 // A phone is refused in band: its upgrade is completed and closed at once with IN_BAND_REFUSAL +
 // the HTTP status and a REFUSAL as the reason, since a browser's WebSocket reports 1006 for any
@@ -192,6 +193,10 @@ const DEFAULT_MAX_PENDING = 8;
 const DEFAULT_MAX_PAIRS = 16;
 // The agent keeps one per relay; the second covers a spare opened while a dying one still looks open.
 const MAX_SPARES = 2;
+// Dial ids are minted here as token characters, never with a dot, so a spare's pair tag cannot be
+// a dialed pair's: a dialed pair whose client is still closing looks like an agent socket with no
+// client, and must never be handed a phone.
+const SPARE_PAIR = 'spare.';
 const SUPERSEDED = 4000;
 // The account was removed from the relay's registry: every socket it held is closed with this.
 export const ACCOUNT_REMOVED = 4004;
@@ -433,7 +438,8 @@ export class Relay {
   }
 
   private fileSpare(id: string, upgrade: PendingUpgrade): void {
-    if (this.pending.has(id) || this.deps.directory.find({ kind: 'agent', pair: id }).length > 0 || this.deps.directory.find({ kind: 'client', pair: id }).length > 0) {
+    const pair = SPARE_PAIR + id;
+    if (this.deps.directory.find({ kind: 'agent', pair }).length > 0 || this.deps.directory.find({ kind: 'client', pair }).length > 0) {
       upgrade.reject(409, 'spare id in use');
       return;
     }
@@ -441,7 +447,7 @@ export class Relay {
       upgrade.reject(429, 'too many spares');
       return;
     }
-    upgrade.accept({ kind: 'agent', pair: id });
+    upgrade.accept({ kind: 'agent', pair });
   }
 
   // Agent sockets with no client yet, in the directory's order (acceptance order in memory; the
@@ -449,7 +455,11 @@ export class Relay {
   private spares(): Peer[] {
     return this.deps.directory.all().filter((peer) => {
       const label = this.deps.directory.labelOf(peer);
-      return label?.kind === 'agent' && this.deps.directory.find({ kind: 'client', pair: label.pair }).length === 0;
+      return (
+        label?.kind === 'agent' &&
+        label.pair.startsWith(SPARE_PAIR) &&
+        this.deps.directory.find({ kind: 'client', pair: label.pair }).length === 0
+      );
     });
   }
 

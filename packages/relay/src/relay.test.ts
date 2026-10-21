@@ -570,10 +570,10 @@ describe('Relay spares', () => {
     const s = setup();
     const control = withAgent(s);
     const filed = spare(s, 's1');
-    expect(filed.label).toEqual({ kind: 'agent', pair: 's1' });
+    expect(filed.label).toEqual({ kind: 'agent', pair: 'spare.s1' });
     const client = connectClient(s);
     expect(control.sent).toEqual([]);
-    expect(client.label).toEqual({ kind: 'client', pair: 's1' });
+    expect(client.label).toEqual({ kind: 'client', pair: 'spare.s1' });
     expect(filed.peer!.sent).toEqual([{ data: 'paired', binary: false }]);
     const bytes = Uint8Array.of(1, 2, 3);
     s.relay.message(client.peer!, bytes, true);
@@ -597,7 +597,7 @@ describe('Relay spares', () => {
     withAgent(s);
     spare(s, 'old');
     spare(s, 'new');
-    expect(connectClient(s).label).toEqual({ kind: 'client', pair: 'new' });
+    expect(connectClient(s).label).toEqual({ kind: 'client', pair: 'spare.new' });
   });
 
   it('never hands an enrolment to a spare: the agent checks the proof before it dials', async () => {
@@ -624,7 +624,7 @@ describe('Relay spares', () => {
     gone.gone = true;
     s.relay.handle({ role: 'client', account: 'acct' }, gone);
     expect(filed.peer!.sent).toEqual([]);
-    expect(connectClient(s).label).toEqual({ kind: 'client', pair: 's1' });
+    expect(connectClient(s).label).toEqual({ kind: 'client', pair: 'spare.s1' });
     expect(control.sent).toEqual([]);
   });
 
@@ -638,15 +638,16 @@ describe('Relay spares', () => {
     expect(spare(s, 's4').peer).not.toBeNull();
   });
 
-  it('refuses a spare whose id another socket or a waiting client holds', () => {
+  it('refuses a spare whose id an open spare or its pair still holds', () => {
     const s = setup();
     withAgent(s);
     spare(s, 's1');
     expect(spare(s, 's1').rejected?.status).toBe(409);
     connectClient(s);
     expect(spare(s, 's1').rejected?.status).toBe(409);
+    // A relay-minted dial id is another namespace.
     connectClient(s);
-    expect(spare(s, 'id1').rejected?.status).toBe(409);
+    expect(spare(s, 'id1').peer).not.toBeNull();
   });
 
   it('answers a spare ping and closes a spare that sends anything else', () => {
@@ -669,6 +670,21 @@ describe('Relay spares', () => {
     expect(filed.peer!.closedWith).toEqual({ code: 1001, reason: 'superseded' });
     expect(paired.peer!.closedWith).toBeNull();
     expect(client.peer!.closedWith).toBeNull();
+    connectClient(s);
+    expect(JSON.parse(control.sent.at(-1)!.data as string)).toMatchObject({ type: 'dial' });
+  });
+
+  // A host reports a closed socket only once its close completes; until then a dialed pair's
+  // agent socket is open with no open client, and must not pass for a spare.
+  it('never takes the agent side of a dialed pair whose client is closing for a spare', () => {
+    const s = setup();
+    const { control, client } = pair(s);
+    client.closedWith = { code: 1000 };
+    expect(spare(s, 's1').peer).not.toBeNull();
+    expect(spare(s, 's2').peer).not.toBeNull();
+    const next = connectClient(s);
+    expect(next.label).toEqual({ kind: 'client', pair: 'spare.s2' });
+    connectClient(s);
     connectClient(s);
     expect(JSON.parse(control.sent.at(-1)!.data as string)).toMatchObject({ type: 'dial' });
   });

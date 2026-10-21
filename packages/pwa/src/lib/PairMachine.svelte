@@ -79,8 +79,8 @@
     </div>
     <button type="button" class="wide" onclick={stopScan}>Cancel</button>
   {:else}
+    <button type="button" class="wide primary" onclick={startScan}>Scan QR code</button>
     <button type="button" class="wide" onclick={pasteLink}>Paste pairing link</button>
-    <button type="button" class="wide" onclick={startScan}>Scan QR code</button>
   {/if}
   <form onsubmit={submitLink}>
     <label>
@@ -111,6 +111,8 @@
     touch-action: manipulation;
   }
   .wide:active { background: var(--surface-press); }
+  .primary { border: 0; background: var(--accent); color: #fff; font-weight: 600; }
+  .primary:active { background: var(--accent-press); }
   .wide:disabled { opacity: 0.5; }
   label { display: block; margin: 0.75rem 0 0; font-size: 0.9rem; }
   input { width: 100%; min-height: 44px; box-sizing: border-box; margin-top: 0.25rem; }

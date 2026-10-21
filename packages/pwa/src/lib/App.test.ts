@@ -75,7 +75,7 @@ describe('App', () => {
     render(App, { props: { store: store as never } });
     // Sidebar (workspace list header) and the right-pane active view render together.
     expect(screen.getByText('Perch')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /machines/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
   });
 
   it('wide layout shows a placeholder in the right pane when no workspace is selected', () => {

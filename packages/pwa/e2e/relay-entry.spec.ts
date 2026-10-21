@@ -41,7 +41,8 @@ test('the agent key of an entry cannot be cleared', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings' }).click();
 
-  await page.getByRole('button', { name: 'Edit' }).click();
+  await page.getByRole('button', { name: /^Test/ }).click();
+  await page.getByText('Advanced connection settings').click();
   await page.getByTestId('edit-agent-key').fill('');
   await page.getByRole('button', { name: 'Save' }).click();
 
@@ -63,13 +64,37 @@ test('an old direct entry is shown as unsupported, never connected, and can be d
   await page.getByRole('button', { name: /add a machine/i }).click();
   await expect(page.getByText('Old direct entry — no longer supported; pair this machine again')).toBeVisible();
   await expect(page.getByRole('switch')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Test/ })).toHaveCount(0);
   await expect(page.getByTestId('reconnect')).toHaveCount(0);
   expect(agent.upgrades).toBe(0);
   expect(agent.received).toEqual([]);
 
   await page.getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Remove Test' }).click();
   await expect(page.getByText('Old direct entry')).toHaveCount(0);
   expect(await stored(page)).toEqual([]);
   expect(agent.upgrades).toBe(0);
+});
+
+test('removing a machine is only possible from its own page, after confirming', async ({ page }) => {
+  await seedMachine(page, agent);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings' }).click();
+
+  // The list has no remove control: the machine page holds it.
+  await expect(page.getByRole('button', { name: /remove|delete/i })).toHaveCount(0);
+  await page.getByRole('button', { name: /^Test/ }).click();
+  await page.getByRole('button', { name: 'Remove machine' }).click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('Remove Test?');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await stored(page)).toEqual([expect.objectContaining({ id: 'test' })]);
+
+  await page.getByRole('button', { name: 'Remove machine' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Remove Test' }).click();
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Test/ })).toHaveCount(0);
+  expect(await stored(page)).toEqual([]);
 });

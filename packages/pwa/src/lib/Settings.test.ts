@@ -6,11 +6,10 @@ import Settings from './Settings.svelte';
 import { inputLog } from '../core/terminal-input-log';
 
 const KEY = generateAgentKeys().x25519.publicKey;
-const OTHER_KEY = generateAgentKeys().x25519.publicKey;
 
 function fakeStore(overrides: Record<string, unknown> = {}) {
   return {
-    machines: [{ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't', agentKey: KEY }],
+    machines: [{ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't', agentKey: KEY }] as Record<string, unknown>[],
     statuses: {} as Record<string, string>,
     lastConnectionError: {} as Record<string, { message: string; code?: number; at: number }>,
     addMachine: vi.fn(),
@@ -18,6 +17,8 @@ function fakeStore(overrides: Record<string, unknown> = {}) {
     removeMachine: vi.fn(),
     reconnectMachine: vi.fn(),
     toggleMachine: vi.fn(),
+    replaceDeviceKey: vi.fn(),
+    pairFromLink: vi.fn(() => ({ error: 'nope' })),
     back: vi.fn(),
     goNewMachine: vi.fn(),
     elevenLabsApiKey: '',
@@ -28,21 +29,128 @@ function fakeStore(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe('Settings', () => {
-  it('lists machines and removes one', async () => {
+describe('Settings — machines list', () => {
+  it('returns home via the Back button', async () => {
     const store = fakeStore();
     render(Settings, { props: { store: store as never } });
-    expect(screen.getByText('Mac')).toBeInTheDocument();
-    await fireEvent.click(screen.getByRole('button', { name: /remove/i }));
-    expect(store.removeMachine).toHaveBeenCalledWith('mac');
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole('button', { name: /back/i }));
+    expect(store.back).toHaveBeenCalled();
   });
 
-  it('shows a live viewport readout under diagnostics', () => {
+  it('shows each machine with its status, and no way to remove it from the list', () => {
+    const store = fakeStore({ statuses: { mac: 'online' } });
+    render(Settings, { props: { store: store as never } });
+    expect(screen.getByRole('button', { name: /^Mac/ })).toHaveTextContent('Online');
+    expect(screen.queryByRole('button', { name: /remove|delete/i })).toBeNull();
+  });
+
+  it('opens the machine detail on tap, and comes back', async () => {
     const store = fakeStore();
     render(Settings, { props: { store: store as never } });
-    expect(screen.getByTestId('viewport')).toHaveTextContent(/Viewport:\s*\d+\s*×\s*\d+\s*·\s*DPR/);
+    await fireEvent.click(screen.getByRole('button', { name: /^Mac/ }));
+    expect(screen.getByRole('heading', { name: 'Mac' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /remove machine/i })).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole('button', { name: /back/i }));
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
+    expect(store.back).not.toHaveBeenCalled();
   });
 
+  it('toggles a machine from its row', async () => {
+    const store = fakeStore({ statuses: { mac: 'online' } });
+    render(Settings, { props: { store: store as never } });
+    const sw = screen.getByRole('switch', { name: /connect mac/i });
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    await fireEvent.click(sw);
+    expect(store.toggleMachine).toHaveBeenCalledWith('mac');
+  });
+
+  it('shows a switched-off machine as Off, with no error', () => {
+    const store = fakeStore({
+      machines: [{ id: 'mac', name: 'Mac', url: 'wss://mac', agentKey: KEY, enabled: false }],
+      statuses: { mac: 'offline' },
+      lastConnectionError: { mac: { message: 'old error', code: 1006, at: Date.now() } },
+    });
+    render(Settings, { props: { store: store as never } });
+    expect(screen.getByRole('button', { name: /^Mac/ })).toHaveTextContent('Off');
+    expect(screen.queryByTestId('diagnostic')).toBeNull();
+    expect(screen.getByRole('switch', { name: /connect mac/i }).getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('shows why an offline machine is not connected', () => {
+    const store = fakeStore({
+      statuses: { mac: 'offline' },
+      lastConnectionError: { mac: { message: 'relay unreachable', code: 1006, at: Date.now() } },
+    });
+    render(Settings, { props: { store: store as never } });
+    expect(screen.getByTestId('diagnostic')).toHaveTextContent('relay unreachable (code 1006)');
+  });
+
+  it('hides an old error once the machine is online', () => {
+    const store = fakeStore({
+      statuses: { mac: 'online' },
+      lastConnectionError: { mac: { message: 'old error', code: 1006, at: Date.now() } },
+    });
+    render(Settings, { props: { store: store as never } });
+    expect(screen.queryByTestId('diagnostic')).toBeNull();
+  });
+
+  it.each([
+    ['switched on', { enabled: true }],
+    ['switched off', { enabled: false }],
+  ])('shows an old direct entry %s as unsupported, removable only after confirming', async (_label, flag) => {
+    const store = fakeStore({
+      machines: [{ id: 'old', name: 'Old box', url: 'wss://old', token: 't', ...flag }],
+      statuses: { old: 'offline' },
+      lastConnectionError: { old: { message: 'old direct entry', at: Date.now() } },
+    });
+    render(Settings, { props: { store: store as never } });
+    expect(screen.getByTestId('legacy-entry')).toHaveTextContent('Old direct entry — no longer supported; pair this machine again');
+    expect(screen.queryByRole('switch')).toBeNull();
+    expect(screen.queryByTestId('diagnostic')).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(store.removeMachine).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByRole('button', { name: 'Remove Old box' }));
+    expect(store.removeMachine).toHaveBeenCalledWith('old');
+  });
+});
+
+describe('Settings — adding a machine', () => {
+  it('keeps the pairing options folded away behind Add machine once a machine exists', async () => {
+    const store = fakeStore();
+    render(Settings, { props: { store: store as never } });
+    expect(screen.queryByTestId('pair-machine')).toBeNull();
+    const add = screen.getByRole('button', { name: 'Add machine' });
+    expect(add.getAttribute('aria-expanded')).toBe('false');
+    await fireEvent.click(add);
+    expect(screen.getByTestId('pair-machine')).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole('button', { name: /enter details by hand/i }));
+    expect(store.goNewMachine).toHaveBeenCalled();
+  });
+
+  it('shows the pairing options straight away when there is no machine yet', () => {
+    render(Settings, { props: { store: fakeStore({ machines: [] }) as never } });
+    expect(screen.getByTestId('pair-machine')).toBeInTheDocument();
+  });
+});
+
+describe('Settings — dictation', () => {
+  it('pre-fills the ElevenLabs API key field from the store', () => {
+    render(Settings, { props: { store: fakeStore({ elevenLabsApiKey: 'sk_existing' }) as never } });
+    expect((screen.getByLabelText(/elevenlabs api key/i) as HTMLInputElement).value).toBe('sk_existing');
+  });
+
+  it('saves the key and says so', async () => {
+    const store = fakeStore();
+    render(Settings, { props: { store: store as never } });
+    await fireEvent.input(screen.getByLabelText(/elevenlabs api key/i), { target: { value: 'sk_new' } });
+    await fireEvent.click(screen.getByRole('button', { name: /save key/i }));
+    expect(store.setElevenLabsApiKey).toHaveBeenCalledWith('sk_new');
+    expect(screen.getByRole('status')).toHaveTextContent('Saved');
+  });
+});
+
+describe('Settings — device key and diagnostics', () => {
   it('shows this device key fingerprint and where it is kept, to match against perch devices', () => {
     const store = fakeStore({ deviceKey: { fingerprint: 'a1b2-c3d4-e5f6', storage: { x25519: 'webcrypto', ed25519: 'noble' } } });
     render(Settings, { props: { store: store as never } });
@@ -65,238 +173,23 @@ describe('Settings', () => {
     );
   });
 
-  it('shows why there is no device key when it could not be created or loaded', () => {
-    const store = fakeStore({ deviceKey: null, deviceKeyError: 'IndexedDB unavailable: UnknownError: gone' });
+  it('puts a device key problem at the top, with its way out', async () => {
+    const store = fakeStore({ deviceKey: null, deviceKeyError: 'IndexedDB unavailable: UnknownError: gone', deviceKeyUnreadable: true });
     render(Settings, { props: { store: store as never } });
     expect(screen.getByTestId('device-key')).toHaveTextContent('Device key unavailable: IndexedDB unavailable: UnknownError: gone');
+    await fireEvent.click(screen.getByRole('button', { name: 'Make a new device key' }));
+    expect(store.replaceDeviceKey).toHaveBeenCalled();
   });
 
-  it('opens the add-machine screen via the + Add machine button', async () => {
-    const store = fakeStore();
-    render(Settings, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('button', { name: /add machine/i }));
-    expect(store.goNewMachine).toHaveBeenCalled();
-  });
-
-  it('pre-fills the edit form with the current default path', async () => {
-    const store = fakeStore({
-      machines: [{ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't', agentKey: KEY, defaultPath: '/home/u/ws' }],
-    });
-    render(Settings, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('button', { name: /edit/i }));
-    expect((screen.getByTestId('edit-default-path') as HTMLInputElement).value).toBe('/home/u/ws');
-  });
-
-  it('saves an edited default path', async () => {
-    const store = fakeStore();
-    render(Settings, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('button', { name: /edit/i }));
-    await fireEvent.input(screen.getByTestId('edit-default-path'), { target: { value: '/new/root' } });
-    await fireEvent.click(screen.getByRole('button', { name: /save/i }));
-    expect(store.updateMachine).toHaveBeenCalledWith('mac', {
-      url: 'wss://mac',
-      token: undefined,
-      defaultPath: '/new/root',
-    });
-  });
-
-  it('reveals an edit form pre-filled with the current url and an empty token', async () => {
-    const store = fakeStore();
-    render(Settings, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('button', { name: /edit/i }));
-    expect((screen.getByTestId('edit-url') as HTMLInputElement).value).toBe('wss://mac');
-    expect((screen.getByTestId('edit-token') as HTMLInputElement).value).toBe('');
-  });
-
-  it('saves an edited url and token, then collapses the form', async () => {
-    const store = fakeStore();
-    render(Settings, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('button', { name: /edit/i }));
-    await fireEvent.input(screen.getByTestId('edit-url'), { target: { value: 'wss://mac2' } });
-    await fireEvent.input(screen.getByTestId('edit-token'), { target: { value: 'newtok' } });
-    await fireEvent.click(screen.getByRole('button', { name: /save/i }));
-    expect(store.updateMachine).toHaveBeenCalledWith('mac', { url: 'wss://mac2', token: 'newtok' });
-    expect(screen.queryByTestId('edit-url')).not.toBeInTheDocument();
-  });
-
-  it('saves with a blank token as undefined (keep current)', async () => {
-    const store = fakeStore();
-    render(Settings, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('button', { name: /edit/i }));
-    await fireEvent.input(screen.getByTestId('edit-url'), { target: { value: 'wss://mac2' } });
-    await fireEvent.click(screen.getByRole('button', { name: /save/i }));
-    expect(store.updateMachine).toHaveBeenCalledWith('mac', { url: 'wss://mac2', token: undefined });
-  });
-
-  it('edits the relay agent key, sending it only when it changed', async () => {
-    const store = fakeStore({
-      machines: [{ id: 'mac', name: 'Mac', url: 'wss://relay/acct', token: 't', agentKey: KEY }],
-    });
-    render(Settings, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('button', { name: /edit/i }));
-    expect((screen.getByTestId('edit-agent-key') as HTMLInputElement).value).toBe(KEY);
-    await fireEvent.click(screen.getByRole('button', { name: /save/i }));
-    expect(store.updateMachine).toHaveBeenLastCalledWith('mac', { url: 'wss://relay/acct', token: undefined, agentKey: undefined });
-    await fireEvent.click(screen.getByRole('button', { name: /edit/i }));
-    await fireEvent.input(screen.getByTestId('edit-agent-key'), { target: { value: ` ${OTHER_KEY} ` } });
-    await fireEvent.click(screen.getByRole('button', { name: /save/i }));
-    expect(store.updateMachine).toHaveBeenLastCalledWith('mac', { url: 'wss://relay/acct', token: undefined, agentKey: OTHER_KEY });
-  });
-
-  it.each([
-    ['a malformed', 'not-a-key'],
-    ['an empty', ''],
-  ])('refuses to save %s relay agent key', async (_label, value) => {
-    const store = fakeStore({
-      machines: [{ id: 'mac', name: 'Mac', url: 'wss://relay/acct', token: 't', agentKey: KEY }],
-    });
-    render(Settings, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('button', { name: /edit/i }));
-    await fireEvent.input(screen.getByTestId('edit-agent-key'), { target: { value } });
-    await fireEvent.click(screen.getByRole('button', { name: /save/i }));
-    expect(store.updateMachine).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent(/agent key/i);
-  });
-
-  it.each([
-    ['switched on', { enabled: true }],
-    ['switched off', { enabled: false }],
-  ])('shows an old direct entry %s as unsupported, with Delete as its only action', async (_label, flag) => {
-    const store = fakeStore({
-      machines: [{ id: 'old', name: 'Old box', url: 'wss://old', token: 't', ...flag }],
-      statuses: { old: 'offline' },
-      lastConnectionError: { old: { message: 'old direct entry — no longer supported; pair this machine again', at: Date.now() } },
-    });
-    render(Settings, { props: { store: store as never } });
-    expect(screen.getByText('Old box')).toBeInTheDocument();
-    expect(screen.getByTestId('legacy-entry')).toHaveTextContent('Old direct entry — no longer supported; pair this machine again');
-    expect(screen.getAllByRole('button', { name: /delete/i })).toHaveLength(1);
-    expect(screen.queryByRole('switch')).toBeNull();
-    expect(screen.queryByRole('button', { name: /edit/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /reconnect/i })).toBeNull();
-    expect(screen.queryByTestId('diagnostic')).toBeNull();
-    await fireEvent.click(screen.getByRole('button', { name: /delete/i }));
-    expect(store.removeMachine).toHaveBeenCalledWith('old');
-  });
-
-  it('keeps the full controls on a relay entry listed beside an old direct one', () => {
-    const store = fakeStore({
-      machines: [
-        { id: 'old', name: 'Old box', url: 'wss://old', token: 't' },
-        { id: 'mac', name: 'Mac', url: 'wss://mac', token: 't', agentKey: KEY },
-      ],
-    });
-    render(Settings, { props: { store: store as never } });
-    expect(screen.getAllByTestId('legacy-entry')).toHaveLength(1);
-    expect(screen.getByRole('switch', { name: /connect mac/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /edit/i })).toBeInTheDocument();
-  });
-
-  it('cancels editing without calling updateMachine', async () => {
-    const store = fakeStore();
-    render(Settings, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('button', { name: /edit/i }));
-    await fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
-    expect(store.updateMachine).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('edit-url')).not.toBeInTheDocument();
-  });
-
-  it('does not save an edit with an empty url', async () => {
-    const store = fakeStore();
-    render(Settings, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('button', { name: /edit/i }));
-    await fireEvent.input(screen.getByTestId('edit-url'), { target: { value: '' } });
-    await fireEvent.click(screen.getByRole('button', { name: /save/i }));
-    expect(store.updateMachine).not.toHaveBeenCalled();
-  });
-
-  it('shows a diagnostic line when an offline machine has a connection error', () => {
-    const store = fakeStore({
-      statuses: { mac: 'offline' },
-      lastConnectionError: {
-        mac: { message: 'connection failed (likely network error — relay unreachable)', code: 1006, at: Date.now() },
-      },
-    });
-    render(Settings, { props: { store: store as never } });
-    const diag = screen.getByTestId('diagnostic');
-    expect(diag).toHaveTextContent('likely network error — relay unreachable');
-    expect(diag).toHaveTextContent('code 1006');
-  });
-
-  it('hides the diagnostic line when the machine is online', () => {
-    const store = fakeStore({
-      statuses: { mac: 'online' },
-      lastConnectionError: { mac: { message: 'old error', code: 1006, at: Date.now() } },
-    });
-    render(Settings, { props: { store: store as never } });
-    expect(screen.queryByTestId('diagnostic')).not.toBeInTheDocument();
-  });
-
-  it('reconnects a machine that is not online via the Reconnect button', async () => {
-    const store = fakeStore({ statuses: { mac: 'offline' } });
-    render(Settings, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('button', { name: /reconnect/i }));
-    expect(store.reconnectMachine).toHaveBeenCalledWith('mac');
-  });
-
-  it('hides the Reconnect button when the machine is online', () => {
-    const store = fakeStore({ statuses: { mac: 'online' } });
-    render(Settings, { props: { store: store as never } });
-    expect(screen.queryByTestId('reconnect')).not.toBeInTheDocument();
-  });
-
-  it('toggles a machine off via its switch', async () => {
-    const store = fakeStore({ statuses: { mac: 'online' } });
-    render(Settings, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('switch', { name: /connect mac/i }));
-    expect(store.toggleMachine).toHaveBeenCalledWith('mac');
-  });
-
-  it('shows the off state and hides reconnect for a disabled machine', () => {
-    const store = fakeStore({
-      machines: [{ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't', agentKey: KEY, enabled: false }],
-      statuses: { mac: 'offline' },
-      lastConnectionError: { mac: { message: 'old error', code: 1006, at: Date.now() } },
-    });
-    render(Settings, { props: { store: store as never } });
-    expect(screen.getByText('off')).toBeInTheDocument();
-    expect(screen.queryByTestId('reconnect')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('diagnostic')).not.toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: /connect mac/i }).getAttribute('aria-checked')).toBe('false');
-  });
-
-  it('marks the switch checked for an enabled machine', () => {
-    const store = fakeStore({ statuses: { mac: 'online' } });
-    render(Settings, { props: { store: store as never } });
-    expect(screen.getByRole('switch', { name: /connect mac/i }).getAttribute('aria-checked')).toBe('true');
-  });
-
-  it('pre-fills the ElevenLabs API key field from the store', () => {
-    const store = fakeStore({ elevenLabsApiKey: 'sk_existing' });
-    render(Settings, { props: { store: store as never } });
-    expect((screen.getByLabelText(/elevenlabs api key/i) as HTMLInputElement).value).toBe('sk_existing');
-  });
-
-  it('saves the ElevenLabs API key', async () => {
-    const store = fakeStore();
-    render(Settings, { props: { store: store as never } });
-    await fireEvent.input(screen.getByLabelText(/elevenlabs api key/i), { target: { value: 'sk_new' } });
-    await fireEvent.click(screen.getByRole('button', { name: /set api key/i }));
-    expect(store.setElevenLabsApiKey).toHaveBeenCalledWith('sk_new');
-  });
-
-  it('returns to the list via the Done button', async () => {
-    const store = fakeStore();
-    render(Settings, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('button', { name: /done/i }));
-    expect(store.back).toHaveBeenCalled();
+  it('shows a live viewport readout under diagnostics', () => {
+    render(Settings, { props: { store: fakeStore() as never } });
+    expect(screen.getByTestId('viewport')).toHaveTextContent(/Viewport:\s*\d+\s*×\s*\d+\s*·\s*DPR/);
   });
 
   it('shows the terminal input log and reflects it on Refresh', async () => {
     inputLog.clear();
     inputLog.push({ kind: 'compositionupdate', detail: 'gi', out: 'i' });
-    const store = fakeStore();
-    render(Settings, { props: { store: store as never } });
+    render(Settings, { props: { store: fakeStore() as never } });
     await fireEvent.click(screen.getByRole('button', { name: /refresh/i }));
     const panel = screen.getByTestId('input-log');
     expect(panel.textContent).toContain('compositionupdate');
@@ -306,8 +199,7 @@ describe('Settings', () => {
   it('clears the terminal input log', async () => {
     inputLog.clear();
     inputLog.push({ kind: 'keydown', detail: 'a (65)', out: '' });
-    const store = fakeStore();
-    render(Settings, { props: { store: store as never } });
+    render(Settings, { props: { store: fakeStore() as never } });
     await fireEvent.click(screen.getByRole('button', { name: /refresh/i }));
     await fireEvent.click(screen.getByRole('button', { name: /clear/i }));
     expect(inputLog.snapshot()).toEqual([]);
@@ -322,13 +214,13 @@ describe('Settings — terminal links', () => {
     vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (Linux; Android 16) Chrome/155', share: vi.fn() });
     const store = fakeStore();
     render(Settings, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('checkbox', { name: /share sheet/i }));
+    await fireEvent.click(screen.getByRole('switch', { name: /share sheet/i }));
     expect(store.setShareLinks).toHaveBeenCalledWith(true);
   });
 
   it('elsewhere, does not offer it', () => {
     vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', share: vi.fn() });
     render(Settings, { props: { store: fakeStore() as never } });
-    expect(screen.queryByRole('checkbox', { name: /share sheet/i })).toBeNull();
+    expect(screen.queryByRole('switch', { name: /share sheet/i })).toBeNull();
   });
 });

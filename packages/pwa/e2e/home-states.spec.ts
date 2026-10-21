@@ -20,9 +20,10 @@ test('with no machines configured, prompts to add a machine (not create a worksp
   await expect(page.getByTestId('home-add-machine')).toBeVisible();
   await expect(page.getByText(/create your first workspace/i)).toHaveCount(0);
 
-  // The CTA opens Settings, where a "+ Add machine" button opens the add-machine screen.
+  // The CTA opens Settings, where pairing is offered first and "Enter details by hand" opens
+  // the add-machine screen.
   await page.getByRole('button', { name: /add a machine/i }).click();
-  await page.getByRole('button', { name: /add machine/i }).click();
+  await page.getByRole('button', { name: /enter details by hand/i }).click();
   await expect(page.getByRole('heading', { name: 'Add machine' })).toBeVisible();
 });
 

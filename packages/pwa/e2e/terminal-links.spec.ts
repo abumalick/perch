@@ -109,8 +109,8 @@ test.describe('share sheet (Android)', () => {
 
     await page.goto('/');
     await page.getByRole('button', { name: 'Settings' }).tap();
-    await page.getByRole('checkbox', { name: /share sheet/i }).check();
-    await page.getByRole('button', { name: 'Done' }).tap();
+    await page.getByRole('switch', { name: /share sheet/i }).tap();
+    await page.getByRole('button', { name: 'Back' }).tap();
     await page.getByText('demo', { exact: true }).tap();
 
     const link = page.locator('.xterm-rows').getByText('OSC8LINK', { exact: false });

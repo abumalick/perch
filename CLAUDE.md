@@ -408,6 +408,14 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     without touching disk), a closed relay socket is terminated 1 s after its close frame, and no
     relay socket offers compression. Dial ids are token characters only (`relay-control.ts`), since
     the agent logs them. Runbook: "Device keys".
+  - **The agent keeps one spare dial-back per relay, and the relay pairs a phone with it at once.**
+    A fresh dial-back put the agent's TCP + TLS + upgrade to the relay on every phone connect's
+    critical path (on a long path to Cloudflare, its own TLS handshake stalling was what ended a
+    connect in 4504). A spare is `role=spare`, signed for that role and an id the agent picks;
+    the relay sends `paired` on it before the phone's frames (runbook, "Spare dial-backs"). Two
+    things not to "simplify": **an enrolment dial never takes a spare** (the agent checks the
+    proof before it dials), and **a paired spare takes a dial-back slot like a dial**, so a relay
+    that pairs spares as fast as they open is held to the same 32 as one that floods dials.
   - **A phone is refused in band, never with an HTTP status.** A browser's WebSocket reports
     1006 for any refused upgrade, which reads as a network failure. The relay completes a
     phone's upgrade and closes it at once with `4000 + status` and a `REFUSAL` reason

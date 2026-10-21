@@ -218,7 +218,7 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
     const request = parseRelayRequest(req.url ?? '', (name) => headerOf(req.headers, name));
     // The agent's sockets share the home address with a phone on the home network, so they count
     // against the host only; a forged signature is refused at once below.
-    const agentRole = request?.role === 'agent' || request?.role === 'dial';
+    const agentRole = request?.role === 'agent' || request?.role === 'dial' || request?.role === 'spare';
     const slot: ConnectionSlot | null = agentRole ? limiter.acquireAgent() : limiter.acquire(address.counted);
     const refuseRaw = (status: number, reason: string) => {
       logRefusal(status, reason, address.label);
@@ -243,6 +243,7 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
     }
     if (request.role === 'client') trace?.(`relay client upgrade from ${address.label}`);
     else if (request.role === 'dial') trace?.('relay dial upgrade');
+    else if (request.role === 'spare') trace?.('relay spare upgrade');
     // Filled in once the account is authorized: a guessed account allocates nothing.
     let entry: { relay: Relay; directory: MemoryDirectory } | undefined;
     const upgrade: PendingUpgrade = {

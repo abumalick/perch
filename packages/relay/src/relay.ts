@@ -21,6 +21,11 @@
 // agent has published a policy; before that (an agent from before device keys, or the moments
 // after a relay restart) the agent's own handshake is the only gate, and it takes IK only.
 //
+// A dial-back costs the phone the agent's whole connect to the relay (TCP, TLS, upgrade) after
+// the relay has asked for it. So the agent may also open spares ahead of time: a spare is filed as
+// the agent side of a pair whose client has not arrived, and the next admitted client that needs
+// no enrolment check is paired with one at once, the spare told `paired` before any frame.
+//
 // A phone is refused in band: its upgrade is completed and closed at once with IN_BAND_REFUSAL +
 // the HTTP status and a REFUSAL as the reason, since a browser's WebSocket reports 1006 for any
 // refused upgrade and the phone could not say what went wrong. Every reason is one the phone could
@@ -30,6 +35,7 @@
 import {
   IN_BAND_REFUSAL,
   MAX_FRAME_BYTES,
+  PAIRED,
   REFUSAL,
   generateChallengeKey,
   mintChallenge,
@@ -86,7 +92,8 @@ export type RelayRequest =
   | { role: 'client'; account: string; device?: DeviceProof }
   | { role: 'challenge'; account: string }
   | { role: 'agent'; account: string; authorization?: string }
-  | { role: 'dial'; account: string; id: string; authorization?: string };
+  | { role: 'dial'; account: string; id: string; authorization?: string }
+  | { role: 'spare'; account: string; id: string; authorization?: string };
 
 export const DIAL_HEADER = 'x-perch-dial';
 
@@ -134,6 +141,8 @@ export function parseRelayRequest(
   if (role === 'agent') return { role: 'agent', account, authorization };
   const id = header(DIAL_HEADER);
   if (role === 'dial' && id) return { role: 'dial', account, id, authorization };
+  // The agent names its spares, and the name becomes the pair's tag on every host.
+  if (role === 'spare' && id && /^[\w-]{1,64}$/.test(id)) return { role: 'spare', account, id, authorization };
   return null;
 }
 
@@ -181,6 +190,8 @@ interface PendingClient {
 const DEFAULT_DIAL_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_PENDING = 8;
 const DEFAULT_MAX_PAIRS = 16;
+// The agent keeps one per relay; the second covers a spare opened while a dying one still looks open.
+const MAX_SPARES = 2;
 const SUPERSEDED = 4000;
 // The account was removed from the relay's registry: every socket it held is closed with this.
 export const ACCOUNT_REMOVED = 4004;
@@ -253,6 +264,9 @@ export class Relay {
       case 'dial':
         this.completeDial(request.id, upgrade);
         return;
+      case 'spare':
+        this.fileSpare(request.id, upgrade);
+        return;
     }
   }
 
@@ -322,6 +336,10 @@ export class Relay {
       old.close(SUPERSEDED, 'superseded');
       this.rejectPendingOf(old);
     }
+    // An agent that redials after its path stalled left its spare behind, still open to this host
+    // until it notices the connection died; a phone paired with it would wait out its deadline.
+    // The agent opens its new spare only once this control socket is open.
+    for (const spare of this.spares()) spare.close(GOING_AWAY, 'superseded');
     upgrade.accept({ kind: 'control' });
   }
 
@@ -377,6 +395,7 @@ export class Relay {
       upgrade.reject(429, REFUSAL.tooManyConnections);
       return;
     }
+    if (!enrol && this.pairWithSpare(upgrade)) return;
     const id = this.deps.newId();
     const cancelTimeout = this.deps.startTimer(() => {
       this.pending.delete(id);
@@ -411,6 +430,37 @@ export class Relay {
     }
     const agent = upgrade.accept({ kind: 'agent', pair: id });
     if (!agent) client.close(GOING_AWAY, 'agent gone');
+  }
+
+  private fileSpare(id: string, upgrade: PendingUpgrade): void {
+    if (this.pending.has(id) || this.deps.directory.find({ kind: 'agent', pair: id }).length > 0 || this.deps.directory.find({ kind: 'client', pair: id }).length > 0) {
+      upgrade.reject(409, 'spare id in use');
+      return;
+    }
+    if (this.spares().length >= MAX_SPARES) {
+      upgrade.reject(429, 'too many spares');
+      return;
+    }
+    upgrade.accept({ kind: 'agent', pair: id });
+  }
+
+  // Agent sockets with no client yet, in the directory's order (acceptance order in memory; the
+  // last is taken as a preference only).
+  private spares(): Peer[] {
+    return this.deps.directory.all().filter((peer) => {
+      const label = this.deps.directory.labelOf(peer);
+      return label?.kind === 'agent' && this.deps.directory.find({ kind: 'client', pair: label.pair }).length === 0;
+    });
+  }
+
+  private pairWithSpare(upgrade: PendingUpgrade): boolean {
+    const spare = this.spares().at(-1);
+    const label = spare && this.deps.directory.labelOf(spare);
+    if (!spare || label?.kind !== 'agent') return false;
+    // A client gone already leaves the spare for the next one.
+    if (!upgrade.accept({ kind: 'client', pair: label.pair })) return true;
+    spare.send(PAIRED, false);
+    return true;
   }
 
   private controlMessage(control: Peer, text: string): void {

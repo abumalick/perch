@@ -4,8 +4,9 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { b64url } from './keys';
 
-// `join` registers the account with the relay (with the relay's join key beside it).
-type AgentRole = 'agent' | 'dial' | 'join';
+// `join` registers the account with the relay (with the relay's join key beside it). A `spare`
+// is a dial-back opened ahead of any client, under an id the agent picks.
+type AgentRole = 'agent' | 'dial' | 'spare' | 'join';
 
 interface AgentClaim {
   account: string;

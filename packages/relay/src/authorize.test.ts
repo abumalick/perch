@@ -47,4 +47,13 @@ describe('authorize', () => {
     const header = signAgentAuth(keys.ed25519.privateKey, { account, role: 'dial', dialId: 'd1' }, NOW);
     expect(await authorize({ role: 'dial', account, id: 'd2', authorization: header }, lookup, NOW)).toBe(401);
   });
+
+  it('lets a spare through only under a signature for that spare id, never a dial signature', async () => {
+    const spare = signAgentAuth(keys.ed25519.privateKey, { account, role: 'spare', dialId: 's1' }, NOW);
+    expect(await authorize({ role: 'spare', account, id: 's1', authorization: spare }, lookup, NOW)).toBeNull();
+    expect(await authorize({ role: 'spare', account, id: 's2', authorization: spare }, lookup, NOW)).toBe(401);
+    const dial = signAgentAuth(keys.ed25519.privateKey, { account, role: 'dial', dialId: 's1' }, NOW);
+    expect(await authorize({ role: 'spare', account, id: 's1', authorization: dial }, lookup, NOW)).toBe(401);
+    expect(await authorize({ role: 'dial', account, id: 's1', authorization: spare }, lookup, NOW)).toBe(401);
+  });
 });

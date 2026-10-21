@@ -49,6 +49,9 @@ const dialSchema = z.object({
 // upgraded under a live control socket starts with none.
 const appliedSchema = z.object({ type: z.literal('applied') });
 
+// Relay → agent, on a spare: a client is paired with it, and every frame after this is theirs.
+export const PAIRED = 'paired';
+
 const relayControlSchema = z.discriminatedUnion('type', [dialSchema, appliedSchema]);
 
 export type RelayPolicy = z.infer<typeof policySchema>;

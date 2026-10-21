@@ -62,6 +62,50 @@ describe('ws relay transport', () => {
     await new Promise((r) => wss.close(r));
   });
 
+  it('keeps a spare until the relay says paired, then hands it over with only binary frames', async () => {
+    const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    await new Promise((r) => wss.once('listening', r));
+    const relaySide = new Promise<import('ws').WebSocket>((resolve) => wss.on('connection', resolve));
+    const transport = createWsRelayTransport();
+    const spare = transport.spare(`ws://127.0.0.1:${(wss.address() as AddressInfo).port}/acct?role=spare`, {});
+    let closedUnpaired = false;
+    spare.onClose(() => (closedUnpaired = true));
+    await new Promise<void>((resolve) => spare.onOpen(resolve));
+    const relay = await relaySide;
+    const pings: string[] = [];
+    relay.on('message', (data) => pings.push(String(data)));
+    spare.send('ping');
+    await vi.waitFor(() => expect(pings).toEqual(['ping']));
+    relay.send('pong');
+    const handed = new Promise<import('ws').WebSocket>((resolve) => spare.onPaired(resolve));
+    relay.send('paired');
+    const socket = wsFrameSocket(await handed, true);
+    const frames: number[][] = [];
+    socket.onFrame((frame) => frames.push([...frame]));
+    relay.send('pong');
+    relay.send(Uint8Array.of(7, 8), { binary: true });
+    await vi.waitFor(() => expect(frames).toEqual([[7, 8]]));
+    socket.close();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(closedUnpaired).toBe(false);
+    await new Promise((r) => wss.close(r));
+  });
+
+  it('closes a spare that the relay sends a frame before pairing it, and one stuck in the handshake', async () => {
+    const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    await new Promise((r) => wss.once('listening', r));
+    wss.on('connection', (socket) => socket.send(Uint8Array.of(1), { binary: true }));
+    const transport = createWsRelayTransport({ handshakeTimeoutMs: 100 });
+    const spare = transport.spare(`ws://127.0.0.1:${(wss.address() as AddressInfo).port}/acct?role=spare`, {});
+    spare.onPaired(() => {
+      throw new Error('not paired');
+    });
+    await new Promise<void>((resolve) => spare.onClose(resolve));
+    await new Promise((r) => wss.close(r));
+    const stuck = transport.spare(`${await silentServer()}?role=spare`, {});
+    await new Promise<void>((resolve) => stuck.onClose(resolve));
+  });
+
   it("hands the relay's close code to the link, so it can tell a supersede from a drop", async () => {
     const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
     await new Promise((r) => wss.once('listening', r));

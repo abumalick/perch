@@ -29,6 +29,6 @@ export async function authorize(request: RelayRequest, lookup: AccountLookup, no
   if (!key) return 404;
   // Clients are gated inside the account's relay, against the policy its agent published.
   if (request.role === 'client' || request.role === 'challenge') return null;
-  const claim = { account: request.account, role: request.role, dialId: request.role === 'dial' ? request.id : undefined };
+  const claim = { account: request.account, role: request.role, dialId: request.role === 'dial' || request.role === 'spare' ? request.id : undefined };
   return (await verifyAgentAuth(request.authorization, key, claim, nowMs)) ? null : 401;
 }

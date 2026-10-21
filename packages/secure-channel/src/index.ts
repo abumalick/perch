@@ -36,6 +36,7 @@ export {
 } from './device-auth';
 export {
   MAX_POLICY_KEYS,
+  PAIRED,
   parseAgentControl,
   parseRelayControl,
   type RelayControl,

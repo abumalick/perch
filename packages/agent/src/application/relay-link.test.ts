@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { EnrolmentVerdict } from '../ports/device-gate-port';
 import { RelayLink } from './relay-link';
-import type { RelayControl, RelayTransport } from '../ports/relay-port';
+import type { RelayControl, RelaySpare, RelayTransport } from '../ports/relay-port';
 import type { RelayPolicy } from '@perch/secure-channel';
 
 class FakeControl implements RelayControl {
@@ -37,7 +37,45 @@ class FakeControl implements RelayControl {
   }
 }
 
+class FakeSpare implements RelaySpare<string> {
+  closed = false;
+  sent: string[] = [];
+  private open: Array<() => void> = [];
+  private paired_: Array<(socket: string) => void> = [];
+  private close_: Array<() => void> = [];
+  constructor(
+    readonly url: string,
+    readonly headers: Record<string, string>,
+  ) {}
+  onOpen(l: () => void): void {
+    this.open.push(l);
+  }
+  onPaired(l: (socket: string) => void): void {
+    this.paired_.push(l);
+  }
+  onClose(l: () => void): void {
+    this.close_.push(l);
+  }
+  send(text: string): void {
+    this.sent.push(text);
+  }
+  close(): void {
+    this.closed = true;
+    this.drop();
+  }
+  opened(): void {
+    this.open.forEach((l) => l());
+  }
+  paired(): void {
+    this.paired_.forEach((l) => l(`spare:${this.headers['x-perch-dial']}`));
+  }
+  drop(): void {
+    this.close_.forEach((l) => l());
+  }
+}
+
 interface Extra {
+  spares?: FakeSpare[];
   policy?: () => Promise<RelayPolicy>;
   admitEnrolment?: (enrol: { device: string; nonce: string; proof: string }) => Promise<EnrolmentVerdict>;
 }
@@ -70,6 +108,15 @@ function setup(
       return dialResult(url);
     },
   };
+  const { spares, ...deps } = extra;
+  if (spares) {
+    transport.spare = (url, headers) => {
+      const spare = new FakeSpare(url, headers);
+      spares.push(spare);
+      return spare;
+    };
+  }
+  let ids = 0;
   const link = new RelayLink({
     url: 'wss://relay.example.com/',
     account: 'acct',
@@ -89,7 +136,8 @@ function setup(
     },
     log: (m) => logs.push(m),
     now: () => clock.now,
-    ...extra,
+    newId: () => `s${++ids}`,
+    ...deps,
   });
   const fireNext = () => {
     const timer = timers.find((t) => !t.cancelled);
@@ -453,6 +501,108 @@ describe('RelayLink', () => {
       expect(dials).toEqual([]);
       expect(controls[0]!.sent).toEqual([JSON.stringify({ type: 'refuse', id: 'a1' })]);
       expect(logs.at(-1)).toMatch(/could not check its proof/);
+    });
+  });
+
+  describe('spares', () => {
+    const withSpares = () => {
+      const spares: FakeSpare[] = [];
+      const s = setup(undefined, { spares });
+      s.link.start();
+      s.controls[0]!.opened();
+      return { ...s, spares };
+    };
+
+    it('opens one signed spare once the control socket is open', () => {
+      const { spares } = withSpares();
+      expect(spares).toHaveLength(1);
+      expect(spares[0]!.url).toBe('wss://relay.example.com/acct?role=spare');
+      expect(spares[0]!.headers).toEqual({ authorization: 'signed:spare:s1', 'x-perch-dial': 's1' });
+    });
+
+    it('opens no spare before the control socket is open', () => {
+      const spares: FakeSpare[] = [];
+      setup(undefined, { spares }).link.start();
+      expect(spares).toEqual([]);
+    });
+
+    it('hands a paired spare over as a dialed socket, holding its slot, and opens the next', () => {
+      const { spares, sockets, releases } = withSpares();
+      spares[0]!.opened();
+      spares[0]!.paired();
+      expect(sockets).toEqual(['spare:s1']);
+      expect(releases).toHaveLength(1);
+      expect(spares).toHaveLength(2);
+      expect(spares[1]!.headers['x-perch-dial']).toBe('s2');
+    });
+
+    it('pings the spare with each heartbeat', () => {
+      const { spares, fireNext, controls } = withSpares();
+      spares[0]!.opened();
+      fireNext();
+      expect(controls[0]!.sent[0]).toBe('ping');
+      expect(spares[0]!.sent).toEqual(['ping']);
+    });
+
+    it('closes the spare with the control socket, and opens a new one with the next', () => {
+      const { spares, controls, fireNext, timers } = withSpares();
+      controls[0]!.drop();
+      expect(spares[0]!.closed).toBe(true);
+      expect(timers.filter((t) => !t.cancelled)).toHaveLength(1);
+      fireNext();
+      controls[1]!.opened();
+      expect(spares).toHaveLength(2);
+    });
+
+    it('replaces a spare that closes after it opened, after a short wait', () => {
+      const { spares, timers } = withSpares();
+      spares[0]!.opened();
+      spares[0]!.drop();
+      const retry = timers.at(-1)!;
+      expect(retry.ms).toBe(5_000);
+      retry.fn();
+      expect(spares).toHaveLength(2);
+    });
+
+    // A relay that predates spares answers 404: phones are then dialed for, and one failed
+    // upgrade every few minutes at most is what that relay sees of this.
+    it('backs off a spare that never opens, up to 15 minutes, and starts over once one opens', () => {
+      const { spares, timers } = withSpares();
+      const retries: number[] = [];
+      for (let i = 0; i < 10; i++) {
+        spares.at(-1)!.drop();
+        const retry = timers.at(-1)!;
+        retries.push(retry.ms);
+        retry.cancelled = true;
+        retry.fn();
+      }
+      expect(retries).toEqual([5_000, 10_000, 20_000, 40_000, 80_000, 160_000, 320_000, 640_000, 900_000, 900_000]);
+      spares.at(-1)!.opened();
+      spares.at(-1)!.drop();
+      expect(timers.at(-1)!.ms).toBe(5_000);
+    });
+
+    it('closes a paired spare once 32 dial-backs are unauthenticated, and waits before the next', async () => {
+      const { spares, controls, dials, sockets, timers } = withSpares();
+      for (let i = 0; i < 32; i++) {
+        controls[0]!.receive(JSON.stringify({ type: 'dial', id: `d${i}` }));
+        await flush();
+      }
+      expect(dials).toHaveLength(32);
+      spares[0]!.opened();
+      spares[0]!.paired();
+      expect(sockets).toHaveLength(32);
+      expect(spares[0]!.closed).toBe(true);
+      expect(spares).toHaveLength(1);
+      expect(timers.filter((t) => !t.cancelled).some((t) => t.ms === 5_000)).toBe(true);
+    });
+
+    it('closes the spare once stopped and opens no other', () => {
+      const { link, spares, timers } = withSpares();
+      link.stop();
+      expect(spares[0]!.closed).toBe(true);
+      expect(spares).toHaveLength(1);
+      expect(timers.filter((t) => !t.cancelled)).toEqual([]);
     });
   });
 

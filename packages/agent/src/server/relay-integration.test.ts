@@ -3,7 +3,7 @@
 // pairing files) → the self-hosted relay server (`@perch/relay`) on an ephemeral port → a client
 // that plays the phone with the PWA's own steps (challenge, device signature, enrolment proof, IK,
 // `auth`). Only tmux and the terminal are fakes.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -63,6 +63,10 @@ interface Stack {
   store: FileDeviceStore;
   pairings: FilePairingStore;
   logs: string[];
+  // Dial-backs the relay asked for; a phone served by a spare adds none.
+  dials: string[];
+  // What the relay printed: a line per phone upgrade, dial and spare.
+  relayTrace: string[];
   // Resolves once the relay has acknowledged a policy published after this call.
   nextApplied(): Promise<void>;
   url: string;
@@ -115,11 +119,16 @@ function serverFor(config: AgentConfig): WsServer {
   });
 }
 
-// The production ws transport, watched: each `applied` the relay sends on a control socket.
-function watchedTransport(onApplied: () => void): RelayTransport<FrameSocket> {
+// The production ws transport, watched: each `applied` the relay sends on a control socket, and
+// each dial-back.
+function watchedTransport(onApplied: () => void, dials: string[]): RelayTransport<FrameSocket> {
   const inner = frameSocketTransport(createWsRelayTransport());
   return {
-    dial: (url, headers) => inner.dial(url, headers),
+    dial: (url, headers) => {
+      dials.push(url);
+      return inner.dial(url, headers);
+    },
+    spare: inner.spare,
     openControl(url, headers) {
       const control = inner.openControl(url, headers);
       control.onMessage((text) => {
@@ -134,7 +143,9 @@ async function startStack(): Promise<Stack> {
   const home = await mkdtemp(join(tmpdir(), 'perch-relay-it-'));
   const keys = generateAgentKeys();
   const account = accountId(keys.ed25519.publicKey);
+  const relayTrace: string[] = [];
   const relay = await startRelayServer({
+    trace: (line) => relayTrace.push(line),
     port: 0,
     registry: new MemoryRegistry({ accounts: { [account]: { key: keys.ed25519.publicKey, addedAt: new Date().toISOString() } } }),
     heartbeatMs: 60_000,
@@ -147,11 +158,12 @@ async function startStack(): Promise<Stack> {
   const logs: string[] = [];
   let appliedWaiters: Array<() => void> = [];
   const firstApplied = new Promise<void>((resolve) => appliedWaiters.push(resolve));
+  const dials: string[] = [];
   const transport = watchedTransport(() => {
     const waiters = appliedWaiters;
     appliedWaiters = [];
     waiters.forEach((w) => w());
-  });
+  }, dials);
   const relays = startRelayLinks({
     config: { relayUrls: config.relayUrls, token: TOKEN },
     keys,
@@ -173,6 +185,8 @@ async function startStack(): Promise<Stack> {
     store,
     pairings,
     logs,
+    dials,
+    relayTrace,
     url,
     nextApplied: () => new Promise<void>((resolve) => appliedWaiters.push(resolve)),
   };
@@ -366,6 +380,22 @@ describe('the agent through a real relay', () => {
     open.push(again);
     again.send({ type: 'list' });
     expect(await again.next('workspaces')).toMatchObject({ type: 'workspaces' });
+  });
+
+  it("serves a paired phone through the agent's spare, with no dial-back, and opens the next spare", async () => {
+    const { device, conn } = await pairPhone(stack);
+    conn.close();
+    const spares = () => stack.relayTrace.filter((line) => line === 'relay spare upgrade').length;
+    await vi.waitFor(() => expect(spares()).toBeGreaterThan(0));
+    // The spare's upgrade is traced before its signature check completes.
+    await new Promise((r) => setTimeout(r, 50));
+    const [dials, filed] = [stack.dials.length, spares()];
+    const again = await authenticated(stack, device, '');
+    open.push(again);
+    again.send({ type: 'list' });
+    expect(await again.next('workspaces')).toMatchObject({ type: 'workspaces' });
+    expect(stack.dials.length).toBe(dials);
+    await vi.waitFor(() => expect(spares()).toBe(filed + 1));
   });
 
   it('publishes the roster to the relay: unknown keys refused, enrolled admitted, revoked refused', async () => {

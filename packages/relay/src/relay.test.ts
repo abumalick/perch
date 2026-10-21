@@ -116,6 +116,12 @@ function dial(s: Setup, id: string): FakeUpgrade {
   return up;
 }
 
+function spare(s: Setup, id: string): FakeUpgrade {
+  const up = s.upgrade();
+  s.relay.handle({ role: 'spare', account: 'acct', id }, up);
+  return up;
+}
+
 function pair(s: Setup) {
   const control = withAgent(s);
   const client = connectClient(s);
@@ -152,6 +158,15 @@ describe('parseRelayRequest', () => {
       parseRelayRequest('/acct?role=dial', headers({ authorization: 'sig', 'x-perch-dial': 'abc' })),
     ).toEqual({ role: 'dial', account: 'acct', id: 'abc', authorization: 'sig' });
     expect(parseRelayRequest('/acct?role=dial&id=abc')).toBeNull();
+  });
+
+  it('reads a spare, its id from the dial header in the characters a pair tag can carry', () => {
+    expect(
+      parseRelayRequest('/acct?role=spare', headers({ authorization: 'sig', 'x-perch-dial': 'spare-1' })),
+    ).toEqual({ role: 'spare', account: 'acct', id: 'spare-1', authorization: 'sig' });
+    expect(parseRelayRequest('/acct?role=spare')).toBeNull();
+    expect(parseRelayRequest('/acct?role=spare', headers({ 'x-perch-dial': 'a:b' }))).toBeNull();
+    expect(parseRelayRequest('/acct?role=spare', headers({ 'x-perch-dial': 'a'.repeat(65) }))).toBeNull();
   });
 
   it('reads a device key, nonce, signature and optional enrolment proof from the query', () => {
@@ -547,6 +562,124 @@ describe('Relay', () => {
     const s = setup();
     expect(() => s.relay.message(new FakePeer(), 'x', false)).not.toThrow();
     expect(() => s.relay.closed(new FakePeer(), 1000, '')).not.toThrow();
+  });
+});
+
+describe('Relay spares', () => {
+  it('pairs a client with a spare the agent opened ahead, telling the spare before any frame', () => {
+    const s = setup();
+    const control = withAgent(s);
+    const filed = spare(s, 's1');
+    expect(filed.label).toEqual({ kind: 'agent', pair: 's1' });
+    const client = connectClient(s);
+    expect(control.sent).toEqual([]);
+    expect(client.label).toEqual({ kind: 'client', pair: 's1' });
+    expect(filed.peer!.sent).toEqual([{ data: 'paired', binary: false }]);
+    const bytes = Uint8Array.of(1, 2, 3);
+    s.relay.message(client.peer!, bytes, true);
+    s.relay.message(filed.peer!, bytes, true);
+    expect(filed.peer!.sent.at(-1)).toEqual({ data: bytes, binary: true });
+    expect(client.peer!.sent).toEqual([{ data: bytes, binary: true }]);
+    expect(s.timers).toEqual([]);
+  });
+
+  it('asks the agent to dial once its spares are taken', () => {
+    const s = setup();
+    const control = withAgent(s);
+    spare(s, 's1');
+    connectClient(s);
+    connectClient(s);
+    expect(control.sent).toEqual([{ data: JSON.stringify({ type: 'dial', id: 'id1' }), binary: false }]);
+  });
+
+  it('takes the newest spare first', () => {
+    const s = setup();
+    withAgent(s);
+    spare(s, 'old');
+    spare(s, 'new');
+    expect(connectClient(s).label).toEqual({ kind: 'client', pair: 'new' });
+  });
+
+  it('never hands an enrolment to a spare: the agent checks the proof before it dials', async () => {
+    const s = setup();
+    const control = withAgent(s);
+    s.relay.message(control, JSON.stringify({ type: 'policy', devices: [], revoked: [], enrol: true }), false);
+    const filed = spare(s, 's1');
+    const device = generateDeviceKeys().ed25519;
+    const nonce = s.relay.challenge('acct')!;
+    const claim = { account: 'acct', nonce, device: device.publicKey };
+    const sig = await signDeviceAuth(ed25519Signer(device.privateKey), claim);
+    const client = s.upgrade();
+    s.relay.handle({ role: 'client', account: 'acct', device: { key: device.publicKey, nonce, sig, proof: enrolProof(enrolKey('t', 'acct'), claim) } }, client);
+    await until(() => control.sent.some((m) => String(m.data).includes('"dial"')));
+    expect(JSON.parse(control.sent.at(-1)!.data as string)).toMatchObject({ type: 'dial', enrol: { device: device.publicKey } });
+    expect(filed.peer!.sent).toEqual([]);
+  });
+
+  it('leaves a spare unpaired when the client is gone before it is accepted', () => {
+    const s = setup();
+    const control = withAgent(s);
+    const filed = spare(s, 's1');
+    const gone = s.upgrade();
+    gone.gone = true;
+    s.relay.handle({ role: 'client', account: 'acct' }, gone);
+    expect(filed.peer!.sent).toEqual([]);
+    expect(connectClient(s).label).toEqual({ kind: 'client', pair: 's1' });
+    expect(control.sent).toEqual([]);
+  });
+
+  it('caps the unpaired spares of an account, and a paired one no longer counts', () => {
+    const s = setup();
+    withAgent(s);
+    spare(s, 's1');
+    spare(s, 's2');
+    expect(spare(s, 's3').rejected?.status).toBe(429);
+    connectClient(s);
+    expect(spare(s, 's4').peer).not.toBeNull();
+  });
+
+  it('refuses a spare whose id another socket or a waiting client holds', () => {
+    const s = setup();
+    withAgent(s);
+    spare(s, 's1');
+    expect(spare(s, 's1').rejected?.status).toBe(409);
+    connectClient(s);
+    expect(spare(s, 's1').rejected?.status).toBe(409);
+    connectClient(s);
+    expect(spare(s, 'id1').rejected?.status).toBe(409);
+  });
+
+  it('answers a spare ping and closes a spare that sends anything else', () => {
+    const s = setup();
+    withAgent(s);
+    const filed = spare(s, 's1');
+    s.relay.message(filed.peer!, 'ping', false);
+    expect(filed.peer!.sent).toEqual([{ data: 'pong', binary: false }]);
+    s.relay.message(filed.peer!, Uint8Array.of(1), true);
+    expect(filed.peer!.closedWith?.code).toBe(1001);
+  });
+
+  it('closes the unpaired spares when a new control socket takes over, and dials for the next client', () => {
+    const s = setup();
+    withAgent(s);
+    const filed = spare(s, 's1');
+    const paired = spare(s, 's2');
+    const client = connectClient(s);
+    const control = withAgent(s);
+    expect(filed.peer!.closedWith).toEqual({ code: 1001, reason: 'superseded' });
+    expect(paired.peer!.closedWith).toBeNull();
+    expect(client.peer!.closedWith).toBeNull();
+    connectClient(s);
+    expect(JSON.parse(control.sent.at(-1)!.data as string)).toMatchObject({ type: 'dial' });
+  });
+
+  it('closes the client when its spare closes, as with any pair', () => {
+    const s = setup();
+    withAgent(s);
+    const filed = spare(s, 's1');
+    const client = connectClient(s);
+    s.drop(filed.peer!, 1006);
+    expect(client.peer!.closedWith?.code).toBe(1001);
   });
 });
 

@@ -4,10 +4,15 @@ import type { RelayTransport } from '../ports/relay-port';
 
 const CLOSE_GRACE_MS = 1000;
 
-export function wsFrameSocket(socket: WebSocket): FrameSocket {
+// `binaryOnly` drops text frames: a spare's heartbeat answer can still be on its way when the
+// relay pairs it, and every frame of a session is binary.
+export function wsFrameSocket(socket: WebSocket, binaryOnly = false): FrameSocket {
   return {
     send: (frame) => socket.send(frame, { binary: true }),
-    onFrame: (listener) => socket.on('message', (data: Buffer) => listener(new Uint8Array(data))),
+    onFrame: (listener) =>
+      socket.on('message', (data: Buffer, isBinary) => {
+        if (isBinary || !binaryOnly) listener(new Uint8Array(data));
+      }),
     onClose: (listener) => socket.on('close', () => listener()),
     close: (code, reason) => {
       socket.close(code, reason);
@@ -23,5 +28,11 @@ export function frameSocketTransport(inner: RelayTransport<WebSocket>): RelayTra
   return {
     openControl: (url, headers) => inner.openControl(url, headers),
     dial: async (url, headers) => wsFrameSocket(await inner.dial(url, headers)),
+    ...(inner.spare && {
+      spare: (url, headers) => {
+        const spare = inner.spare!(url, headers);
+        return { ...spare, onPaired: (listener) => spare.onPaired((socket) => listener(wsFrameSocket(socket, true))) };
+      },
+    }),
   };
 }

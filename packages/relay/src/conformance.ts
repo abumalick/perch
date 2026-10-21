@@ -157,9 +157,9 @@ export function relayConformance(name: string, api: TestApi, getHost: () => Conf
     let host: ConformanceHost;
 
     const signed = (
-      role: 'agent' | 'dial',
+      role: 'agent' | 'dial' | 'spare',
       dialId?: string,
-      options: { key?: string; now?: number; claimRole?: 'agent' | 'dial' } = {},
+      options: { key?: string; now?: number; claimRole?: 'agent' | 'dial' | 'spare' } = {},
     ): Record<string, string> => {
       const claim = { account: host.account, role: options.claimRole ?? role, dialId };
       const headers: Record<string, string> = {
@@ -297,6 +297,39 @@ export function relayConformance(name: string, api: TestApi, getHost: () => Conf
       expect(text(await client.next())).toBe('from agent');
       agent.send(Uint8Array.of(9, 8));
       expect(bytes(await client.next())).toEqual([9, 8]);
+    });
+
+    it('pairs a client with a spare the agent opened ahead, without a dial, telling the spare first', async () => {
+      const ctl = await control();
+      const spare = await open(`/${host.account}?role=spare`, signed('spare', 'spare-1'));
+      expect(await spare.quiet()).toBe(true);
+      const client = await open(clientPath());
+      expect(text(await spare.next())).toBe('paired');
+      client.send(Uint8Array.of(1, 2));
+      expect(bytes(await spare.next())).toEqual([1, 2]);
+      spare.send(Uint8Array.of(3));
+      expect(bytes(await client.next())).toEqual([3]);
+      expect(await ctl.quiet()).toBe(true);
+      // The spare is spent: the next client is dialed for.
+      expect((await requestClient(ctl)).id === 'spare-1').toBe(false);
+    });
+
+    it('closes an unpaired spare when a new control socket takes over', async () => {
+      await control();
+      const spare = await open(`/${host.account}?role=spare`, signed('spare', 'spare-1'));
+      const ctl = await control();
+      expect(await spare.closed()).toBe(1001);
+      expect((await requestClient(ctl)).id === 'spare-1').toBe(false);
+    });
+
+    it('refuses a spare signed for another id or as a dial, and caps the unpaired spares', async () => {
+      await control();
+      expect((await upgrade(`/${host.account}?role=spare`, { ...signed('spare', 'spare-1'), [DIAL_HEADER]: 'spare-2' })).status).toBe(401);
+      expect((await upgrade(`/${host.account}?role=spare`, signed('spare', 'spare-1', { claimRole: 'dial' }))).status).toBe(401);
+      await open(`/${host.account}?role=spare`, signed('spare', 'spare-1'));
+      expect((await upgrade(`/${host.account}?role=spare`, signed('spare', 'spare-1'))).status).toBe(409);
+      await open(`/${host.account}?role=spare`, signed('spare', 'spare-2'));
+      expect((await upgrade(`/${host.account}?role=spare`, signed('spare', 'spare-3'))).status).toBe(429);
     });
 
     it('answers a text ping with pong on every socket and never forwards it', async () => {

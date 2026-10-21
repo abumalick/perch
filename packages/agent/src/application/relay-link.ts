@@ -1,5 +1,5 @@
 import { REFUSAL, parseRelayControl, type RelayControl, type RelayPolicy } from '@perch/secure-channel';
-import type { RelayTransport } from '../ports/relay-port';
+import type { RelaySpare, RelayTransport } from '../ports/relay-port';
 import type { EnrolmentVerdict } from '../ports/device-gate-port';
 import { withoutTrailingSlash } from './relay-url';
 import { policyWarning } from './device-roster';
@@ -12,7 +12,7 @@ export interface RelayLinkDeps<S> {
   // This agent's account id on the relay (derived from its signing key).
   account: string;
   // Headers proving to the relay that this is the account's agent.
-  authHeaders: (role: 'agent' | 'dial', dialId?: string) => Record<string, string>;
+  authHeaders: (role: 'agent' | 'dial' | 'spare', dialId?: string) => Record<string, string>;
   // The relay host may send no pings of its own, so the agent keeps the control socket alive.
   heartbeatMs?: number;
   transport: RelayTransport<S>;
@@ -25,6 +25,8 @@ export interface RelayLinkDeps<S> {
   startTimer: (fn: () => void, ms: number) => () => void;
   log: (message: string) => void;
   now?: () => number;
+  // Spare ids.
+  newId?: () => string;
   // Raised only by a test harness that enrols a new device for every test.
   enrolmentChecksPerMinute?: number;
 }
@@ -51,9 +53,15 @@ const MAX_DIALS_UNAUTHENTICATED = 32;
 // without reading anything.
 const MAX_ENROLMENT_CHECKS = 4;
 const ENROLMENT_CHECKS_PER_MINUTE = 10;
+// Waits before opening another spare after one closed unpaired. One that never opened doubles it
+// (a relay that takes no spares answers each with 404), up to the cap.
+const SPARE_RETRY_MS = 5_000;
+const MAX_SPARE_RETRY_MS = 15 * 60_000;
 
 // Keeps the agent's control socket to the relay up, and dials one fresh socket back for each
 // client the relay announces. Each dialed socket is then an ordinary client connection.
+// While the control socket is open it also keeps one spare: a dial-back opened ahead, which the
+// relay pairs with the next client at once, sparing that phone the wait for a fresh connect.
 export class RelayLink<S> {
   private backoff = BASE_BACKOFF_MS;
   // Per reason, so a stranger's stream of bad proofs cannot hide the owner's expired code.
@@ -72,6 +80,9 @@ export class RelayLink<S> {
   private policyApplied = false;
   // The last warning logged about the policy, so a republish on each heartbeat says it once.
   private policyWarned: string | null = null;
+  private spare: RelaySpare<S> | null = null;
+  private cancelSpareRetry: (() => void) | null = null;
+  private spareRetryMs = SPARE_RETRY_MS;
 
   constructor(private readonly deps: RelayLinkDeps<S>) {}
 
@@ -84,6 +95,7 @@ export class RelayLink<S> {
     this.stopped = true;
     this.cancelRetry?.();
     this.cancelRetry = null;
+    this.dropSpare();
     this.closeControl?.();
   }
 
@@ -112,6 +124,7 @@ export class RelayLink<S> {
     const beat = () => {
       cancelHeartbeat = this.deps.startTimer(() => {
         control.send('ping');
+        this.spare?.send('ping');
         if (!this.policyApplied) void this.publish();
         beat();
       }, this.deps.heartbeatMs ?? HEARTBEAT_MS);
@@ -123,6 +136,7 @@ export class RelayLink<S> {
       this.sendControl = (text) => control.send(text);
       beat();
       void this.publish();
+      this.openSpare();
     });
     control.onMessage((text) => {
       const message = parseRelayControl(text);
@@ -135,6 +149,7 @@ export class RelayLink<S> {
       cancelHeartbeat?.();
       this.closeControl = null;
       this.sendControl = null;
+      this.dropSpare();
       if (this.stopped) return;
       if (openedAt !== null && this.now() - openedAt >= SUPERSEDED_RESET_MS) this.supersededCount = 0;
       let delay: number;
@@ -198,18 +213,76 @@ export class RelayLink<S> {
     }
   }
 
-  private dial(id: string): void {
+  private openSpare(): void {
+    if (!this.deps.transport.spare || !this.sendControl || this.spare || this.cancelSpareRetry) return;
+    const id = (this.deps.newId ?? (() => crypto.randomUUID()))();
+    const headers = { ...this.deps.authHeaders('spare', id), [DIAL_HEADER]: id };
+    const spare = this.deps.transport.spare(this.urlFor('spare'), headers);
+    this.spare = spare;
+    let opened = false;
+    spare.onOpen(() => {
+      opened = true;
+      this.spareRetryMs = SPARE_RETRY_MS;
+    });
+    spare.onPaired((socket) => {
+      if (this.spare === spare) this.spare = null;
+      const release = this.holdDialSlot();
+      if (!release) {
+        spare.close();
+        this.retrySpare(SPARE_RETRY_MS);
+        return;
+      }
+      this.deps.onSocket(socket, release);
+      this.openSpare();
+    });
+    spare.onClose(() => {
+      if (this.spare !== spare) return;
+      this.spare = null;
+      if (opened) {
+        this.retrySpare(SPARE_RETRY_MS);
+        return;
+      }
+      this.retrySpare(this.spareRetryMs);
+      this.spareRetryMs = Math.min(this.spareRetryMs * 2, MAX_SPARE_RETRY_MS);
+    });
+  }
+
+  private retrySpare(delay: number): void {
+    if (!this.sendControl || this.cancelSpareRetry) return;
+    this.cancelSpareRetry = this.deps.startTimer(() => {
+      this.cancelSpareRetry = null;
+      this.openSpare();
+    }, delay);
+  }
+
+  // With the control socket: a spare is only worth holding while the relay can see the agent.
+  private dropSpare(): void {
+    this.cancelSpareRetry?.();
+    this.cancelSpareRetry = null;
+    const spare = this.spare;
+    this.spare = null;
+    spare?.close();
+  }
+
+  // A slot among the unauthenticated dial-backs, freed by calling what it returns; null when
+  // they are all taken.
+  private holdDialSlot(): (() => void) | null {
     if (this.dialsUnauthenticated >= MAX_DIALS_UNAUTHENTICATED) {
       this.logLimited('dials', `relay ${this.origin()}: not dialing, ${MAX_DIALS_UNAUTHENTICATED} unauthenticated dial-backs already`);
-      return;
+      return null;
     }
     this.dialsUnauthenticated += 1;
     let held = true;
-    const release = () => {
+    return () => {
       if (!held) return;
       held = false;
       this.dialsUnauthenticated -= 1;
     };
+  }
+
+  private dial(id: string): void {
+    const release = this.holdDialSlot();
+    if (!release) return;
     const headers = { ...this.deps.authHeaders('dial', id), [DIAL_HEADER]: id };
     this.deps.transport.dial(this.urlFor('dial'), headers).then(
       (socket) => this.deps.onSocket(socket, release),
@@ -228,7 +301,7 @@ export class RelayLink<S> {
     return withoutTrailingSlash(this.deps.url);
   }
 
-  private urlFor(role: 'agent' | 'dial'): string {
+  private urlFor(role: 'agent' | 'dial' | 'spare'): string {
     const url = new URL(`${withoutTrailingSlash(this.deps.url)}/${this.deps.account}`);
     url.searchParams.set('role', role);
     return url.toString();

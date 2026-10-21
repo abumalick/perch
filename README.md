@@ -1,7 +1,8 @@
 # Perch
 
 > **A personal project, actively maintained.** Its author uses it every day and keeps
-> shipping updates. There is no support. Fork it and make it yours.
+> shipping updates. Issues and pull requests are welcome, within the bar set under
+> [Contributing](#contributing).
 
 Perch is a mobile-first PWA for watching and driving [Claude Code](https://claude.com/claude-code)
 sessions running in tmux on several machines, from a phone, through an end-to-end encrypted
@@ -65,6 +66,21 @@ pnpm --filter @perch/pwa build
 pnpm --filter @perch/pwa exec playwright install webkit
 E2E_PORT=4175 pnpm --filter @perch/pwa e2e
 ```
+
+## Contributing
+
+Issues and pull requests are welcome, as long as they are high quality. Anything that falls
+short is closed without review.
+
+- **An issue** says what happened, what you expected, and how to reproduce it: the machine and
+  OS, the phone and browser, and the steps. A report nobody can reproduce cannot be fixed.
+- **A pull request** is complete and working: it does one thing, comes with tests, and passes
+  the whole suite and the e2e (`pnpm -s test`, then the Playwright run above). It follows
+  `CLAUDE.md`, which is the project's coding guide. A change you have not run yourself is
+  not ready.
+- **Work done with a coding agent must come from a frontier model**: Claude Opus or an
+  equivalent. Perch itself is built this way, with `CLAUDE.md` as the agent's instructions.
+  Output from weaker models is easy to spot and will be closed.
 
 ## License
 

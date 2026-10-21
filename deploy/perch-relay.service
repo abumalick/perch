@@ -1,0 +1,11 @@
+[Unit]
+Description=Perch relay (self-hosted)
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/env bash REPO_PATH/deploy/run-relay.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

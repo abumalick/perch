@@ -1,0 +1,36 @@
+{
+  "name": "@perch/relay",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "The relay between the PWA and an agent: a host-agnostic core, the conformance suite every host runs, and the self-hosted Node server.",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "@perch/secure-channel": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0",
+    "tsx": "^4.19.0"
+  },
+  "exports": {
+    ".": "./src/relay.ts",
+    "./address-key": "./src/address-key.ts",
+    "./authorize": "./src/authorize.ts",
+    "./config": "./src/config.ts",
+    "./registry": "./src/registry.ts",
+    "./conformance": "./src/conformance.ts",
+    "./server": "./src/server.ts"
+  },
+  "bin": {
+    "perch-relay": "./src/main.ts"
+  }
+}

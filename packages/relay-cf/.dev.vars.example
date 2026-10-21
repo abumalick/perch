@@ -1,0 +1,7 @@
+# Secrets for `wrangler dev` (local workerd). Copy to .dev.vars (gitignored) and fill with keys
+# made for local work, never production's:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+# Without JOIN_KEY, `perch connect` answers 501 (joining is off); without ADMIN_KEY, so do
+# listing and removing machines.
+JOIN_KEY=replace-with-32-random-bytes-base64url
+ADMIN_KEY=replace-with-32-random-bytes-base64url

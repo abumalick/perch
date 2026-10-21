@@ -1,0 +1,85 @@
+// No account id, route or vars here, for production or dev: the account comes from CLOUDFLARE_ACCOUNT_ID, and the
+// served accounts live in the RegistryRoom Durable Object; the join key (JOIN_KEY) is a Worker secret that deploy/relay-cf-deploy.sh uploads from the
+// main checkout's gitignored deploy/relay-cf.env. See docs/relay-cf-runbook.md.
+//
+// The top level is `wrangler dev` only. Production is env.production, which only
+// deploy/relay-cf-deploy.sh targets (from a clean main): a bare `wrangler deploy` from any
+// checkout would otherwise replace the production Worker, which keeps its secrets across
+// deploys. Deployed by mistake, the top level is a Worker of its own with no host and no keys.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "perch-relay-local",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "durable_objects": {
+    "bindings": [
+      { "name": "RELAY", "class_name": "RelayRoom" },
+      { "name": "REGISTRY", "class_name": "RegistryRoom" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["RelayRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["RegistryRoom"] }
+  ],
+  "workers_dev": false,
+  // `wrangler dev` defaults to 8787, the agent's hooks listener (PERCH_PORT).
+  "dev": { "port": 8788 },
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } },
+  // The dev Worker, on demand: `deploy/relay-cf-deploy.sh --dev` deploys a checkout here, on its
+  // own workers.dev host with its own Durable Objects, for a change to Durable Object bindings or
+  // migrations or to how the Worker deploys; delete it afterwards. Bindings and migrations are
+  // not inherited by an environment, so they are declared again, and deploy/relay-cf-deploy.test.sh
+  // checks the copies agree.
+  //
+  // Production is one Worker, perch-relay, under two environments, and the deploy script picks
+  // one: env.production with a custom domain (RELAY_DOMAIN), which is then its only host, since
+  // a zone rate-limiting rule never sees traffic to the workers.dev host; and
+  // env.production-workers-dev without one, where the workers.dev host is the only way in.
+  // wrangler deploy has no flag to choose, and an environment inherits the top level's
+  // workers_dev, so it is spelled out in each.
+  "env": {
+    "production": {
+      "name": "perch-relay",
+      "durable_objects": {
+        "bindings": [
+          { "name": "RELAY", "class_name": "RelayRoom" },
+          { "name": "REGISTRY", "class_name": "RegistryRoom" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["RelayRoom"] },
+        { "tag": "v2", "new_sqlite_classes": ["RegistryRoom"] }
+      ],
+      "workers_dev": false,
+      "preview_urls": false
+    },
+    "production-workers-dev": {
+      "name": "perch-relay",
+      "durable_objects": {
+        "bindings": [
+          { "name": "RELAY", "class_name": "RelayRoom" },
+          { "name": "REGISTRY", "class_name": "RegistryRoom" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["RelayRoom"] },
+        { "tag": "v2", "new_sqlite_classes": ["RegistryRoom"] }
+      ],
+      "workers_dev": true
+    },
+    "dev": {
+      "name": "perch-relay-dev",
+      "durable_objects": {
+        "bindings": [
+          { "name": "RELAY", "class_name": "RelayRoom" },
+          { "name": "REGISTRY", "class_name": "RegistryRoom" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["RelayRoom"] },
+        { "tag": "v2", "new_sqlite_classes": ["RegistryRoom"] }
+      ],
+      "workers_dev": true
+    }
+  }
+}

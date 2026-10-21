@@ -1,0 +1,24 @@
+{
+  "name": "@perch/relay-cf",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "The Perch relay as a Cloudflare Worker with one hibernatable Durable Object per account.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "deploy": "bash ../../deploy/relay-cf-deploy.sh"
+  },
+  "dependencies": {
+    "@perch/relay": "workspace:*",
+    "@perch/secure-channel": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.2.1",
+    "@cloudflare/workers-types": "5.20260921.1",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.0",
+    "wrangler": "4.136.1"
+  }
+}

@@ -1,15 +1,14 @@
 # Perch
 
-> **A personal project, shared as a reference.** It is not maintained, there is no
-> support, and issues and pull requests are not accepted. Fork it and make it yours.
+> **A personal project, actively maintained.** Its author uses it every day and keeps
+> shipping updates. There is no support. Fork it and make it yours.
 
 Perch is a mobile-first PWA for watching and driving [Claude Code](https://claude.com/claude-code)
 sessions running in tmux on several machines, from a phone, through an end-to-end encrypted
 relay.
 
-It is shared so that you can see how such a tool can be built and adapt the ideas to your
-own setup, not as a product to install as-is. It is shaped around one person's machines and
-habits.
+It is shaped around one person's machines and habits, so expect to adapt it to your own
+setup; `docs/SETUP-MACHINE.md` walks through running it on a machine of your own.
 
 ## How it works
 

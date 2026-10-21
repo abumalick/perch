@@ -129,6 +129,11 @@ export class ConnectionManager {
     this.connections.get(machineId)?.reconnect();
   }
 
+  // See MachineConnection.resetBackoff.
+  resetBackoff(machineId: string): void {
+    this.connections.get(machineId)?.resetBackoff();
+  }
+
   // Probe a machine's link immediately (see MachineConnection.checkLiveness).
   checkLiveness(machineId: string): void {
     this.connections.get(machineId)?.checkLiveness();

@@ -468,6 +468,22 @@ describe('MachineConnection', () => {
     ]);
   });
 
+  it('resetBackoff() retries the in-flight attempt soon if it fails, without aborting it', () => {
+    const h = harness();
+    h.conn.connect();
+    h.sockets[0]!.open();
+    h.sockets[0]!.deliver({ type: 'authResult', ok: true });
+    for (let i = 0; i < 6; i += 1) {
+      h.sockets[i]!.fireClose({ code: 1006 });
+      h.scheduled[i]!.fn();
+    }
+    expect(h.diagnostics.at(-1)!.retryInMs).toBe(8000);
+    h.conn.resetBackoff();
+    expect(h.sockets[6]!.isClosed()).toBe(false);
+    h.sockets[6]!.fireClose({ code: 1006 });
+    expect(h.diagnostics.at(-1)).toMatchObject({ attempt: 7, retryInMs: 250 });
+  });
+
   it('says no retry is due once a never-connected machine gives up', () => {
     const h = harness();
     h.conn.connect();

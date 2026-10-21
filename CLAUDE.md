@@ -279,7 +279,10 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   (app refocus / browser `online` / the home Reconnect button) **skips machines already
   `connecting`** — aborting an in-flight attempt to restart it just resets progress on a
   slow-to-establish path (a phone waking, Tailscale cold); the 10s connect-deadline reaps a
-  genuinely stalled one anyway. It only kicks idle-`offline` machines. The home screen shows a
+  genuinely stalled one anyway. It only kicks idle-`offline` machines; a `connecting` one gets
+  its backoff reset instead (`resetBackoff`, no abort). An attempt left in flight while the app
+  was backgrounded fails right after it returns, and before this it then waited the backoff the
+  background had built up (10 s), which on-device logs showed as the slowest foregrounds. The home screen shows a
   distinct calm **`reconnecting`** view ("Reconnecting…", spinner, no button) for a machine that
   reached `online` at least once this session (`store.reachedOnce`) and is briefly down — vs the
   alarming `unreachable` "Can't reach your machines / Reconnect" which is reserved for a machine

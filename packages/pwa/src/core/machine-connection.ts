@@ -210,6 +210,13 @@ export class MachineConnection {
     this.connect();
   }
 
+  // Make the next retry, if the attempt in flight fails, the first one's. An attempt started
+  // before the app was backgrounded fails right after it returns, and must not wait the backoff
+  // the background built up.
+  resetBackoff(): void {
+    this.backoff = BASE_BACKOFF_MS;
+  }
+
   // Probe the link immediately instead of waiting for the next heartbeat interval. Used when
   // the app returns to the foreground, where the socket may have silently died while the PWA
   // was backgrounded — this surfaces that within the reply timeout rather than up to a full

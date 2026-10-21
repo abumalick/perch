@@ -1728,6 +1728,21 @@ describe('PerchStore home view', () => {
     expect(spy.mock.calls.map((c) => c[0])).toEqual(['mini']);
   });
 
+  // An attempt left in flight while the app was backgrounded fails right after it returns, and
+  // would otherwise wait the backoff it built up in the background (up to 10s).
+  it('reconnectAll resets the backoff of a connecting machine without aborting it', () => {
+    const timer = manualTimer();
+    const { store, manager } = build([mac, mini], undefined, timer.startTimer);
+    store.start();
+    store.setStatus('mac', 'connecting');
+    store.setStatus('mini', 'online');
+    const reconnect = vi.spyOn(manager, 'reconnect');
+    const reset = vi.spyOn(manager, 'resetBackoff');
+    store.reconnectAll();
+    expect(reconnect).not.toHaveBeenCalled();
+    expect(reset.mock.calls.map((c) => c[0])).toEqual(['mac']);
+  });
+
   it('reconnectAll resets grace so the unreachable screen returns to connecting', () => {
     const timer = manualTimer();
     const { store, manager } = build([mac], undefined, timer.startTimer);

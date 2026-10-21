@@ -380,13 +380,16 @@ export class PerchStore {
   // refocus / browser `online`). Deliberately **skips machines already `connecting`**: aborting
   // an in-flight attempt to restart it just resets progress on a slow-to-establish path (a phone
   // waking, a slow relay) — the connect-deadline reaps a genuinely stalled one within 10s
-  // anyway. `manual` distinguishes a user tap from an automatic refocus in the connection log.
+  // anyway. Their backoff is reset instead: an attempt left in flight while the app was
+  // backgrounded fails right after it returns, and would otherwise wait up to 10s to retry.
+  // `manual` distinguishes a user tap from an automatic refocus in the connection log.
   reconnectAll(manual = false): void {
     this.graceElapsed = false;
     this.cancelGraceTimer();
     for (const m of this.machines) {
       const status = this.statuses[m.id];
-      if (isConnectable(m) && status !== 'online' && status !== 'connecting') {
+      if (isConnectable(m) && status === 'connecting') this.deps.manager.resetBackoff(m.id);
+      else if (isConnectable(m) && status !== 'online') {
         this.deps.connectionLog?.push(m.id, manual ? 'manual-reconnect' : 'auto-reconnect');
         this.deps.manager.reconnect(m.id);
       }

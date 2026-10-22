@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
-import KeyboardBar, { TAP_SLOP_PX } from './KeyboardBar.svelte';
+import KeyboardBar, { HOLD_MS, TAP_SLOP_PX } from './KeyboardBar.svelte';
+import { DEFAULT_PRESETS } from '../core/dictation-presets';
 import { KEY_REPEAT_DELAY_MS, KEY_REPEAT_INTERVAL_MS } from '../core/key-repeat';
 import { NOTCH_PX } from '../core/cursor-pad';
 
@@ -461,5 +462,75 @@ describe('KeyboardBar', () => {
       pointer(pad(), 'pointermove', 100, 100 + N);
       expect(send.mock.calls).toEqual([['\x1b[B']]);
     });
+  });
+});
+
+describe('KeyboardBar dictation presets', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const presets = [...DEFAULT_PRESETS];
+  const mic = () => screen.getByRole('button', { name: /^dictate/i });
+  const menu = () => screen.queryByRole('listbox', { name: 'Dictation presets' });
+
+  it('shows the current preset as a badge and in the label', () => {
+    render(KeyboardBar, { props: { ...base, presets, currentPresetId: 'clean' } });
+    expect(mic()).toHaveAccessibleName('Dictate (Clean up)');
+    expect(mic()).toHaveTextContent('CL');
+  });
+
+  it('opens the presets on a long press, without dictating', async () => {
+    const onDictate = vi.fn();
+    render(KeyboardBar, { props: { ...base, onDictate, presets, currentPresetId: 'scribe' } });
+    pointer(mic(), 'pointerdown', 100, 100);
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    pointer(mic(), 'pointerup', 100, 100);
+    await fireEvent.click(mic());
+    expect(menu()).toBeInTheDocument();
+    expect(onDictate).not.toHaveBeenCalled();
+  });
+
+  it('dictates on a shorter press', async () => {
+    const onDictate = vi.fn();
+    render(KeyboardBar, { props: { ...base, onDictate, presets } });
+    pointer(mic(), 'pointerdown', 100, 100);
+    await vi.advanceTimersByTimeAsync(HOLD_MS - 1);
+    pointer(mic(), 'pointerup', 100, 100);
+    await fireEvent.click(mic());
+    expect(onDictate).toHaveBeenCalledTimes(1);
+    expect(menu()).toBeNull();
+  });
+
+  it('does neither when the press turns into a scroll', async () => {
+    const onDictate = vi.fn();
+    render(KeyboardBar, { props: { ...base, onDictate, presets } });
+    pointer(mic(), 'pointerdown', 100, 100);
+    pointer(mic(), 'pointermove', 100 + TAP_SLOP_PX + 1, 100);
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    pointer(mic(), 'pointerup', 100 + TAP_SLOP_PX + 1, 100);
+    expect(onDictate).not.toHaveBeenCalled();
+    expect(menu()).toBeNull();
+  });
+
+  // A slow press while recording must still stop it, as any press did before presets.
+  it('stops a recording on a long press instead of opening the menu', async () => {
+    const onDictate = vi.fn();
+    render(KeyboardBar, { props: { ...base, dictation: 'recording', onDictate, presets } });
+    pointer(mic(), 'pointerdown', 100, 100);
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    pointer(mic(), 'pointerup', 100, 100);
+    expect(onDictate).toHaveBeenCalledTimes(1);
+    expect(menu()).toBeNull();
+  });
+
+  it('picks a preset from the menu and closes it', async () => {
+    const onSelectPreset = vi.fn();
+    render(KeyboardBar, { props: { ...base, presets, onSelectPreset } });
+    pointer(mic(), 'pointerdown', 100, 100);
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    pointer(mic(), 'pointerup', 100, 100);
+    await fireEvent.click(screen.getByRole('option', { name: /Fast/ }));
+    expect(onSelectPreset).toHaveBeenCalledWith('fast');
+    expect(menu()).toBeNull();
   });
 });

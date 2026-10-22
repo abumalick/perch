@@ -3,6 +3,8 @@
   // for the keyboard bar's scroll-vs-type ambiguity: lower rejects more genuine taps, higher
   // lets more scroll gestures type. 10px is the usual touch slop.
   export const TAP_SLOP_PX = 10;
+  // How long the mic must be held to open the dictation presets instead of recording.
+  export const HOLD_MS = 500;
 </script>
 
 <script lang="ts">
@@ -26,6 +28,8 @@
   import { startKeyRepeat } from '../core/key-repeat';
   import { startGesture, moveGesture, type PadState, type PadDirection } from '../core/cursor-pad';
   import CommandPicker from './CommandPicker.svelte';
+  import DictationMenu from './DictationMenu.svelte';
+  import { currentPreset, type DictationPreset, type DictationProvider } from '../core/dictation-presets';
 
   let {
     send,
@@ -35,6 +39,10 @@
     dictation = 'idle',
     onDictate = () => {},
     commands = [],
+    presets = [],
+    currentPresetId = null,
+    presetKeys = { elevenlabs: true, openrouter: true },
+    onSelectPreset = () => {},
     onPickFile,
     ctrl = $bindable('off'),
     alt = $bindable('off'),
@@ -47,6 +55,10 @@
     dictation?: DictationState;
     onDictate?: () => void;
     commands?: CommandEntry[];
+    presets?: DictationPreset[];
+    currentPresetId?: string | null;
+    presetKeys?: Record<DictationProvider, boolean>;
+    onSelectPreset?: (id: string) => void;
     // When wired (terminal view), shows an attach-file button backed by the OS file picker.
     // Omitted elsewhere (e.g. BrowserView) so the button doesn't appear where it has no target.
     onPickFile?: (file: File) => void;
@@ -123,6 +135,16 @@
   // tests do) is never suppressed.
   let suppressClick = false;
 
+  const preset = $derived(presets.length ? currentPreset(presets, currentPresetId) : null);
+  let mic = $state<HTMLButtonElement | null>(null);
+  let presetAnchor = $state<{ bottom: number; right: number } | null>(null);
+
+  function openPresets() {
+    const rect = mic?.getBoundingClientRect();
+    if (!preset || !rect) return;
+    presetAnchor = { bottom: window.innerHeight - rect.top + 4, right: Math.max(4, window.innerWidth - rect.right) };
+  }
+
   // Buttons must not steal focus from the terminal textarea, or the soft keyboard
   // closes on every tap. preventDefault on pointerdown keeps focus where it is. The
   // same gesture drives a transient `.pressed` class for immediate visual feedback:
@@ -136,10 +158,12 @@
   // usually a scroll, and a keystroke already on the wire cannot be taken back. Any
   // travel past TAP_SLOP_PX — or a `pointercancel`, which is what WebKit sends (often
   // with no pointermove at all) once its scroller claims the gesture — cancels the key.
-  type PressParams = { fire?: () => void; repeat?: boolean };
+  // With `hold`, keeping the key down for HOLD_MS calls it instead of `fire`.
+  type PressParams = { fire?: () => void; repeat?: boolean; hold?: () => void };
   function press(node: HTMLElement, params: PressParams = {}) {
     let current = params;
     let repeater: { stop: () => void } | undefined;
+    let holdTimer: ReturnType<typeof setTimeout> | undefined;
     let origin: { x: number; y: number } | null = null;
     let fired = false;
     const arm = (e: Event) => {
@@ -150,6 +174,14 @@
       origin = { x: clientX, y: clientY };
       fired = false;
       suppressClick = true;
+      if (current.hold) {
+        holdTimer = setTimeout(() => {
+          fired = true;
+          current.hold?.();
+          // The finger lifts over the menu's backdrop, so this key never sees its release.
+          cancel();
+        }, HOLD_MS);
+      }
       if (current.repeat) {
         repeater = startKeyRepeat(() => {
           fired = true;
@@ -170,6 +202,8 @@
       node.classList.remove('pressed');
       repeater?.stop();
       repeater = undefined;
+      clearTimeout(holdTimer);
+      holdTimer = undefined;
       origin = null;
     };
     node.addEventListener('pointerdown', arm);
@@ -183,6 +217,7 @@
       },
       destroy() {
         repeater?.stop();
+        clearTimeout(holdTimer);
         node.removeEventListener('pointerdown', arm);
         node.removeEventListener('pointermove', drag);
         node.removeEventListener('pointerup', commit);
@@ -273,12 +308,30 @@
     class="mic"
     class:recording={dictation === 'recording'}
     class:error={dictation === 'error'}
-    aria-label="Dictate"
+    bind:this={mic}
+    aria-label={preset ? `Dictate (${preset.name})` : 'Dictate'}
     aria-pressed={dictation === 'recording'}
     disabled={dictation === 'transcribing'}
-    use:press
-    onclick={() => onDictate()}
-    >{dictation === 'transcribing' ? '⏳' : dictation === 'error' ? '⚠️' : '🎤'}</button>
+    use:press={{ fire: onDictate, hold: dictation === 'idle' || dictation === 'error' ? openPresets : undefined }}
+    oncontextmenu={(e) => e.preventDefault()}
+    onclick={() => {
+      if (suppressClick) {
+        suppressClick = false;
+        return;
+      }
+      onDictate();
+    }}
+    >{dictation === 'transcribing' ? '⏳' : dictation === 'error' ? '⚠️' : '🎤'}{#if preset}<span class="badge" aria-hidden="true">{preset.badge}</span>{/if}</button>
+  {#if presetAnchor && preset}
+    <DictationMenu
+      {presets}
+      currentId={preset.id}
+      keys={presetKeys}
+      anchor={presetAnchor}
+      onSelect={onSelectPreset}
+      onClose={() => (presetAnchor = null)}
+    />
+  {/if}
   {#snippet navKey(key: Key)}
     <button
       type="button"
@@ -393,6 +446,19 @@
     background: var(--danger, #e5484d);
     border-color: var(--danger, #e5484d);
     animation: mic-pulse 1s ease-in-out infinite;
+  }
+  .mic {
+    position: relative;
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .mic .badge {
+    position: absolute;
+    right: 2px;
+    bottom: 1px;
+    font: 700 9px/1 ui-monospace, monospace;
+    pointer-events: none;
   }
   .mic.error { border-color: var(--danger, #e5484d); }
   .mic:disabled { opacity: 0.6; }

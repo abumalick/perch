@@ -404,6 +404,10 @@
     onToggleSelect={toggleSelect}
     dictation={store.dictationState}
     onDictate={() => store.toggleDictation()}
+    presets={store.dictationPresets}
+    currentPresetId={store.currentPresetId}
+    presetKeys={{ elevenlabs: !!store.elevenLabsApiKey, openrouter: !!store.openRouterApiKey }}
+    onSelectPreset={(id) => store.selectPreset(id)}
     commands={commandShortcuts}
     onPickFile={pickFile}
 

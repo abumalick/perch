@@ -252,16 +252,31 @@ one.
 
 A relay connection then goes:
 
-1. The phone fetches a single-use nonce: `GET https://<relay>/<account>?role=challenge`.
-   No nonce (a network error, a refusal, a hung fetch aborted after 5 s) fails the attempt, and
-   the phone's backoff retries it: an upgrade without one would be refused for good (4401).
-2. It upgrades with `?device=<Ed25519 key>&nonce=…&sig=…&proof=…`: the signature over the
-   nonce, and an enrolment proof, a MAC under a key derived from the token. The token itself
-   never leaves the phone, and neither does anything the relay could use to derive it.
+1. The phone upgrades with `?challenge=1` (the gate). The relay checks the account (4404 in band
+   if unknown), accepts the socket at once, files it as a gate that is nobody's partner, and sends
+   one text frame: `{"type":"challenge","nonce":…}`, a single-use nonce.
+2. The phone answers with one text frame, `{"type":"device","device":<Ed25519 key>,"nonce","sig","proof"?,"cred"?}`:
+   the signature over the nonce, and an enrolment proof, a MAC under a key derived from the
+   token. The token itself never leaves the phone, and neither does anything the relay could use
+   to derive it. Anything else on a gate (a binary frame, a second frame, more than 1 KiB, an
+   unreadable reply) closes it with `4400 invalid challenge reply`; no answer within 5 s closes it
+   with `4408 challenge not answered`. Nothing a gate sends ever reaches the agent.
+   **The fetched form** does the same in two connections, and stays on every relay for older
+   PWAs: `GET https://<relay>/<account>?role=challenge` for the nonce, then an upgrade with
+   `?device=…&nonce=…&sig=…&proof=…`. The PWA uses it for a relay that predates the gate: such a
+   relay sees a client with no device parameters and, once its agent published a policy, refuses
+   it with `4401 device key required` before any challenge, which the PWA takes as the relay's
+   age (remembered for the app session); with no policy yet it dials the socket straight to the
+   agent and no challenge comes, so the PWA falls back for that attempt after 3 s. The fallback is
+   logged as the phase `challenge-fallback`. On the fetched form, no nonce (a network error, a
+   refusal, a hung fetch aborted after 5 s) fails the attempt, and the phone's backoff retries it:
+   an upgrade without one would be refused for good (4401).
 3. The relay admits a key the agent's policy lists, refuses a revoked one (4403), and passes an
    unknown one along only with a proof, in the dial; the agent checks the proof and dials back,
    or tells the relay to refuse, and why (4403 at once). An admitted key with no proof to check
-   is paired at once with the agent's spare dial-back when one is filed, with no dial at all. Without a proof, with enrolment closed,
+   is paired at once with the agent's spare dial-back when one is filed, with no dial at all. On
+   the gate, the relay then sends `{"type":"ready"}`, and the phone starts the handshake only after
+   it (a frame before it would find no partner). Without a proof, with enrolment closed,
    or with a proof the phone says it made with the token while token enrolment is off: 4403, and
    the agent never hears of it.
 4. The phone runs IK, whose first message carries its X25519 key and a hello: its Ed25519 key, a
@@ -320,8 +335,9 @@ screen (`core/refusal.ts`), and stops redialing when retrying cannot help.
 | Entry pinning another agent key than the machine's | 4003 | This entry's agent key is not <machine>'s — pair this machine again | — |
 | Unknown key whose hello does not prove its relay key | 4003 | <machine> could not verify this phone's device key — run `perch pair` there for a new code | — |
 | Too many enrolment attempts on the account | 4429 | Too many phones are asking to pair with <machine> right now — retrying (redials) | — |
-| Bad device signature / device key required | 4401 | The relay refused this phone: … | — |
+| Bad device signature / device key required (on the gate, before a challenge: the relay predates the gate, and the PWA falls back to the fetched form) | 4401 | The relay refused this phone: … | — |
 | Stale challenge | 4401 | The relay refused this phone: its sign-in challenge had expired — retrying | — |
+| Gate not answered in time, or answered with something unreadable | 4408, 4400 | The relay did not receive this phone’s sign-in — retrying | — |
 | Unknown account | 4404 | The relay does not know <machine> — run `perch connect` on it again | — |
 | Agent offline, did not dial, busy, relay error | 4503, 4504, 4429, 4500 | <machine> is not connected to the relay, … (redials) | — |
 
@@ -422,7 +438,7 @@ The relay is Cloudflare running this Worker (self-hosted: whoever runs the host)
 | Passive network observer | TLS to Cloudflare, Noise inside. Sees nothing. |
 | Cloudflare, or whoever controls the Worker or its account | Sees account ids, the agent's public keys, client and agent IPs, timing, frame sizes, connection counts. **Cannot read terminal traffic or the token**: every frame between phone and agent is Noise ciphertext, and `auth` is sent only after the handshake. Cannot pose as the agent to the phone, since it has no X25519 private key. **Cannot alter the stream undetected**: each frame's payload and its chunk flag are authenticated and numbered, so a modified, reordered, replayed, merged or re-segmented frame fails authentication and the session closes (4002 on the agent, "secure channel failed" on the phone). It **can** deny service: drop or delay frames, or close the connection. A dropped frame stops the session at the next one (the counter no longer matches); frames lost at the very end of a stream before a close are lost, but visibly, as a disconnect, never merged into a neighbour. It can also spend the agent's resources, within bounds the agent keeps itself, whatever the relay does: at most 32 dial-backs per relay link that have not authenticated (each holds its slot from the dial until its `authResult` goes out or its socket closes), each closed by the 10 s auth deadline, and its socket let go 1 s after the close frame whether or not the relay answers it; a spare the relay pairs takes one of those 32 slots like a dial, the agent keeps one spare per link and opens the next only once it is paired (past the cap, it closes the spare and waits 5 s); no compression on any relay socket; before `auth` is accepted a session reads messages of at most 8 KiB and three `auth` attempts; one IK handshake per socket, costing a roster read, a DH and a signature check; enrolment checks (a roster read, a pairing-file read and a key derivation each) at most 4 at once and 10 a minute per relay link, refused past either without reading anything; a made-up pairing secret takes no file lock. Dial ids are token characters only, so none can write lines into the agent's journal. What remains: an enrolled phone's session, which the relay can only forward, reassembles messages of up to 32 MiB. |
 | Stranger who knows the relay host and an account id (both are in the phone's URL, not secrets) | Can fetch challenges and sign them with a key of their own. The relay refuses that key (403) without asking the agent: it is not in the published policy, and there is no enrolment proof without the token. A client without a device key is refused too (401). A made-up proof is forwarded in a dial and refused by the agent (403 at once); it holds a pending slot only while the agent checks it, and the agent dials nothing. Such dials are capped at 10 a minute per account (4429 past it; the window is kept in the account's storage, so a Durable Object waking from hibernation does not start a fresh one), so a stream of them can hold the owner's pairing off for up to a minute. While enrolment is not `closed`, such a probe also tells whether the account's agent is online: the relay answers `4503 agent offline` itself when no control socket is open, and forwards the agent's refusal when one is (an accepted limit, below). |
-| Stranger exhausting an account's slots | Only a key the policy lists, or a proof on its way to the agent (within the enrolment budget above), reaches a slot; everything else is refused before one. Challenges are stateless: each costs the Worker a Durable Object request (and a registry lookup only when the isolate has not seen the account in the last minute) but writes nothing, and no number of them pushes the owner's out. A used nonce is remembered until it expires, and expired ones are swept at most once a second, so a flood of upgrades costs the relay linear CPU, not quadratic. On the self-hosted relay a refused phone's socket is cut 1 s after its close frame whether or not the client answers it, so a client that never answers holds its connection slot that long, not until the heartbeat. Caps that hold throughout: at most 8 clients waiting for a dial and 16 sockets per account; a 10 s dial timeout; a frame over one Noise message (65 536 bytes) closes the pair; a message reassembles to at most 32 MiB in at most 513 chunks. |
+| Stranger exhausting an account's slots | Only a key the policy lists, or a proof on its way to the agent (within the enrolment budget above), reaches a slot; everything else is refused before one. **The gate is the exception: anyone who knows the account id can hold a socket open in the account's relay until its 5 s deadline**, since the challenge key lives there. At most 8 gates per account wait for an answer, and a ninth closes the oldest waiting one (`4429`) rather than being refused: an honest phone answers within a round trip, so holding the owner out takes a sustained rate of new sockets, not a few idle ones, and the host caps (the zone rule; the self-hosted relay's per-address cap) bound that rate. A gate that has answered leaves that count for the pending and pair caps below. Challenges are stateless: each costs the Worker a Durable Object request (and a registry lookup only when the isolate has not seen the account in the last minute) but writes nothing, and no number of them pushes the owner's out. A used nonce is remembered until it expires, and expired ones are swept at most once a second, so a flood of upgrades costs the relay linear CPU, not quadratic. On the self-hosted relay a refused phone's socket is cut 1 s after its close frame whether or not the client answers it, so a client that never answers holds its connection slot that long, not until the heartbeat. Caps that hold throughout: at most 8 clients waiting for a dial and 16 sockets per account; a 10 s dial timeout; a frame over one Noise message (65 536 bytes) closes the pair; a message reassembles to at most 32 MiB in at most 513 chunks. |
 | Cloudflare, or whoever runs the relay, with respect to devices | Sees each device's Ed25519 key, the published policy, and the enrolment proof in the upgrade URL. It can admit anyone past its own gate (it *is* that gate), but the agent checks the IK key against its own roster, so that gains nothing. The proof is a MAC under a key derived from the token: it lets someone who sees it test token guesses offline, which is harmless for the 32 random bytes `DEPLOY.md` generates and would not be for a weak hand-picked token. |
 | Stranger posing as the agent | Refused at the upgrade (401): the control socket and every dial-back must carry an Ed25519 signature over account, role, dial id and time, checked against the public key the relay's registry holds for the account. Without that key nobody can register as the agent or supersede it. |
 | Stranger guessing account ids | 404 before any per-account state exists: the Worker asks its one registry Durable Object (`RegistryRoom`), and caches the miss for 10 s per isolate, so a repeated guess does not reach it again; no account object is created for a guess. **Every distinct guess does reach the `RegistryRoom`**, one object for the whole relay: a flood of them past what it serves (Cloudflare's documented soft limit for one object is about 1,000 requests a second) makes it answer "overloaded", and then every account whose isolate has no cached hit fails at once (`500`), the agents' control reconnects included. Accounts already cached keep working, challenges included. The zone rate-limiting rule bounds the flood per address on the custom domain, the Worker's only host when one is set; a relay with no custom domain has no such rule (an accepted limit, below). The self-hosted relay answers from memory. |
@@ -530,7 +546,12 @@ Nothing host- or account-specific is in the repo.
 
 ## Challenges, enrolment dials and misses: what each costs
 
-- **A challenge is stateless.** The nonce carries its expiry (30 s), 16 random bytes and an HMAC
+- **A challenge is stateless,** fetched or sent on a gate. The nonce is not bound to the socket it
+  was sent on (a fetched one is not bound to its upgrade either): the MAC and the used-nonce set
+  are the replay protection. A gate's own state (its deadline, the account) is in memory; its
+  timer keeps a Durable Object from hibernating while it waits, and a gate a restarted object
+  finds no record of is closed with `4401 unknown or expired challenge`, which the phone retries.
+  The nonce carries its expiry (30 s), 16 random bytes and an HMAC
   over them and the account, under a key the account's relay generates once and keeps in its
   store (`relay-challenge.ts`). Handing one out writes nothing, and no number of them pushes an
   earlier one out. A used nonce is remembered in the relay's memory until it expires, so it works
@@ -566,11 +587,11 @@ the deploy. What each plan allows decides the rule:
 | Plan | Expression ("If incoming requests match") | Counting | Rate | Then |
 |---|---|---|---|---|
 | Free (one rule; 10 s periods) | `(http.host eq "<RELAY_DOMAIN>" and http.request.uri.path ne "/up")` | by IP | 60 requests / 10 s | Block, 10 s |
-| Pro (query field) | `(http.host eq "<RELAY_DOMAIN>" and any(http.request.uri.args["role"][*] eq "challenge"))` | by IP | 20 requests / 10 s | Block, 1 min |
+| Pro (query field) | `(http.host eq "<RELAY_DOMAIN>" and (any(http.request.uri.args["role"][*] eq "challenge") or any(http.request.uri.args["challenge"][*] eq "1")))` | by IP | 20 requests / 10 s | Block, 1 min |
 | Business (counting expression) | `(http.host eq "<RELAY_DOMAIN>" and http.request.uri.path ne "/up")`, counting only `http.response.code eq 404` | by IP | 20 requests / 1 min | Block, 10 min |
 
-Only HTTP requests count, never WebSocket frames: a phone connecting makes two (the challenge and
-the upgrade), an agent one per phone it dials, so 60 in 10 s leaves room for a household behind one
+Only HTTP requests count, never WebSocket frames: a phone connecting makes one (the gate's
+upgrade; two on the fetched form), an agent one per phone it dials, so 60 in 10 s leaves room for a household behind one
 address. Choose one rule per plan; the Free one covers challenges and 404s with the rest.
 
 - **Free does take a host condition, through "Edit expression".** The field picker lists no

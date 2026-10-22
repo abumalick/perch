@@ -90,6 +90,7 @@ const keyInfo = async (load: Promise<DeviceIdentity>) => {
 };
 
 let store: PerchStore;
+const legacyRelays = new Set<string>();
 const manager = new ConnectionManager({
   secureSocketFactory: (agentKey, token, credential, onPhase) =>
     noiseSocketFactory(browserFrameSocketFactory, agentKey, {
@@ -98,6 +99,7 @@ const manager = new ConnectionManager({
       credential,
       deviceName: deviceName(navigator.userAgent),
       fetchChallenge: fetchRelayChallenge,
+      legacyRelays,
       onPhase,
     }),
   aggregator,

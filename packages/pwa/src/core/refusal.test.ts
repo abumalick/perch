@@ -23,6 +23,8 @@ describe('describeRefusal', () => {
     [4401, REFUSAL.signature, enrolled, 'The relay refused this phone: its device-key signature did not verify', true],
     [4401, REFUSAL.deviceKeyRequired, enrolled, 'The relay refused this phone: dev box accepts only phones with a device key', true],
     [4401, REFUSAL.challenge, enrolled, 'The relay refused this phone: its sign-in challenge had expired — retrying', false],
+    [4408, REFUSAL.challengeUnanswered, enrolled, 'The relay did not receive this phone’s sign-in — retrying', false],
+    [4400, REFUSAL.invalidReply, enrolled, 'The relay did not receive this phone’s sign-in — retrying', false],
     [4404, REFUSAL.unknownAccount, enrolled, 'The relay does not know dev box — run `perch connect` on it again', true],
     [4503, REFUSAL.agentOffline, enrolled, 'dev box is not connected to the relay', false],
     [4504, REFUSAL.agentSilent, enrolled, 'dev box did not answer through the relay', false],

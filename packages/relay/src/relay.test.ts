@@ -11,7 +11,18 @@ import {
   type PendingUpgrade,
   type RelayData,
 } from './relay.ts';
-import { REFUSAL, ed25519Signer, enrolKey, enrolProof, generateDeviceKeys, signDeviceAuth } from '@perch/secure-channel';
+import {
+  GATE_READY,
+  MAX_GATE_REPLY_BYTES,
+  REFUSAL,
+  ed25519Signer,
+  encodeGateReply,
+  enrolKey,
+  enrolProof,
+  generateDeviceKeys,
+  parseGateChallenge,
+  signDeviceAuth,
+} from '@perch/secure-channel';
 
 class FakePeer implements Peer {
   sent: Array<{ data: RelayData; binary: boolean }> = [];
@@ -64,6 +75,7 @@ interface Limits {
   maxPending?: number;
   maxPairs?: number;
   maxFrameBytes?: number;
+  gateTimeoutMs?: number;
 }
 
 function setup(limits: Limits = {}) {
@@ -189,6 +201,12 @@ describe('parseRelayRequest', () => {
     expect(parseRelayRequest(`/acct?device=${K}&nonce=N&sig=${S}&proof=${'p'.repeat(129)}`)).toBeNull();
     expect(parseRelayRequest(`/acct?device=${K}&nonce=${'n'.repeat(129)}&sig=${S}`)).toBeNull();
     expect(parseRelayRequest('/acct?role=challenge')).toEqual({ role: 'challenge', account: 'acct' });
+  });
+
+  it('reads a client asking for the in-band gate, which carries no device parameters', () => {
+    expect(parseRelayRequest('/acct?challenge=1')).toEqual({ role: 'client', account: 'acct', inBand: true });
+    expect(parseRelayRequest('/acct?challenge=yes')).toEqual({ role: 'client', account: 'acct' });
+    expect(parseRelayRequest(`/acct?challenge=1&device=${'K'.repeat(43)}&nonce=N&sig=${'S'.repeat(86)}`)).toBeNull();
   });
 
   it('rejects anything else', () => {
@@ -876,5 +894,157 @@ describe('Relay device gate', () => {
     expect((await enrolling(build())).refused?.code).toBe(4429);
     // Refused attempts write nothing: a flood costs the store no writes.
     expect(writes).toBe(2);
+  });
+});
+
+describe('Relay in-band gate', () => {
+  const enrolled = generateDeviceKeys().ed25519;
+
+  function gated(limits: Limits & { gateTimeoutMs?: number } = {}) {
+    const s = setup(limits);
+    const control = withAgent(s);
+    s.relay.message(control, JSON.stringify({ type: 'policy', devices: [enrolled.publicKey], revoked: [], enrol: true }), false);
+    control.sent.length = 0;
+    return { ...s, control };
+  }
+
+  function open(s: Setup): FakeUpgrade {
+    const up = s.upgrade();
+    s.relay.handle({ role: 'client', account: 'acct', inBand: true }, up);
+    return up;
+  }
+
+  const nonceOf = (peer: FakePeer) => parseGateChallenge(String(peer.sent[0]!.data))!;
+
+  async function answer(s: Setup, peer: FakePeer, options: { nonce?: string; key?: typeof enrolled; signer?: typeof enrolled } = {}) {
+    const key = options.key ?? enrolled;
+    const nonce = options.nonce ?? nonceOf(peer);
+    const signer = options.signer ?? key;
+    const sig = await signDeviceAuth(ed25519Signer(signer.privateKey), { account: 'acct', nonce, device: key.publicKey });
+    s.relay.message(peer, encodeGateReply({ key: key.publicKey, nonce, sig }), false);
+  }
+
+  it('accepts the upgrade at once, files it as a gate and sends only a challenge', () => {
+    const s = gated();
+    const up = open(s);
+    expect(up.label).toEqual({ kind: 'gate' });
+    expect(up.peer!.sent).toHaveLength(1);
+    expect(nonceOf(up.peer!)).toMatch(/^[\w-]+$/);
+    expect(s.control.sent).toEqual([]);
+    expect(s.directory.count('client')).toBe(0);
+  });
+
+  it('pairs an enrolled device with a spare once it answers, and says ready before any frame', async () => {
+    const s = gated();
+    const filed = spare(s, 's1');
+    const up = open(s);
+    await answer(s, up.peer!);
+    await until(() => up.peer!.sent.length > 1);
+    expect(up.peer!.sent[1]).toEqual({ data: GATE_READY, binary: false });
+    expect(s.directory.labelOf(up.peer!)).toEqual({ kind: 'client', pair: 'spare.s1' });
+    expect(filed.peer!.sent).toEqual([{ data: 'paired', binary: false }]);
+    const bytes = Uint8Array.of(1, 2, 3);
+    s.relay.message(up.peer!, bytes, true);
+    expect(filed.peer!.sent.at(-1)).toEqual({ data: bytes, binary: true });
+  });
+
+  it('asks the agent to dial when there is no spare, and says ready once it has', async () => {
+    const s = gated();
+    const up = open(s);
+    await answer(s, up.peer!);
+    await until(() => s.control.sent.length > 0);
+    expect(up.peer!.sent).toHaveLength(1);
+    const { id } = JSON.parse(String(s.control.sent[0]!.data)) as { id: string };
+    const agent = dial(s, id);
+    expect(up.peer!.sent[1]).toEqual({ data: GATE_READY, binary: false });
+    expect(s.directory.labelOf(up.peer!)).toEqual({ kind: 'client', pair: id });
+    s.relay.message(agent.peer!, Uint8Array.of(9), true);
+    expect(up.peer!.sent.at(-1)).toEqual({ data: Uint8Array.of(9), binary: true });
+  });
+
+  it('refuses in band with the same reasons: a bad signature, a reused nonce, an unknown key', async () => {
+    const s = gated();
+    const first = open(s);
+    const nonce = nonceOf(first.peer!);
+    await answer(s, first.peer!, { signer: generateDeviceKeys().ed25519, nonce });
+    await until(() => first.peer!.closedWith);
+    expect(first.peer!.closedWith).toEqual({ code: 4401, reason: REFUSAL.signature });
+    const second = open(s);
+    await answer(s, second.peer!, { nonce });
+    await until(() => second.peer!.closedWith);
+    expect(second.peer!.closedWith).toEqual({ code: 4401, reason: REFUSAL.challenge });
+    const third = open(s);
+    await answer(s, third.peer!, { key: generateDeviceKeys().ed25519 });
+    await until(() => third.peer!.closedWith);
+    expect(third.peer!.closedWith).toEqual({ code: 4403, reason: REFUSAL.notEnrolled });
+    expect(s.control.sent).toEqual([]);
+  });
+
+  it('closes a gate on anything but one well-formed text reply, forwarding nothing', async () => {
+    const s = gated();
+    spare(s, 's1');
+    const replies: Array<[RelayData, boolean]> = [
+      [Uint8Array.of(1), true],
+      ['x'.repeat(MAX_GATE_REPLY_BYTES + 1), false],
+      ['{"type":"device"}', false],
+    ];
+    for (const [data, binary] of replies) {
+      const up = open(s);
+      s.relay.message(up.peer!, data, binary);
+      expect(up.peer!.closedWith).toEqual({ code: 4400, reason: REFUSAL.invalidReply });
+    }
+    const up = open(s);
+    await answer(s, up.peer!, { key: generateDeviceKeys().ed25519 });
+    s.relay.message(up.peer!, Uint8Array.of(1), true);
+    expect(up.peer!.closedWith).toEqual({ code: 4400, reason: REFUSAL.invalidReply });
+    expect(s.directory.count('client')).toBe(0);
+  });
+
+  it('closes a gate that does not answer in time', () => {
+    const s = gated({ gateTimeoutMs: 1234 });
+    const up = open(s);
+    const timer = s.timers.at(-1)!;
+    expect(timer.ms).toBe(1234);
+    timer.fn();
+    expect(up.peer!.closedWith).toEqual({ code: 4408, reason: REFUSAL.challengeUnanswered });
+  });
+
+  it('closes the oldest gate still waiting for its answer, never the newcomer, at the cap', async () => {
+    const s = gated();
+    const answered = open(s);
+    await answer(s, answered.peer!);
+    await until(() => s.control.sent.length > 0);
+    const waiting = Array.from({ length: 8 }, () => open(s));
+    expect(waiting.every((up) => up.peer!.closedWith === null)).toBe(true);
+    const late = open(s);
+    expect(waiting[0]!.peer!.closedWith).toEqual({ code: 4429, reason: REFUSAL.tooManyPending });
+    expect(waiting.slice(1).every((up) => up.peer!.closedWith === null)).toBe(true);
+    expect(late.peer!.sent).toHaveLength(1);
+    expect(answered.peer!.closedWith).toBeNull();
+  });
+
+  it('drops the pending dial of a gate that hangs up, and refuses that dial', async () => {
+    const s = gated();
+    const up = open(s);
+    await answer(s, up.peer!);
+    await until(() => s.control.sent.length > 0);
+    const { id } = JSON.parse(String(s.control.sent[0]!.data)) as { id: string };
+    s.drop(up.peer!, 1001);
+    expect(dial(s, id).rejected?.status).toBe(404);
+  });
+
+  it('closes a gate it has no record of, as after its relay was rebuilt', () => {
+    const s = gated();
+    const up = open(s);
+    const rebuilt = new Relay(s.deps);
+    rebuilt.message(up.peer!, '{}', false);
+    expect(up.peer!.closedWith).toEqual({ code: 4401, reason: REFUSAL.challenge });
+  });
+
+  it('refuses a removed account in band before opening a gate', () => {
+    const s = gated();
+    s.relay.evict();
+    const up = open(s);
+    expect(up.refused).toEqual({ code: 4404, reason: REFUSAL.unknownAccount });
   });
 });

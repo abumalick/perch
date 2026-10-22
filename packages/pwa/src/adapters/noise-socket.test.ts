@@ -1,27 +1,41 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  GATE_READY,
   IkResponder,
+  REFUSAL,
   SecureSession,
   b64url,
+  encodeGateChallenge,
   enrolKey,
   generateAgentKeys,
   handshakeFrame,
   parseDeviceHello,
   verifyDeviceHello,
   readHandshakeFrame,
+  parseGateReply,
   verifyDeviceAuth,
   verifyEnrolProof,
 } from '@perch/secure-channel';
 import type { CloseInfo } from '../core/ports/socket';
 import type { FrameSocket } from '../core/ports/frame-socket';
 import { DeviceKeyError, type DeviceIdentity } from '../core/ports/device-identity';
-import { ChallengeError, ChallengeTimeoutError, challengeUrl, fetchRelayChallenge, noiseSocketFactory } from './noise-socket';
+import {
+  ChallengeError,
+  ChallengeTimeoutError,
+  GATE_WAIT_MS,
+  challengeUrl,
+  fetchRelayChallenge,
+  gateUrl,
+  noiseSocketFactory,
+} from './noise-socket';
 import { loadDeviceIdentity, type IdentityRecordStore, type StoredIdentity } from './device-keys';
 
 class FakeFrameSocket implements FrameSocket {
   sent: Uint8Array[] = [];
+  texts: string[] = [];
   closed = false;
   private frame: Array<(f: Uint8Array) => void> = [];
+  private text: Array<(t: string) => void> = [];
   private open: Array<() => void> = [];
   private close_: Array<(info?: CloseInfo) => void> = [];
   send(frame: Uint8Array): void {
@@ -31,8 +45,17 @@ class FakeFrameSocket implements FrameSocket {
     this.closed = true;
     this.close_.forEach((l) => l({ code: 1005 }));
   }
+  sendText(text: string): void {
+    this.texts.push(text);
+  }
   onFrame(cb: (f: Uint8Array) => void): void {
     this.frame.push(cb);
+  }
+  onText(cb: (t: string) => void): void {
+    this.text.push(cb);
+  }
+  deliverText(text: string): void {
+    this.text.forEach((l) => l(text));
   }
   onOpen(cb: () => void): void {
     this.open.push(cb);
@@ -53,6 +76,8 @@ class FakeFrameSocket implements FrameSocket {
 }
 
 const agent = generateAgentKeys();
+// The fetch path: a relay this session already found predates the in-band gate.
+const legacy = () => new Set(['wss://relay/acct']);
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 let record: StoredIdentity | undefined;
@@ -98,6 +123,7 @@ function setup(
         challenges.push(url);
         return nonce;
       },
+      legacyRelays: legacy(),
     },
   )('wss://relay/acct');
   const events: string[] = [];
@@ -186,6 +212,7 @@ describe('noise socket', () => {
       token: 't',
       deviceName: 'p',
       fetchChallenge: () => Promise.reject(new ChallengeError('network error')),
+      legacyRelays: legacy(),
     })('wss://relay/acct');
     let info: CloseInfo | undefined;
     socket.onClose((i) => (info = i));
@@ -337,6 +364,7 @@ describe('noise socket', () => {
       token: 't',
       deviceName: 'p',
       fetchChallenge: () => Promise.reject(new ChallengeTimeoutError(5000)),
+      legacyRelays: legacy(),
     })('wss://relay/acct');
     const events: string[] = [];
     let info: CloseInfo | undefined;
@@ -364,6 +392,7 @@ describe('noise socket', () => {
       },
       now: () => t,
       onPhase: (phase, detail) => phases.push([phase, detail]),
+      legacyRelays: legacy(),
     })('wss://relay/acct');
     socket.onOpen(() => undefined);
     await flush();
@@ -389,6 +418,7 @@ describe('noise socket', () => {
         fetchChallenge,
         now: () => 0,
         onPhase: (phase, detail) => phases.push(`${phase} ${detail}`),
+        legacyRelays: legacy(),
       })('wss://relay/acct');
     run(() => Promise.reject(new ChallengeTimeoutError(5000)));
     run(() => Promise.reject(new ChallengeError('HTTP 503')));
@@ -401,6 +431,178 @@ describe('noise socket', () => {
     socket.close();
     await flush();
     expect(urls).toEqual([]);
+    expect(events).toEqual(['close']);
+  });
+});
+
+describe('noise socket through the in-band gate', () => {
+  afterEach(() => vi.useRealTimers());
+
+  function gated(options: { legacyRelays?: Set<string>; token?: string; credential?: 'pairing' | 'token' | 'none' } = {}) {
+    const sockets: FakeFrameSocket[] = [];
+    const urls: string[] = [];
+    const challenges: string[] = [];
+    const phases: string[] = [];
+    let t = 0;
+    const socket = noiseSocketFactory(
+      (url) => {
+        urls.push(url);
+        const inner = new FakeFrameSocket();
+        sockets.push(inner);
+        return inner;
+      },
+      agent.x25519.publicKey,
+      {
+        device: () => identity,
+        token: options.token ?? 'the-token',
+        credential: options.credential ?? 'token',
+        deviceName: 'Test phone',
+        fetchChallenge: async (url) => {
+          challenges.push(url);
+          return 'fetched-nonce';
+        },
+        legacyRelays: options.legacyRelays,
+        now: () => (t += 10),
+        onPhase: (phase, detail) => phases.push(`${phase} ${detail}`),
+      },
+    )('wss://relay/acct');
+    const events: string[] = [];
+    let closeInfo: CloseInfo | undefined;
+    socket.onOpen(() => events.push('open'));
+    socket.onClose((info) => {
+      events.push('close');
+      closeInfo = info;
+    });
+    return { socket, sockets, urls, challenges, phases, events, closeInfo: () => closeInfo };
+  }
+
+  it('asks for the gate on the socket and fetches nothing', async () => {
+    const { urls, challenges } = gated();
+    await flush();
+    expect(urls).toEqual([gateUrl('wss://relay/acct')]);
+    expect(new URL(urls[0]!).searchParams.get('challenge')).toBe('1');
+    expect(challenges).toEqual([]);
+  });
+
+  it('answers the challenge it is sent with the same proofs the query carries, then waits for ready', async () => {
+    const { sockets } = gated();
+    await flush();
+    const inner = sockets[0]!;
+    inner.fireOpen();
+    expect(inner.sent).toEqual([]);
+    inner.deliverText(encodeGateChallenge('nonce-9'));
+    await flush();
+    const reply = parseGateReply(inner.texts[0]!)!;
+    const me = await identity;
+    const claim = { account: 'acct', nonce: 'nonce-9', device: me.ed25519Public };
+    expect(reply.key).toBe(me.ed25519Public);
+    expect(await verifyDeviceAuth(reply.sig, claim)).toBe(true);
+    expect(verifyEnrolProof(enrolKey('the-token', 'acct'), reply.proof!, claim)).toBe(true);
+    expect(reply.cred).toBe('token');
+    expect(inner.texts[0]).not.toContain('the-token');
+    expect(inner.sent).toEqual([]);
+  });
+
+  it('starts the handshake on ready, and opens once the agent answers', async () => {
+    const { sockets, events, phases } = gated({ token: '', credential: 'none' });
+    await flush();
+    const inner = sockets[0]!;
+    inner.fireOpen();
+    inner.deliverText(encodeGateChallenge('n'));
+    await flush();
+    expect(parseGateReply(inner.texts[0]!)!.proof).toBeUndefined();
+    inner.deliverText(GATE_READY);
+    await answer(inner);
+    expect(events).toEqual(['open']);
+    expect(phases.map((p) => p.split(' ')[0])).toEqual(['ws-open', 'challenge', 'admitted', 'handshake']);
+  });
+
+  it('fails on a binary frame before ready, or an unexpected text frame', async () => {
+    const early = gated();
+    await flush();
+    early.sockets[0]!.fireOpen();
+    early.sockets[0]!.deliverText(encodeGateChallenge('n'));
+    early.sockets[0]!.deliver(new Uint8Array([3, 0]));
+    expect(early.closeInfo()?.reason).toBe('secure channel failed');
+    const garbled = gated();
+    await flush();
+    garbled.sockets[0]!.fireOpen();
+    garbled.sockets[0]!.deliverText('{"type":"surprise"}');
+    expect(garbled.closeInfo()?.reason).toBe('relay challenge failed: invalid challenge');
+  });
+
+  it('passes a refusal at the gate on as any in-band refusal', async () => {
+    const { sockets, closeInfo, urls } = gated();
+    await flush();
+    sockets[0]!.fireOpen();
+    sockets[0]!.deliverText(encodeGateChallenge('n'));
+    await flush();
+    sockets[0]!.fireClose({ code: 4403, reason: REFUSAL.notEnrolled });
+    expect(closeInfo()).toEqual({ code: 4403, reason: REFUSAL.notEnrolled });
+    expect(urls).toHaveLength(1);
+  });
+
+  // A relay from before the gate sees a client with no device parameters, and once its agent has
+  // published a policy it refuses that for good. That refusal is the relay's age, not the phone's.
+  it('falls back to the fetched challenge for a relay that predates the gate, and remembers it', async () => {
+    const legacyRelays = new Set<string>();
+    const first = gated({ legacyRelays });
+    await flush();
+    first.sockets[0]!.fireOpen();
+    first.sockets[0]!.fireClose({ code: 4401, reason: REFUSAL.deviceKeyRequired });
+    await flush();
+    expect(first.events).toEqual([]);
+    expect(first.challenges).toEqual(['https://relay/acct?role=challenge']);
+    expect(new URL(first.urls[1]!).searchParams.get('nonce')).toBe('fetched-nonce');
+    expect(first.phases[1]).toMatch(/^challenge-fallback legacy relay/);
+    expect(legacyRelays.has('wss://relay/acct')).toBe(true);
+    const inner = first.sockets[1]!;
+    inner.fireOpen();
+    await flush();
+    await answer(inner);
+    expect(first.events).toEqual(['open']);
+    const next = gated({ legacyRelays });
+    await flush();
+    expect(next.urls[0]).toContain('nonce=fetched-nonce');
+  });
+
+  it('keeps "device key required" final once the gate has sent its challenge', async () => {
+    const legacyRelays = new Set<string>();
+    const { sockets, closeInfo } = gated({ legacyRelays });
+    await flush();
+    sockets[0]!.fireOpen();
+    sockets[0]!.deliverText(encodeGateChallenge('n'));
+    sockets[0]!.fireClose({ code: 4401, reason: REFUSAL.deviceKeyRequired });
+    expect(closeInfo()?.reason).toBe(REFUSAL.deviceKeyRequired);
+    expect(legacyRelays.size).toBe(0);
+  });
+
+  // An older relay with no policy yet hands the socket straight to the agent, which says nothing
+  // until the handshake: no challenge ever comes.
+  it('falls back for this attempt only when no challenge arrives in time', async () => {
+    vi.useFakeTimers();
+    const legacyRelays = new Set<string>();
+    const { sockets, urls, phases } = gated({ legacyRelays });
+    await vi.advanceTimersByTimeAsync(0);
+    sockets[0]!.fireOpen();
+    await vi.advanceTimersByTimeAsync(GATE_WAIT_MS - 1);
+    expect(urls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sockets[0]!.closed).toBe(true);
+    expect(urls).toHaveLength(2);
+    expect(urls[1]).toContain('nonce=fetched-nonce');
+    expect(phases.some((p) => p.startsWith('challenge-fallback no challenge'))).toBe(true);
+    expect(legacyRelays.size).toBe(0);
+  });
+
+  it('does not fall back once the attempt was closed', async () => {
+    vi.useFakeTimers();
+    const { socket, sockets, urls, events } = gated();
+    await vi.advanceTimersByTimeAsync(0);
+    sockets[0]!.fireOpen();
+    socket.close();
+    await vi.advanceTimersByTimeAsync(GATE_WAIT_MS);
+    expect(urls).toHaveLength(1);
     expect(events).toEqual(['close']);
   });
 });

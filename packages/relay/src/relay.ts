@@ -13,13 +13,24 @@
 // one out writes nothing. The nonces already used are remembered in memory for their lifetime; a
 // host evicted from memory forgets them, which reopens a used nonce for at most CHALLENGE_TTL_MS.
 //
-// Clients are gated by device key. A client fetches a single-use challenge, signs it with its
-// Ed25519 device key and upgrades with the signature; the relay admits the keys the agent
-// published in its policy. An unknown key may carry an enrolment proof, which only the agent can
+// Clients are gated by device key. A client signs a single-use challenge with its Ed25519 device
+// key; the relay admits the keys the agent published in its policy. An unknown key may carry an enrolment proof, which only the agent can
 // check, so the relay passes it along in the dial and the agent refuses or dials back, within a
 // per-account budget of such dials. A client without a device key is refused once the account's
 // agent has published a policy; before that (an agent from before device keys, or the moments
 // after a relay restart) the agent's own handshake is the only gate, and it takes IK only.
+//
+// The challenge reaches the client one of two ways. It may fetch one (`role=challenge`) and
+// upgrade with the signature in its query. Or it upgrades asking for the gate (GATE_PARAM): the
+// relay then accepts the socket at once, files it as a `gate` that is nobody's partner, sends a
+// challenge on it and takes exactly one text reply carrying what the query would have. That
+// spares the phone a TLS connection, at the price of holding a socket nobody has authenticated;
+// so a gate has a deadline, and at the cap the oldest one still waiting is closed rather than the
+// newcomer: an honest phone answers within one round trip, so holding the owner out then takes a
+// sustained rate of new sockets, not a few idle ones. The nonce is not bound to the socket it was
+// sent on (a fetched one is not bound to its upgrade either): the MAC and the spent set carry
+// replay protection, so a host that forgot which gate got which nonce loses nothing. Gate state
+// lives in memory; its timer keeps a Durable Object from hibernating while it is needed.
 //
 // A dial-back costs the phone the agent's whole connect to the relay (TCP, TLS, upgrade) after
 // the relay has asked for it. So the agent may also open spares ahead of time: a spare is filed as
@@ -34,15 +45,22 @@
 // only after the checks that gave it: a device's standing only to a signature by that device, and
 // the agent's reasons for a pairing code only to a proof made with that code.
 import {
+  GATE_PARAM,
+  GATE_READY,
   IN_BAND_REFUSAL,
   MAX_FRAME_BYTES,
+  MAX_GATE_REPLY_BYTES,
   PAIRED,
   REFUSAL,
+  encodeGateChallenge,
   generateChallengeKey,
   mintChallenge,
   parseAgentControl,
+  parseDeviceParams,
+  parseGateReply,
   verifyChallenge,
   verifyDeviceAuth,
+  type DeviceParams,
   type RelayPolicy,
 } from '@perch/secure-channel';
 import { SpentNonces } from './spent-nonces.ts';
@@ -54,7 +72,8 @@ export interface Peer {
   close(code?: number, reason?: string): void;
 }
 
-export type PeerLabel = { kind: 'control' } | { kind: 'client' | 'agent'; pair: string };
+// A gate is a client socket accepted before its device key was checked (see above).
+export type PeerLabel = { kind: 'control' } | { kind: 'gate' } | { kind: 'client' | 'agent'; pair: string };
 
 // An HTTP upgrade the relay has not answered yet. A client's upgrade is held open until its
 // agent dials in, so the client only sees `open` once frames can actually reach the agent.
@@ -77,20 +96,15 @@ export interface PeerDirectory {
   // Every open socket of the account, whatever its label.
   all(): Peer[];
   labelOf(peer: Peer): PeerLabel | null;
+  // Files an open socket under another label: a gate becomes its pair's client.
+  relabel(peer: Peer, label: PeerLabel): void;
   count(kind: PeerLabel['kind']): number;
 }
 
-export interface DeviceProof {
-  key: string;
-  nonce: string;
-  sig: string;
-  proof?: string;
-  // What the phone says it made the proof with. Unchecked: the agent only names a failure by it.
-  cred?: 'pairing' | 'token';
-}
+export type DeviceProof = DeviceParams;
 
 export type RelayRequest =
-  | { role: 'client'; account: string; device?: DeviceProof }
+  | { role: 'client'; account: string; device?: DeviceProof; inBand?: boolean }
   | { role: 'challenge'; account: string }
   | { role: 'agent'; account: string; authorization?: string }
   | { role: 'dial'; account: string; id: string; authorization?: string }
@@ -123,20 +137,12 @@ export function parseRelayRequest(
   const role = searchParams.get('role');
   const authorization = header('authorization') ?? undefined;
   if (role === null) {
-    const [key, nonce, sig] = ['device', 'nonce', 'sig'].map((name) => searchParams.get(name));
-    if (!key && !nonce && !sig) return { role: 'client', account };
-    if (!key || !nonce || !sig) return null;
-    const proof = searchParams.get('proof') ?? undefined;
-    const cred = searchParams.get('cred');
-    // The same shapes the agent accepts in a dial: anything else would be forwarded, then
-    // dropped by the agent, and hold a pending slot until the dial timeout.
-    if (!/^[A-Za-z0-9_-]{43}$/.test(key) || !/^[A-Za-z0-9_-]{86}$/.test(sig)) return null;
-    if (!/^[\w-]{1,128}$/.test(nonce) || (proof !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(proof))) return null;
-    return {
-      role: 'client',
-      account,
-      device: { key, nonce, sig, ...(proof ? { proof } : {}), ...(cred === 'pairing' || cred === 'token' ? { cred } : {}) },
-    };
+    const inBand = searchParams.get(GATE_PARAM) === '1';
+    if (!['device', 'nonce', 'sig'].some((name) => searchParams.get(name))) {
+      return inBand ? { role: 'client', account, inBand } : { role: 'client', account };
+    }
+    const device = inBand ? null : parseDeviceParams((name) => searchParams.get(name));
+    return device ? { role: 'client', account, device } : null;
   }
   if (role === 'challenge') return { role: 'challenge', account };
   if (role === 'agent') return { role: 'agent', account, authorization };
@@ -180,6 +186,7 @@ export interface RelayDeps {
   // Dials asking the agent to enrol an unknown key, per ENROLMENT_WINDOW_MS.
   maxEnrolments?: number;
   maxFrameBytes?: number;
+  gateTimeoutMs?: number;
 }
 
 interface PendingClient {
@@ -191,6 +198,10 @@ interface PendingClient {
 const DEFAULT_DIAL_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_PENDING = 8;
 const DEFAULT_MAX_PAIRS = 16;
+// An honest phone answers its challenge within a round trip and a signature.
+const DEFAULT_GATE_TIMEOUT_MS = 5_000;
+// Gates still waiting for their answer, per account.
+const MAX_WAITING_GATES = 8;
 // The agent keeps one per relay; the second covers a spare opened while a dying one still looks open.
 const MAX_SPARES = 2;
 // Dial ids are minted here as token characters, never with a dot, so a spare's pair tag cannot be
@@ -220,6 +231,13 @@ const LEGACY_CHALLENGES_KEY = 'challenges';
 
 type Enrolment = { device: string; nonce: string; proof: string; cred?: 'pairing' | 'token' };
 
+interface Gate {
+  account: string;
+  cancelTimeout: () => void;
+  answered: boolean;
+  aborted: Array<() => void>;
+}
+
 // A phone's upgrade, whose every refusal is made in band.
 function inBand(upgrade: PendingUpgrade): PendingUpgrade {
   return {
@@ -234,6 +252,8 @@ export class Relay {
   private readonly pending = new Map<string, PendingClient>();
   private readonly store: RelayStore;
   private readonly spent = new SpentNonces();
+  // In insertion order, so the first one still waiting is the oldest.
+  private readonly gates = new Map<Peer, Gate>();
 
   constructor(private readonly deps: RelayDeps) {
     this.store = deps.store ?? new MemoryStore();
@@ -261,7 +281,8 @@ export class Relay {
         return;
       case 'client': {
         const client = inBand(upgrade);
-        if (request.device) this.admitDevice(request.account, request.device, client).catch(() => client.reject(500, REFUSAL.internal));
+        if (request.inBand) this.openGate(request.account, client);
+        else if (request.device) this.admitDevice(request.account, request.device, client).catch(() => client.reject(500, REFUSAL.internal));
         else if (this.policy()) client.reject(401, REFUSAL.deviceKeyRequired);
         else this.requestDial(client);
         return;
@@ -283,6 +304,10 @@ export class Relay {
     // it in the runtime for all its sockets alike; relay traffic itself is binary.
     if (data === 'ping') {
       peer.send('pong', false);
+      return;
+    }
+    if (label.kind === 'gate') {
+      this.gateMessage(peer, data, binary);
       return;
     }
     if (label.kind === 'control') {
@@ -310,6 +335,10 @@ export class Relay {
       this.rejectPendingOf(peer);
       return;
     }
+    if (label?.kind === 'gate') {
+      this.forgetGate(peer);
+      return;
+    }
     if (label) this.partnerOf(label)?.close(sendableCode(code), reason);
   }
 
@@ -321,6 +350,7 @@ export class Relay {
       waiting.cancelTimeout();
       waiting.upgrade.reject(404, REFUSAL.unknownAccount);
     }
+    for (const peer of this.gates.keys()) this.forgetGate(peer);
     for (const peer of this.deps.directory.all()) peer.close(ACCOUNT_REMOVED, 'account removed');
     this.store.delete(POLICY_KEY);
     this.store.delete(CHALLENGE_KEY);
@@ -346,6 +376,72 @@ export class Relay {
     // The agent opens its new spare only once this control socket is open.
     for (const spare of this.spares()) spare.close(GOING_AWAY, 'superseded');
     upgrade.accept({ kind: 'control' });
+  }
+
+  private openGate(account: string, upgrade: PendingUpgrade): void {
+    const waiting = [...this.gates].filter(([, gate]) => !gate.answered);
+    if (waiting.length >= MAX_WAITING_GATES) this.closeGate(waiting[0]![0], IN_BAND_REFUSAL + 429, REFUSAL.tooManyPending);
+    const peer = upgrade.accept({ kind: 'gate' });
+    if (!peer) return;
+    const cancelTimeout = this.deps.startTimer(
+      () => this.closeGate(peer, IN_BAND_REFUSAL + 408, REFUSAL.challengeUnanswered),
+      this.deps.gateTimeoutMs ?? DEFAULT_GATE_TIMEOUT_MS,
+    );
+    this.gates.set(peer, { account, cancelTimeout, answered: false, aborted: [] });
+    peer.send(encodeGateChallenge(mintChallenge(this.challengeKey(), account, this.now(), CHALLENGE_TTL_MS)), false);
+  }
+
+  private gateMessage(peer: Peer, data: RelayData, binary: boolean): void {
+    const gate = this.gates.get(peer);
+    if (!gate) {
+      peer.close(IN_BAND_REFUSAL + 401, REFUSAL.challenge);
+      return;
+    }
+    const device =
+      !gate.answered && !binary && typeof data === 'string' && byteLength(data) <= MAX_GATE_REPLY_BYTES ? parseGateReply(data) : null;
+    if (!device) {
+      this.closeGate(peer, IN_BAND_REFUSAL + 400, REFUSAL.invalidReply);
+      return;
+    }
+    gate.answered = true;
+    gate.cancelTimeout();
+    const upgrade = this.gateUpgrade(peer, gate);
+    this.admitDevice(gate.account, device, upgrade).catch(() => upgrade.reject(500, REFUSAL.internal));
+  }
+
+  // The gate's socket, as the upgrade the rest of the core expects: accepting it files it under
+  // its pair and tells the phone it may start the handshake.
+  private gateUpgrade(peer: Peer, gate: Gate): PendingUpgrade {
+    const live = () => this.gates.get(peer) === gate;
+    return {
+      accept: (label) => {
+        if (!live()) return null;
+        this.gates.delete(peer);
+        this.deps.directory.relabel(peer, label);
+        peer.send(GATE_READY, false);
+        return peer;
+      },
+      reject: (status, reason) => {
+        if (live()) this.closeGate(peer, IN_BAND_REFUSAL + status, reason);
+      },
+      refuse: (code, reason) => {
+        if (live()) this.closeGate(peer, code, reason);
+      },
+      onAbort: (listener) => (live() ? gate.aborted.push(listener) : listener()),
+    };
+  }
+
+  private closeGate(peer: Peer, code: number, reason: string): void {
+    this.forgetGate(peer);
+    peer.close(code, reason);
+  }
+
+  private forgetGate(peer: Peer): void {
+    const gate = this.gates.get(peer);
+    if (!gate) return;
+    this.gates.delete(peer);
+    gate.cancelTimeout();
+    gate.aborted.forEach((listener) => listener());
   }
 
   private async admitDevice(account: string, device: DeviceProof, upgrade: PendingUpgrade): Promise<void> {
@@ -540,7 +636,7 @@ export class Relay {
     }
   }
 
-  private partnerOf(label: Exclude<PeerLabel, { kind: 'control' }>): Peer | undefined {
+  private partnerOf(label: Extract<PeerLabel, { pair: string }>): Peer | undefined {
     const kind = label.kind === 'client' ? 'agent' : 'client';
     return this.deps.directory.find({ kind, pair: label.pair })[0];
   }
@@ -585,6 +681,11 @@ export class MemoryDirectory implements PeerDirectory {
     return this.entries.get(peer)?.label ?? null;
   }
 
+  relabel(peer: Peer, label: PeerLabel): void {
+    const entry = this.entries.get(peer);
+    if (entry) entry.label = label;
+  }
+
   count(kind: PeerLabel['kind']): number {
     let n = 0;
     for (const entry of this.entries.values()) if (entry.isOpen() && entry.label.kind === kind) n += 1;
@@ -592,7 +693,7 @@ export class MemoryDirectory implements PeerDirectory {
   }
 }
 
-function sameLabel(a: PeerLabel, b: PeerLabel): boolean {
+export function sameLabel(a: PeerLabel, b: PeerLabel): boolean {
   if (a.kind !== b.kind) return false;
-  return a.kind === 'control' || (b.kind !== 'control' && a.pair === b.pair);
+  return !('pair' in a) || ('pair' in b && a.pair === b.pair);
 }

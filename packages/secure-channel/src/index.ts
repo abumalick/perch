@@ -55,3 +55,14 @@ export { generatePairingSecret, isPairingPath, pairingLink, parsePairingLink, ty
 export { REFUSAL, IN_BAND_REFUSAL, DEVICE_REFUSED, type Refusal, type AgentRefusal } from './refusal';
 export { generateChallengeKey, mintChallenge, verifyChallenge } from './relay-challenge';
 export { startTimer } from './timers';
+export {
+  GATE_PARAM,
+  GATE_READY,
+  MAX_GATE_REPLY_BYTES,
+  encodeGateChallenge,
+  encodeGateReply,
+  parseDeviceParams,
+  parseGateChallenge,
+  parseGateReply,
+  type DeviceParams,
+} from './relay-gate';

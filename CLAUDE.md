@@ -502,6 +502,24 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     message sealed for another static key (`WrongStaticKeyError`) from any other failure; the
     agent closes it with 4003 "wrong agent key", and the PWA words it as final. "Agent key
     mismatch" is for an answer the pinned key did not make, which the real agent never sends.
+  - **The challenge comes on the phone's own socket (the gate); the fetch is the fallback.**
+    The PWA upgrades with `?challenge=1`; the relay accepts at once, files the socket as a
+    `gate` (nobody's partner), sends a challenge text frame, takes exactly one text reply
+    carrying what the query would have (`relay-gate.ts`), runs the unchanged `admitDevice`, and
+    sends `ready` once the socket is paired; the phone starts IK only then. That spares a TLS
+    connection per connect. Things not to "simplify": **a gate is held unauthenticated, so it is
+    bounded** (5 s deadline, 4408; 8 waiting per account, and the ninth closes the *oldest*
+    waiting one, never the newcomer, or holding 8 idle sockets would lock the owner out);
+    **anything but one well-formed text reply closes it** (4400), and nothing from it is ever
+    forwarded; **the nonce is not bound to the gate** (the MAC and spent set carry replay, as for
+    a fetched one), so a Durable Object that lost a gate's memory just closes it (4401). Socket
+    labels live in the DO attachment (tags are fixed at accept, and a gate becomes a client), with
+    the tags as fallback for sockets accepted by older code. **The fetch flow stays on every
+    relay**, for older PWAs and for the PWA's fallback: a relay from before the gate answers
+    `4401 device key required` before any challenge (remembered per relay for the app session,
+    `legacyRelays`) or, with no policy yet, dials the socket to the agent and nothing arrives
+    (fallback after `GATE_WAIT_MS`, not remembered). `device key required` after a challenge
+    stays final. The phase `challenge-fallback` in the connection log shows a fallback.
   - **A challenge that cannot be had fails the attempt, and the backoff retries it.** Every
     relay hands out challenges and refuses an upgrade without device parameters with a *final*
     "device key required", so connecting without them after a brief network error parked the
@@ -519,8 +537,8 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     that for good. **The e2e cannot catch a regression here:** it runs WebKit only, with no
     Android and no sleep, so the wake-after-sleep path is covered by `fetchRelayChallenge`'s unit
     tests alone and needs an on-device check when it changes.
-    Each relay connect also logs its phases to the connection log (`challenge`, `ws-open`,
-    `handshake`, with ms since the attempt began; a `close` carries its attempt number and
+    Each relay connect also logs its phases to the connection log (`ws-open`, `challenge`,
+    `admitted`, `handshake`, with ms since the attempt began; a `close` carries its attempt number and
     backoff), and the self-hosted relay prints when a phone's challenge, upgrade and the agent's
     dial arrive, so a slow connect can be placed (at most 30 such lines a minute, so a flood
     cannot fill the journal).

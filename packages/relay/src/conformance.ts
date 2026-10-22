@@ -6,17 +6,21 @@
 // a `describe` resolved from this package would not register with the other host's runner.
 // For the same reason this file imports nothing Node-only.
 import {
+  GATE_PARAM,
+  GATE_READY,
   JOIN_HEADER,
   MAX_FRAME_BYTES,
   accountId,
   ed25519Signer,
   enrolKey,
   enrolProof,
+  encodeGateReply,
   generateAgentKeys,
   generateDeviceKeys,
   signAgentAuth,
   signDeviceAuth,
   signJoinAuth,
+  parseGateChallenge,
   REFUSAL,
   type RelayPolicy,
 } from '@perch/secure-channel';
@@ -515,6 +519,84 @@ export function relayConformance(name: string, api: TestApi, getHost: () => Conf
       const stolenSig = new URLSearchParams(forged.split('?')[1]).get('sig')!;
       expect(await refused(await devicePath(phone, { sig: stolenSig }))).toEqual({ code: 4401, reason: REFUSAL.signature });
       expect(await ctl.quiet()).toBe(true);
+    });
+
+    // The gate: the challenge on the phone's own socket, answered there.
+    const gate = async (): Promise<{ socket: SocketChannel; nonce: string }> => {
+      const socket = await open(`/${host.account}?${GATE_PARAM}=1`);
+      const nonce = parseGateChallenge(text(await socket.next()));
+      expect(typeof nonce).toBe('string');
+      return { socket, nonce: nonce! };
+    };
+
+    const answerGate = async (socket: SocketChannel, device: Device, nonce: string) => {
+      const sig = await signDeviceAuth(device.sign, { account: host.account, nonce, device: device.key });
+      socket.send(encodeGateReply({ key: device.key, nonce, sig }));
+    };
+
+    it('hands a challenge out on the socket of a phone that asks for it, and says ready once the agent dials', async () => {
+      const ctl = await control();
+      const phone = newDevice();
+      await publish(ctl, closedPolicy([phone]));
+      const { socket, nonce } = await gate();
+      expect(await ctl.quiet()).toBe(true);
+      await answerGate(socket, phone, nonce);
+      const dialed = await dialOf(ctl);
+      expect(dialed.enrol === undefined).toBe(true);
+      const agent = await open(`/${host.account}?role=dial`, signed('dial', dialed.id));
+      expect(text(await socket.next())).toBe(GATE_READY);
+      socket.send(Uint8Array.of(1, 2, 3));
+      expect(bytes(await agent.next())).toEqual([1, 2, 3]);
+      agent.send(Uint8Array.of(4));
+      expect(bytes(await socket.next())).toEqual([4]);
+    });
+
+    it('pairs a phone that passed the gate with a spare at once', async () => {
+      const ctl = await control();
+      const phone = newDevice();
+      await publish(ctl, closedPolicy([phone]));
+      const spare = await open(`/${host.account}?role=spare`, signed('spare', 'spare-1'));
+      const { socket, nonce } = await gate();
+      await answerGate(socket, phone, nonce);
+      expect(text(await socket.next())).toBe(GATE_READY);
+      expect(text(await spare.next())).toBe('paired');
+      socket.send(Uint8Array.of(7));
+      expect(bytes(await spare.next())).toEqual([7]);
+    });
+
+    it('refuses an answer at the gate as it refuses the same proof in a query, and never asks the agent', async () => {
+      const ctl = await control();
+      const phone = newDevice();
+      await publish(ctl, closedPolicy([phone]));
+      const spent = await challenge();
+      const pending = upgrade(await devicePath(phone, { nonce: spent }));
+      await open(`/${host.account}?role=dial`, signed('dial', (await dialOf(ctl)).id));
+      expect((await pending).status).toBe(101);
+      const reused = await gate();
+      await answerGate(reused.socket, phone, spent);
+      expect(await reused.socket.closedWith()).toEqual({ code: 4401, reason: REFUSAL.challenge });
+      const stranger = await gate();
+      await answerGate(stranger.socket, newDevice(), stranger.nonce);
+      expect(await stranger.socket.closedWith()).toEqual({ code: 4403, reason: REFUSAL.notEnrolled });
+      expect(await ctl.quiet()).toBe(true);
+    });
+
+    it('closes a gate on anything but its answer, and forwards nothing from it', async () => {
+      const ctl = await control();
+      await publish(ctl, closedPolicy([newDevice()]));
+      const spare = await open(`/${host.account}?role=spare`, signed('spare', 'spare-1'));
+      const binary = await gate();
+      binary.socket.send(Uint8Array.of(1));
+      expect(await binary.socket.closedWith()).toEqual({ code: 4400, reason: REFUSAL.invalidReply });
+      const garbled = await gate();
+      garbled.socket.send('{"type":"device"}');
+      expect(await garbled.socket.closedWith()).toEqual({ code: 4400, reason: REFUSAL.invalidReply });
+      expect(await spare.quiet()).toBe(true);
+      expect(await ctl.quiet()).toBe(true);
+    });
+
+    it('refuses a gate for an unknown account in band, before any challenge', async () => {
+      expect(await refused(`/nobody?${GATE_PARAM}=1`)).toEqual({ code: 4404, reason: REFUSAL.unknownAccount });
     });
 
     it('refuses an unknown key without an enrolment proof with 4403, and never asks the agent', async () => {

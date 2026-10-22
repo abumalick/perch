@@ -2,12 +2,10 @@
   import { onMount } from 'svelte';
   import type { PerchStore } from './store.svelte';
   import WorkspaceList from './lib/WorkspaceList.svelte';
-  import TerminalView from './lib/TerminalView.svelte';
   import Settings from './lib/Settings.svelte';
   import AddMachine from './lib/AddMachine.svelte';
   import CreateWorkspace from './lib/CreateWorkspace.svelte';
   import FileBrowser from './lib/FileBrowser.svelte';
-  import FileViewer from './lib/FileViewer.svelte';
   import ImageViewer from './lib/ImageViewer.svelte';
   import PdfViewer from './lib/PdfViewer.svelte';
   import AudioViewer from './lib/AudioViewer.svelte';
@@ -19,6 +17,27 @@
   import { trackWide } from './lib/viewport';
 
   let { store }: { store: PerchStore } = $props();
+  // xterm and the markdown renderer are half the bundle and neither is needed to connect, so
+  // their views are separate chunks, kept off a cold launch's path to the first connect. They
+  // are fetched once the first workspace list is in, before anyone can open one.
+  let terminalView: Promise<typeof import('./lib/TerminalView.svelte').default> | undefined;
+  let fileViewer: Promise<typeof import('./lib/FileViewer.svelte').default> | undefined;
+  // A failed load is forgotten, so opening the view again retries it.
+  const loadTerminalView = () =>
+    (terminalView ??= import('./lib/TerminalView.svelte').then(
+      (m) => m.default,
+      (err: unknown) => ((terminalView = undefined), Promise.reject(err)),
+    ));
+  const loadFileViewer = () =>
+    (fileViewer ??= import('./lib/FileViewer.svelte').then(
+      (m) => m.default,
+      (err: unknown) => ((fileViewer = undefined), Promise.reject(err)),
+    ));
+  $effect(() => {
+    if (store.workspaces.length === 0) return;
+    void loadTerminalView();
+    void loadFileViewer();
+  });
   let kbAnchor: HTMLTextAreaElement;
   // ≥980px: the workspace list is a persistent left sidebar and the active view renders
   // beside it. Below: today's single-pane, full-screen stack (the list IS the home view).
@@ -77,9 +96,11 @@
     <!-- Keyed on the workspace id so switching sessions (possible while the persistent
          sidebar stays open in the wide layout) tears down the old terminal and remounts
          a fresh one that attaches to the newly selected workspace. -->
-    {#key store.active?.id}
-      <TerminalView {store} />
-    {/key}
+    {#await loadTerminalView() then TerminalView}
+      {#key store.active?.id}
+        <TerminalView {store} />
+      {/key}
+    {/await}
   {:else if store.view === 'settings'}
     <Settings {store} />
   {:else if store.view === 'newMachine'}
@@ -101,7 +122,9 @@
     {:else if store.fileView?.mediaType.startsWith('audio/')}
       <AudioViewer {store} />
     {:else}
-      <FileViewer {store} />
+      {#await loadFileViewer() then FileViewer}
+        <FileViewer {store} />
+      {/await}
     {/if}
   {/if}
 {/snippet}

@@ -172,6 +172,7 @@ export function noiseSocketFactory(inner: FrameSocketFactory, agentKey: string, 
       let identity: DeviceIdentity;
       try {
         identity = await options.device();
+        options.onPhase?.('device-key', since());
       } catch (err) {
         fail(deviceKeyUnavailable(err));
         return;

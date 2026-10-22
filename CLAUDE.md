@@ -539,7 +539,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     that for good. **The e2e cannot catch a regression here:** it runs WebKit only, with no
     Android and no sleep, so the wake-after-sleep path is covered by `fetchRelayChallenge`'s unit
     tests alone and needs an on-device check when it changes.
-    Each relay connect also logs its phases to the connection log (`ws-open`, `challenge`,
+    Each relay connect also logs its phases to the connection log (`device-key` once the device key is loaded, `ws-open`, `challenge`,
     `admitted`, `handshake`, `list` when the workspaces arrive, with ms since the attempt began;
     plus one app-global `boot` with the ms from launch to the first connect; a `close` carries its attempt number and
     backoff), and the self-hosted relay prints when a phone's challenge, upgrade and the agent's
@@ -668,6 +668,17 @@ PWA in your own Cloudflare account"); that answers it for them, not for the main
 PWA on the tailnet, and do not move it to a public origin to "simplify" deployment.
 
 ## Gotchas already fixed (don't regress)
+- **A cold launch's path to the first connect carries only what connecting needs.** Measured on
+  Android: the time from launch to `start()` was mostly compiling and evaluating the bundle, and
+  xterm plus marked/dompurify were half of it, so `TerminalView` and `FileViewer` are their own
+  chunks (`App.svelte`'s loaders). They are fetched once the first workspace list arrives, well
+  before anyone can open one; a failed import is forgotten, so opening the view again retries it.
+  Don't import either statically from anything the main bundle reaches. The device key's
+  IndexedDB read then waited on the main thread, so `public/warm-device-key.js` (an `async`
+  classic script: module scripts in `index.html` are folded into the main bundle) opens the
+  database first. **It must create nothing**: a first launch's upgrade is aborted, or the app's
+  own `open(DB, 1)` would find a database without its object store. The name is duplicated in
+  `device-keys.ts`; `warm-device-key.test.ts` keeps the two equal.
 - **A subagent's tool calls must not stamp the parent workspace's status.** `PreToolUse`/
   `PostToolUse` fire in the **parent** session for a subagent's own tool calls, carrying an
   `agent_id`/`agent_type` pair that is absent on the main loop's calls. Mapping those to

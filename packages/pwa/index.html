@@ -13,6 +13,9 @@
     />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Perch</title>
+    <!-- Opens the device-key database while the main bundle loads, so the first connect waits
+         less on it. A classic script: module scripts here are folded into the main bundle. -->
+    <script async src="/warm-device-key.js"></script>
   </head>
   <body>
     <div id="app"></div>

@@ -394,7 +394,10 @@ describe('noise socket', () => {
     const phases: Array<[string, string]> = [];
     const inner = new FakeFrameSocket();
     const socket = noiseSocketFactory(() => inner, agent.x25519.publicKey, {
-      device: () => identity,
+      device: async () => {
+        t += 50;
+        return identity;
+      },
       token: 't',
       deviceName: 'p',
       fetchChallenge: async () => {
@@ -413,9 +416,10 @@ describe('noise socket', () => {
     t += 100;
     await answer(inner);
     expect(phases).toEqual([
-      ['challenge', 'ok 300ms'],
-      ['ws-open', '500ms'],
-      ['handshake', '600ms'],
+      ['device-key', '50ms'],
+      ['challenge', 'ok 350ms'],
+      ['ws-open', '550ms'],
+      ['handshake', '650ms'],
     ]);
   });
 
@@ -434,7 +438,7 @@ describe('noise socket', () => {
     run(() => Promise.reject(new ChallengeTimeoutError(5000)));
     run(() => Promise.reject(new ChallengeError('HTTP 503')));
     await flush();
-    expect(phases).toEqual(['challenge timeout 0ms', 'challenge failed: HTTP 503 0ms']);
+    expect(phases.filter((p) => p.startsWith('challenge'))).toEqual(['challenge timeout 0ms', 'challenge failed: HTTP 503 0ms']);
   });
 
   it('closes before dialing when asked to, reporting the close once', async () => {
@@ -525,7 +529,7 @@ describe('noise socket through the in-band gate', () => {
     inner.deliverText(GATE_READY);
     await answer(inner);
     expect(events).toEqual(['open']);
-    expect(phases.map((p) => p.split(' ')[0])).toEqual(['ws-open', 'challenge', 'admitted', 'handshake']);
+    expect(phases.map((p) => p.split(' ')[0])).toEqual(['device-key', 'ws-open', 'challenge', 'admitted', 'handshake']);
   });
 
   it('fails on a binary frame before ready, or an unexpected text frame', async () => {
@@ -565,7 +569,7 @@ describe('noise socket through the in-band gate', () => {
     expect(first.events).toEqual([]);
     expect(first.challenges).toEqual(['https://relay/acct?role=challenge']);
     expect(new URL(first.urls[1]!).searchParams.get('nonce')).toBe('fetched-nonce');
-    expect(first.phases[1]).toMatch(/^challenge-fallback legacy relay/);
+    expect(first.phases[2]).toMatch(/^challenge-fallback legacy relay/);
     expect(legacyRelays.has('wss://relay/acct')).toBe(true);
     const inner = first.sockets[1]!;
     inner.fireOpen();

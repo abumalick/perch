@@ -86,6 +86,13 @@ describe('App', () => {
     expect(screen.getByText(/select a workspace/i)).toBeInTheDocument();
   });
 
+  it('renders the file viewer, whose code loads on demand', async () => {
+    const store = fakeStore('viewer');
+    Object.assign(store, { fileView: { path: '/p/notes.md', text: '# Loaded later', binary: false, mediaType: 'text/markdown' } });
+    render(App, { props: { store: store as never } });
+    expect(await screen.findByRole('heading', { name: 'Loaded later' })).toBeInTheDocument();
+  });
+
   it('renders the browser view for an open browser target', () => {
     const store = fakeStore('browserView');
     store.browserTarget = { connectionId: 'mac', session: 'github' };

@@ -31,6 +31,7 @@ function fakeStore(
         anyOnline: machines.some((m) => m.enabled !== false && statuses[m.id] === 'online'),
         workspaceCount: workspaces.length,
         graceElapsed: true,
+        listsPending: false,
       }),
     open: vi.fn(),
     goCreate: vi.fn(),

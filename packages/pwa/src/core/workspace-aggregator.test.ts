@@ -57,6 +57,16 @@ describe('WorkspaceAggregator', () => {
     expect(agg.snapshot().map((w) => w.id)).toEqual(['b']);
   });
 
+  it('knows which machines have answered list, even with no workspaces', () => {
+    const agg = new WorkspaceAggregator();
+    agg.apply('m1', { type: 'workspaceUpdated', workspace: ws('a', 'm1', 'idle') });
+    expect(agg.listedMachines()).toEqual([]);
+    agg.apply('m1', { type: 'workspaces', workspaces: [] });
+    expect(agg.listedMachines()).toEqual(['m1']);
+    agg.setMachineOffline('m1');
+    expect(agg.listedMachines()).toEqual([]);
+  });
+
   it('notifies onChange listeners', () => {
     const agg = new WorkspaceAggregator();
     let count = 0;

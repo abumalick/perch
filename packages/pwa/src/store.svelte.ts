@@ -76,6 +76,8 @@ const MEDIA_ERRORS: Record<Exclude<MediaResult, 'ok' | 'too-large'>, string> = {
 export class PerchStore {
   view = $state<View>('list');
   workspaces = $state<Workspace[]>([]);
+  // Connection ids whose workspace list has arrived since they last came online.
+  listedMachines = $state<string[]>([]);
   statuses = $state<Record<string, ConnectionStatus>>({});
   // A pairing link opened outside the Home Screen app on iOS, held unspent for the owner to carry
   // into the app (`outsideInstalledApp`).
@@ -115,6 +117,9 @@ export class PerchStore {
       ),
       workspaceCount: this.workspaces.length,
       graceElapsed: this.graceElapsed,
+      listsPending: this.machines.some(
+        (m) => isConnectable(m) && this.statuses[m.id] === 'online' && !this.listedMachines.includes(m.id),
+      ),
       // Calm "Reconnecting…" only within the (longer) grace window; once it elapses we fall
       // through to the actionable "Can't reach" screen so an extended outage isn't an eternal
       // spinner. `graceElapsed` here reflects RECONNECT_GRACE_MS (see recomputeGrace).
@@ -313,6 +318,7 @@ export class PerchStore {
       });
     deps.aggregator.onChange(() => {
       this.workspaces = deps.aggregator.snapshot();
+      this.listedMachines = deps.aggregator.listedMachines();
       // Keep the open workspace's metadata (e.g. status) in sync with the agent's
       // broadcasts so the terminal header status picker reflects the live state.
       if (this.active) {

@@ -123,6 +123,9 @@ export interface FakeAgent {
   // Revokes every enrolled device, as `perch devices revoke` does from another process: the
   // agent notices, closes their sessions and republishes, and resolves once the relay has it.
   revokeAll: () => Promise<void>;
+  // Holds every `workspaces` reply to `list` until the returned release is called, so a spec
+  // can watch the home screen of a machine that is online but has not listed yet.
+  holdList: () => () => void;
   close: () => Promise<void>;
 }
 
@@ -210,6 +213,7 @@ export async function startFakeAgent(
     let customLaunchers = ['pi'];
     // One live agent-browser session named after the demo workspace (attached by the
     // name === workspace.id rule) when that workspace exists.
+    let heldLists: Array<() => void> | null = null;
     const browserSessions: Array<{ name: string }> =
       browserSessionsOverride ??
       (workspaces.some((w) => w.id === 'perch-demo') ? [{ name: 'perch-demo' }] : []);
@@ -312,7 +316,8 @@ export async function startFakeAgent(
             // machineId here is the AGENT's PERCH_MACHINE_ID, deliberately DIFFERENT from the
             // PWA's machine config id (seeded as 'test' in the E2E). The client must route
             // attach/input by the connection id, not this value — so the E2E covers that.
-            send({ type: 'workspaces', workspaces });
+            if (heldLists) heldLists.push(() => send({ type: 'workspaces', workspaces }));
+            else send({ type: 'workspaces', workspaces });
             // Faithful to the real agent: browserSessions follows every workspaces reply;
             // sending the (possibly empty) list also marks the agent as browser-capable.
             send({ type: 'browserSessions', sessions: browserSessions });
@@ -537,6 +542,14 @@ export async function startFakeAgent(
         const applied = nextApplied();
         await relays.pollRoster();
         await applied;
+      },
+      holdList: () => {
+        heldLists = [];
+        return () => {
+          const replies = heldLists ?? [];
+          heldLists = null;
+          replies.forEach((reply) => reply());
+        };
       },
       closeBrowserSockets: () => {
         for (const [conn, streams] of openStreams) {

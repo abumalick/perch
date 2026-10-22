@@ -2,6 +2,9 @@ import { sortByStatus, type AgentMessage, type Workspace } from '@perch/contract
 
 export class WorkspaceAggregator {
   private readonly byMachine = new Map<string, Workspace[]>();
+  // Machines whose `workspaces` reply has arrived since they came online. Kept apart from
+  // `byMachine`, which a `workspaceUpdated` can fill before the list does.
+  private readonly listed = new Set<string>();
   private readonly listeners: Array<() => void> = [];
 
   apply(machineId: string, message: AgentMessage): void {
@@ -15,6 +18,7 @@ export class WorkspaceAggregator {
           machineId,
           message.workspaces.map((w) => ({ ...w, machineId })),
         );
+        this.listed.add(machineId);
         this.emit();
         return;
       case 'workspaceUpdated': {
@@ -42,10 +46,12 @@ export class WorkspaceAggregator {
   }
 
   setMachineOffline(machineId: string): void {
-    if (this.byMachine.has(machineId)) {
-      this.byMachine.delete(machineId);
-      this.emit();
-    }
+    const wasListed = this.listed.delete(machineId);
+    if (this.byMachine.delete(machineId) || wasListed) this.emit();
+  }
+
+  listedMachines(): string[] {
+    return [...this.listed];
   }
 
   snapshot(): Workspace[] {

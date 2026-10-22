@@ -94,7 +94,7 @@ function build(
     schedule: () => undefined,
   });
   const store = new PerchStore({ settings, manager, aggregator, applyUpdate, startTimer, origin: 'https://pwa.example', ...prompts, ...log, ...ask });
-  return { store, sockets, manager, storage };
+  return { store, sockets, manager, storage, aggregator };
 }
 
 const agentKey = generateAgentKeys().x25519.publicKey;
@@ -1651,9 +1651,10 @@ describe('PerchStore home view', () => {
 
   it('counts only the relay machines beside an old direct entry', () => {
     const timer = manualTimer();
-    const { store } = build([{ id: 'old', name: 'Old', url: 'wss://old', token: 't' }, mac], undefined, timer.startTimer);
+    const { store, aggregator } = build([{ id: 'old', name: 'Old', url: 'wss://old', token: 't' }, mac], undefined, timer.startTimer);
     store.start();
     store.setStatus('mac', 'online');
+    aggregator.apply('mac', { type: 'workspaces', workspaces: [] });
     expect(store.homeView).toBe('create');
   });
 
@@ -1673,13 +1674,39 @@ describe('PerchStore home view', () => {
     expect(store.homeView).toBe('unreachable');
   });
 
-  it('a machine coming online cancels grace and shows create when it reports no workspaces', () => {
+  it('a machine coming online cancels grace but keeps the loader until its workspace list arrives', () => {
     const timer = manualTimer();
-    const { store } = build([mac], undefined, timer.startTimer);
+    const { store, aggregator } = build([mac], undefined, timer.startTimer);
     store.start();
     store.setStatus('mac', 'online');
     expect(timer.pending()).toBe(0);
+    expect(store.homeView).toBe('connecting');
+    aggregator.apply('mac', { type: 'workspaces', workspaces: [] });
     expect(store.homeView).toBe('create');
+  });
+
+  it('keeps the loader until every online machine has answered, not just the first', () => {
+    const timer = manualTimer();
+    const { store, aggregator } = build([mac, mini], undefined, timer.startTimer);
+    store.start();
+    store.setStatus('mac', 'online');
+    store.setStatus('mini', 'online');
+    aggregator.apply('mac', { type: 'workspaces', workspaces: [] });
+    expect(store.homeView).toBe('connecting');
+    aggregator.apply('mini', { type: 'workspaces', workspaces: [] });
+    expect(store.homeView).toBe('create');
+  });
+
+  it('shows the loader again, not the create prompt, when a machine reconnects before re-listing', () => {
+    const timer = manualTimer();
+    const { store, aggregator } = build([mac], undefined, timer.startTimer);
+    store.start();
+    store.setStatus('mac', 'online');
+    aggregator.apply('mac', { type: 'workspaces', workspaces: [] });
+    aggregator.setMachineOffline('mac');
+    store.setStatus('mac', 'offline');
+    store.setStatus('mac', 'online');
+    expect(store.homeView).toBe('connecting');
   });
 
   it('shows reconnecting after a machine drops, then falls through to unreachable after the long grace', () => {

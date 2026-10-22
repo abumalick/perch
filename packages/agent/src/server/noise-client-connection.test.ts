@@ -91,6 +91,7 @@ async function settled(socket: FakeFrameSocket): Promise<void> {
 
 function setup() {
   const socket = new FakeFrameSocket();
+  const budget = { allow: true };
   const timers: Array<{ fn: () => void; ms: number; cancelled: boolean }> = [];
   const gate = new FakeGate();
   const logs: string[] = [];
@@ -98,6 +99,7 @@ function setup() {
   const pushes: string[] = [];
   const conn = new NoiseClientConnection(socket, staticPrivate, {
     devices: gate,
+    pushBudget: { take: () => budget.allow },
     onAuthenticated: () => authenticated.push('auth'),
     log: (m) => logs.push(m),
     startTimer: (fn, ms) => {
@@ -111,7 +113,7 @@ function setup() {
   const received: unknown[] = [];
   conn.onMessage((raw) => received.push(raw));
   conn.onKeyAuthenticated(() => pushes.push('push'));
-  return { socket, conn, received, timers, gate, logs, authenticated, pushes };
+  return { socket, conn, received, timers, gate, logs, authenticated, pushes, budget };
 }
 
 // Plays a phone with a device key: an IK handshake, then its end of the session. Its hello proves
@@ -318,6 +320,14 @@ describe('NoiseClientConnection serving an enrolled device at once', () => {
     // Still the unknown device's rule: auth and nothing else.
     deliver(unknown.socket, phone, { type: 'list' });
     expect(unknown.socket.closedWith).toEqual({ code: 4003, reason: 'device not enrolled' });
+  });
+
+  // Each replay of a message 1 would make the agent build the workspace list again.
+  it('serves the old way once the push budget for that key is spent', async () => {
+    const { socket, gate, pushes, budget } = setup();
+    budget.allow = false;
+    await ikHandshake(socket, enrolledPhone(gate), { push: true });
+    expect(pushes).toEqual([]);
   });
 
   it('seals the pushed authResult as enrolled, but counts the session authenticated only once the phone speaks', async () => {

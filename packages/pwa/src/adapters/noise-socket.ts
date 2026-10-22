@@ -275,7 +275,9 @@ export function noiseSocketFactory(inner: FrameSocketFactory, agentKey: string, 
                 sig: identity.ed25519Public,
                 name: options.deviceName,
                 proof: await signDeviceHello(identity.sign, b64url.decode(identity.x25519Public), hash),
-                push: true,
+                // Only with no credential to present: the agent must see a token or pairing code
+                // (to refuse or burn it) before telling the phone it may forget it.
+                ...(options.token === '' ? { push: true as const } : {}),
               });
             frames.send(handshakeFrame(await initiator.writeMessage1(hello), 'ik'));
           } catch (err) {

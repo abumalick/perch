@@ -228,13 +228,24 @@ describe('noise socket', () => {
     expect(events).toEqual([]);
     const responder = new IkResponder(b64url.decode(agent.x25519.privateKey));
     const hello = parseDeviceHello(responder.readMessage1(readHandshakeFrame(inner.sent[0]!, 'ik')));
-    expect(hello).toEqual({ sig: (await identity).ed25519Public, name: 'Test phone', proof: expect.any(String), push: true });
+    expect(hello).toEqual({ sig: (await identity).ed25519Public, name: 'Test phone', proof: expect.any(String) });
     expect(b64url.encode(responder.remoteStatic())).toBe((await identity).x25519Public);
     // The hello proves its relay key over this handshake, as the agent requires to enrol it.
     expect(await verifyDeviceHello(hello!, responder.remoteStatic(), responder.payloadHash())).toBe(true);
     inner.deliver(handshakeFrame(responder.writeMessage2(), 'ik'));
     await flush();
     expect(events).toEqual(['open']);
+  });
+
+  // A phone holding a credential takes the old ordering, so the agent sees its `auth` (and burns a
+  // pairing code, or refuses the token) before any `enrolled` lets the phone forget it.
+  it('asks to be served at once only when the entry holds no credential', async () => {
+    for (const [token, credential, push] of [['', 'none', true], ['the-token', 'token', undefined], ['S'.repeat(43), 'pairing', undefined]] as const) {
+      const { inner } = setup(agent.x25519.publicKey, 'nonce-1', () => identity, token, credential);
+      await opened(inner);
+      const responder = new IkResponder(b64url.decode(agent.x25519.privateKey));
+      expect(parseDeviceHello(responder.readMessage1(readHandshakeFrame(inner.sent[0]!, 'ik')))?.push).toBe(push);
+    }
   });
 
   it('encrypts what the connection sends and decrypts what the agent sends', async () => {

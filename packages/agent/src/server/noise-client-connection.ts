@@ -38,6 +38,9 @@ export interface NoiseClientConnectionOptions {
   devices: DeviceGate;
   // Called once, when the accepted `authResult` goes out.
   onAuthenticated?: () => void;
+  // Whether an enrolled device that asked may be served at once now (see PushBudget). Without
+  // one, no device is.
+  pushBudget?: { take(deviceKey: string): boolean };
   log?: (message: string) => void;
   startTimer?: (fn: () => void, ms: number) => () => void;
 }
@@ -232,7 +235,7 @@ export class NoiseClientConnection implements ClientConnection {
     }
     this.keyAuth = standing === 'enrolled' ? 'device' : null;
     this.state = standing === 'enrolled' ? { kind: 'open' } : { kind: 'enrolling', hello, tokenEnrols: enrolment === 'on' };
-    if (standing === 'enrolled' && hello.push && this.keyAuthenticatedListeners.length > 0) {
+    if (standing === 'enrolled' && hello.push && this.keyAuthenticatedListeners.length > 0 && this.options.pushBudget?.take(key)) {
       this.awaitingPhone = true;
       this.keyAuthenticatedListeners.forEach((l) => l());
     }

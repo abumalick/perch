@@ -16,6 +16,8 @@ import { deviceFingerprint } from '@perch/secure-channel';
 import type { DeviceIdentity } from './core/ports/device-identity';
 import { MediaRecorderAudio } from './adapters/media-recorder-audio';
 import { ElevenLabsTranscriber } from './adapters/elevenlabs-transcriber';
+import { OpenRouterTranscriber } from './adapters/openrouter-transcriber';
+import { PresetTranscriber } from './core/preset-transcriber';
 import { VERSION_FILE, parseVersionJson } from './core/version-file';
 import { acceptPairingLink, outsideInstalledApp, takePairingFragment, type PairingPrompts } from './core/pairing';
 
@@ -125,10 +127,20 @@ store = new PerchStore({
   aggregator,
   applyUpdate: () => void updateSW(true),
   recorder: new MediaRecorderAudio(),
-  transcriber: new ElevenLabsTranscriber(
-    () => settings.elevenLabsApiKey(),
-    () => store.keyterms(),
-  ),
+  transcriber: new PresetTranscriber(() => store.currentPreset, {
+    elevenlabs: new ElevenLabsTranscriber(
+      () => settings.elevenLabsApiKey(),
+      () => store.keyterms(),
+    ),
+    openrouter: new OpenRouterTranscriber(
+      () => settings.openRouterApiKey(),
+      () => {
+        const preset = store.currentPreset;
+        return preset.provider === 'openrouter' ? preset : { model: '', prompt: '' };
+      },
+      () => store.keyterms(),
+    ),
+  }),
   connectionLog,
   logMeta,
   sinceLaunch: () => performance.now(),

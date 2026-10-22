@@ -28,6 +28,7 @@ export interface DeviceKeyInfo {
 }
 import { SpeechToText, type DictationState } from './core/speech-to-text';
 import { mergeKeyterms } from './core/keyterms';
+import { DEFAULT_PRESETS, currentPreset, type DictationPreset } from './core/dictation-presets';
 import type { AudioRecorder } from './core/ports/audio-recorder';
 import type { Transcriber } from './core/ports/transcriber';
 
@@ -204,6 +205,11 @@ export class PerchStore {
   terminalFontSize = $state(TERMINAL_FONT_DEFAULT);
   // ElevenLabs API key for client-side dictation, persisted on-device (loaded in start()).
   elevenLabsApiKey = $state('');
+  // OpenRouter API key for dictation presets that run an OpenRouter model; on-device too.
+  openRouterApiKey = $state('');
+  // The dictation presets (the user's, or the built-in defaults) and the one the mic uses.
+  dictationPresets = $state<DictationPreset[]>([...DEFAULT_PRESETS]);
+  currentPresetId = $state<string | null>(null);
   // Project-folder filter on the home list, persisted via settings (loaded in start()).
   // Two independent selections — the live one is whichever `folderFilterMode` names — so
   // focusing on a project for a moment doesn't discard a hide set once.
@@ -285,7 +291,7 @@ export class PerchStore {
       // Applies the waiting service worker and reloads the page (wired to vite-plugin-pwa's
       // updateSW in main.ts; omitted in tests).
       applyUpdate?: () => void;
-      // Speech-to-text adapters (mic + ElevenLabs). Omitted in tests that don't exercise
+      // Speech-to-text adapters (mic + the current preset's transcriber). Omitted in tests that don't exercise
       // dictation; when absent, toggleDictation is a no-op.
       recorder?: AudioRecorder;
       transcriber?: Transcriber;
@@ -343,6 +349,9 @@ export class PerchStore {
     this.shareLinks = this.deps.settings.shareLinks();
     this.terminalFontSize = this.deps.settings.terminalFontSize();
     this.elevenLabsApiKey = this.deps.settings.elevenLabsApiKey() ?? '';
+    this.openRouterApiKey = this.deps.settings.openRouterApiKey() ?? '';
+    this.dictationPresets = this.deps.settings.dictationPresets();
+    this.currentPresetId = this.deps.settings.currentPresetId();
     this.folderFilter = this.deps.settings.folderFilter();
     this.folderHidden = this.deps.settings.folderHidden();
     this.folderFilterMode = this.deps.settings.folderFilterMode();
@@ -979,6 +988,30 @@ export class PerchStore {
   setElevenLabsApiKey(key: string): void {
     this.elevenLabsApiKey = key;
     this.deps.settings.setElevenLabsApiKey(key);
+  }
+
+  setOpenRouterApiKey(key: string): void {
+    this.openRouterApiKey = key;
+    this.deps.settings.setOpenRouterApiKey(key);
+  }
+
+  get currentPreset(): DictationPreset {
+    return currentPreset(this.dictationPresets, this.currentPresetId);
+  }
+
+  selectPreset(id: string): void {
+    this.currentPresetId = id;
+    this.deps.settings.setCurrentPresetId(id);
+  }
+
+  saveDictationPresets(presets: DictationPreset[]): void {
+    this.dictationPresets = presets;
+    this.deps.settings.setDictationPresets(presets);
+  }
+
+  resetDictationPresets(): void {
+    this.dictationPresets = [...DEFAULT_PRESETS];
+    this.deps.settings.setDictationPresets(null);
   }
 
   setFolderFilter(keys: string[]): void {

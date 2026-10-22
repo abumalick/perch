@@ -5,6 +5,7 @@ import { PerchStore } from './store.svelte';
 import { ConnectionManager } from './core/connection-manager';
 import { WorkspaceAggregator } from './core/workspace-aggregator';
 import { SettingsStore, type MachineConfig } from './core/settings-store';
+import { DEFAULT_PRESETS } from './core/dictation-presets';
 import { UnreadableDeviceKeyError } from './core/ports/device-identity';
 import type { StoragePort } from './core/ports/storage';
 import type { Socket } from './core/ports/socket';
@@ -2126,5 +2127,43 @@ describe('PerchStore device key', () => {
     await Promise.resolve();
     expect(store.deviceKey?.fingerprint).toBe('ab');
     expect(store.deviceKeyError).toBeNull();
+  });
+});
+
+describe('PerchStore dictation presets', () => {
+  it('starts on the first preset, and remembers the one picked', () => {
+    const { store, storage } = build();
+    store.start();
+    expect(store.currentPreset.id).toBe('scribe');
+    store.selectPreset('clean');
+    expect(store.currentPreset.id).toBe('clean');
+    expect(storage.read('perch.dictationPreset')).toBe('clean');
+  });
+
+  it('saves an edited list, falling back to the first preset when the current one is gone', () => {
+    const { store } = build();
+    store.start();
+    store.selectPreset('fast');
+    const list = DEFAULT_PRESETS.filter((p) => p.id !== 'fast');
+    store.saveDictationPresets(list);
+    expect(store.dictationPresets).toEqual(list);
+    expect(store.currentPreset.id).toBe('scribe');
+  });
+
+  it('resets to the built-in defaults', () => {
+    const { store, storage } = build();
+    store.start();
+    store.saveDictationPresets([DEFAULT_PRESETS[1]!]);
+    store.resetDictationPresets();
+    expect(store.dictationPresets).toEqual(DEFAULT_PRESETS);
+    expect(storage.read('perch.dictationPresets')).toBe('');
+  });
+
+  it('keeps the OpenRouter key', () => {
+    const { store, storage } = build();
+    store.start();
+    store.setOpenRouterApiKey('sk-or-x');
+    expect(store.openRouterApiKey).toBe('sk-or-x');
+    expect(storage.read('perch.openRouterApiKey')).toBe('sk-or-x');
   });
 });

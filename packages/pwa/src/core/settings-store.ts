@@ -1,6 +1,7 @@
 import type { StoragePort } from './ports/storage';
 import type { FilterMode } from './project-folders';
 import { parseAgentKey } from './relay-key';
+import { DEFAULT_PRESETS, parsePresets, type DictationPreset } from './dictation-presets';
 
 export interface MachineConfig {
   id: string;
@@ -39,6 +40,9 @@ const FILE_WRAP_KEY = 'perch.fileWrap';
 const TERMINAL_FONT_SIZE_KEY = 'perch.terminalFontSize';
 const SHARE_LINKS_KEY = 'perch.shareLinks';
 const ELEVENLABS_API_KEY = 'perch.elevenLabsApiKey';
+const OPENROUTER_API_KEY = 'perch.openRouterApiKey';
+const DICTATION_PRESETS_KEY = 'perch.dictationPresets';
+const DICTATION_PRESET_KEY = 'perch.dictationPreset';
 const FOLDER_FILTER_KEY = 'perch.folderFilter';
 const FOLDER_HIDDEN_KEY = 'perch.folderHidden';
 const FOLDER_FILTER_MODE_KEY = 'perch.folderFilterMode';
@@ -212,6 +216,35 @@ export class SettingsStore {
 
   setElevenLabsApiKey(key: string): void {
     this.storage.write(ELEVENLABS_API_KEY, key);
+  }
+
+  // The OpenRouter API key, for dictation presets that run an OpenRouter model. Same rules as
+  // the ElevenLabs key.
+  openRouterApiKey(): string | null {
+    const raw = this.storage.read(OPENROUTER_API_KEY);
+    return raw ? raw : null;
+  }
+
+  setOpenRouterApiKey(key: string): void {
+    this.storage.write(OPENROUTER_API_KEY, key);
+  }
+
+  // The user's dictation presets, or the built-in defaults while they have not edited them.
+  dictationPresets(): DictationPreset[] {
+    return parsePresets(this.storage.read(DICTATION_PRESETS_KEY)) ?? [...DEFAULT_PRESETS];
+  }
+
+  // null goes back to the built-in defaults.
+  setDictationPresets(presets: DictationPreset[] | null): void {
+    this.storage.write(DICTATION_PRESETS_KEY, presets ? JSON.stringify(presets) : '');
+  }
+
+  currentPresetId(): string | null {
+    return this.storage.read(DICTATION_PRESET_KEY) || null;
+  }
+
+  setCurrentPresetId(id: string): void {
+    this.storage.write(DICTATION_PRESET_KEY, id);
   }
 
   private persist(machines: MachineConfig[]): void {

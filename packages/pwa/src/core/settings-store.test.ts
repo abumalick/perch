@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { SettingsStore, isConnectable, isRelayMachine } from './settings-store';
+import { DEFAULT_PRESETS } from './dictation-presets';
 import type { StoragePort } from './ports/storage';
 import { generateAgentKeys } from '@perch/secure-channel';
 
@@ -322,5 +323,38 @@ describe('SettingsStore', () => {
     const storage = memStorage();
     storage.write('perch.folderFilterMode', 'sideways');
     expect(new SettingsStore(storage).folderFilterMode()).toBe('only');
+  });
+});
+
+describe('SettingsStore dictation presets', () => {
+  it('returns the built-in defaults when nothing is stored', () => {
+    expect(new SettingsStore(memStorage()).dictationPresets()).toEqual(DEFAULT_PRESETS);
+  });
+
+  it('round-trips a stored list, and null restores the defaults', () => {
+    const storage = memStorage();
+    const store = new SettingsStore(storage);
+    const list = [DEFAULT_PRESETS[1]!];
+    store.setDictationPresets(list);
+    expect(new SettingsStore(storage).dictationPresets()).toEqual(list);
+    store.setDictationPresets(null);
+    expect(new SettingsStore(storage).dictationPresets()).toEqual(DEFAULT_PRESETS);
+  });
+
+  it('remembers the current preset id', () => {
+    const storage = memStorage();
+    expect(new SettingsStore(storage).currentPresetId()).toBeNull();
+    new SettingsStore(storage).setCurrentPresetId('clean');
+    expect(new SettingsStore(storage).currentPresetId()).toBe('clean');
+  });
+
+  it('round-trips the OpenRouter key, empty clearing it', () => {
+    const storage = memStorage();
+    const store = new SettingsStore(storage);
+    expect(store.openRouterApiKey()).toBeNull();
+    store.setOpenRouterApiKey('sk-or-x');
+    expect(new SettingsStore(storage).openRouterApiKey()).toBe('sk-or-x');
+    store.setOpenRouterApiKey('');
+    expect(new SettingsStore(storage).openRouterApiKey()).toBeNull();
   });
 });

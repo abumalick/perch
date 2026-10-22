@@ -540,7 +540,8 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     Android and no sleep, so the wake-after-sleep path is covered by `fetchRelayChallenge`'s unit
     tests alone and needs an on-device check when it changes.
     Each relay connect also logs its phases to the connection log (`ws-open`, `challenge`,
-    `admitted`, `handshake`, with ms since the attempt began; a `close` carries its attempt number and
+    `admitted`, `handshake`, `list` when the workspaces arrive, with ms since the attempt began;
+    plus one app-global `boot` with the ms from launch to the first connect; a `close` carries its attempt number and
     backoff), and the self-hosted relay prints when a phone's challenge, upgrade and the agent's
     dial arrive, so a slow connect can be placed (at most 30 such lines a minute, so a flood
     cannot fill the journal).
@@ -618,6 +619,20 @@ See `docs/DEPLOY.md` for the full runbook. In short:
       into IndexedDB without an error and return something else (Playwright's WebKit does): the
       PWA then replaces its own just-created record with noble keys, and an existing record that
       reads back malformed fails with a way out, never a `TypeError` and never a silent new key.
+  - **An enrolled phone with no credential is served at once, right behind message 2.** Its
+    device hello carries `push`; when the agent finds the key enrolled it answers `authResult`
+    (`pushed`) and the opening replies (workspaces, commands, keyterms) without waiting for the
+    phone's `auth`, which saves the two round trips that followed the handshake (on Cloudflare,
+    the list came ~480 ms after the handshake, now ~90). The phone still sends its `auth`; the
+    handler answers it with nothing (a token is still refused as not needed). Things not to
+    "simplify": **the phone asks only when its entry holds no token and no pairing secret** —
+    otherwise the pushed `enrolled` could make it forget a pairing code before its `auth` burned
+    it; **a pushed session keeps its auth deadline and dial-back slot until the phone's first
+    frame** (message 1 can be replayed by the relay, and its replies are unreadable, but each
+    one would otherwise free a slot as authenticated); and **`PushBudget` caps pushes at 10 a
+    minute per device key** across all relays, since each replay builds the list again; past
+    it, and with no budget wired at all, the phone gets the old flow. No prologue bump: an older
+    agent strips the unknown hello field and an older PWA never asks.
   - **NK is retired; IK is the only handshake** (prologue `perch-relay-noise-v3`, flag `0x03`).
     The old NK flag `0x02` fails as any non-handshake frame does (4002). The relay refuses a
     client without a device key once a policy is published, and drops an older agent's
@@ -706,9 +721,10 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   PWA's machine config id), not the agent's `PERCH_MACHINE_ID`. The aggregator stamps each
   workspace with the connection id. The e2e uses a deliberately mismatched agent id to
   cover this.
-- **List on connect:** the agent only sends workspaces in response to an explicit `list`;
-  the PWA sends `list` once each relay session is authenticated, on every (re)connect. The e2e
-  fake agent is faithful to this.
+- **List on connect:** the agent sends workspaces in response to an explicit `list`, or pushes
+  them right behind the handshake to a phone it serves at once (relay section). Otherwise the
+  PWA sends `list` (with `listCommands`, `listKeyterms`) once each relay session is
+  authenticated, on every (re)connect (`openingRequests`). The e2e fake agent is faithful to both.
 - **Restarting the agent must NOT kill tmux sessions:** the agent spawns the tmux server
   as a child, so it lives in the systemd unit's cgroup. The default
   `KillMode=control-group` would SIGTERM the whole cgroup on restart and take every

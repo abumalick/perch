@@ -128,11 +128,14 @@ export type DetachReason = z.infer<typeof detachReasonSchema>;
 export const agentMessageSchema = z.discriminatedUnion('type', [
   // `credential` is what authenticated the session; `enrolled` says the device key is enrolled (written), so the
   // phone forgets its token and pairing secret. Both optional: an older agent sends neither.
+  // `pushed`: the agent served the phone at once (its hello asked) and has sent the opening replies
+  // (workspaces, commands, keyterms) behind it, so the phone does not ask for them.
   z.object({
     type: z.literal('authResult'),
     ok: z.boolean(),
     credential: z.enum(['device', 'pairing', 'token']).optional().catch(undefined),
     enrolled: z.boolean().optional().catch(undefined),
+    pushed: z.literal(true).optional().catch(undefined),
   }),
   z.object({ type: z.literal('workspaces'), workspaces: z.array(workspaceSchema) }),
   z.object({ type: z.literal('workspaceUpdated'), workspace: workspaceSchema }),

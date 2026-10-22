@@ -66,7 +66,14 @@ export class NoiseClientConnection implements ClientConnection {
   // Messages that arrived while a pairing secret was being redeemed, in order.
   private held: unknown[] | null = null;
   private authAttempts = 0;
+  // Set when the phone is served at once, until its first frame. Message 1 can be replayed by the
+  // relay, so a pushed authResult does not end the deadline nor free the dial-back slot until the
+  // phone has proven it holds the session keys by sending something.
+  private awaitingPhone = false;
+  // The pushed authResult went out while awaiting the phone: authenticated once it speaks.
+  private deferredAuth = false;
   private readonly listeners: Array<(raw: unknown) => void> = [];
+  private readonly keyAuthenticatedListeners: Array<() => void> = [];
   private readonly cancelDeadline: () => void;
 
   constructor(
@@ -99,7 +106,7 @@ export class NoiseClientConnection implements ClientConnection {
     }
     if (message.type === 'authResult' && message.ok) {
       const accepted = message;
-      this.cancelDeadline();
+      if (!this.awaitingPhone) this.cancelDeadline();
       this.session.raiseCap(MAX_MESSAGE_BYTES);
       if (this.state.kind === 'enrolling') {
         const hello = this.state.hello;
@@ -119,7 +126,8 @@ export class NoiseClientConnection implements ClientConnection {
       }
       if (this.keyAuth === 'device') message = { ...accepted, enrolled: true };
       this.seal(message);
-      this.options.onAuthenticated?.();
+      if (this.awaitingPhone) this.deferredAuth = true;
+      else this.options.onAuthenticated?.();
       return;
     }
     this.seal(message);
@@ -146,6 +154,10 @@ export class NoiseClientConnection implements ClientConnection {
 
   onClose(listener: () => void): void {
     this.socket.onClose(listener);
+  }
+
+  onKeyAuthenticated(listener: () => void): void {
+    this.keyAuthenticatedListeners.push(listener);
   }
 
   private receive(frame: Uint8Array): void {
@@ -220,6 +232,10 @@ export class NoiseClientConnection implements ClientConnection {
     }
     this.keyAuth = standing === 'enrolled' ? 'device' : null;
     this.state = standing === 'enrolled' ? { kind: 'open' } : { kind: 'enrolling', hello, tokenEnrols: enrolment === 'on' };
+    if (standing === 'enrolled' && hello.push && this.keyAuthenticatedListeners.length > 0) {
+      this.awaitingPhone = true;
+      this.keyAuthenticatedListeners.forEach((l) => l());
+    }
   }
 
   private read(frame: Uint8Array): void {
@@ -229,6 +245,13 @@ export class NoiseClientConnection implements ClientConnection {
     } catch {
       this.fail('secure channel failed');
       return;
+    }
+    if (this.awaitingPhone) {
+      this.awaitingPhone = false;
+      if (this.deferredAuth) {
+        this.cancelDeadline();
+        this.options.onAuthenticated?.();
+      }
     }
     if (!message) return;
     const text = new TextDecoder().decode(message);

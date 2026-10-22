@@ -59,6 +59,8 @@ interface Conn {
   close: () => void;
   onMessage: (listener: (message: Record<string, unknown>) => void) => void;
   onClose: (listener: () => void) => void;
+  // The real `ClientConnection.onKeyAuthenticated`: an enrolled key whose hello asked to be served at once.
+  onKeyAuthenticated: (listener: () => void) => void;
 }
 
 // The real agent's relay session: the IK handshake, the device gate over the roster and pairing
@@ -73,6 +75,7 @@ function noiseConn(conn: NoiseClientConnection): Conn {
     close: () => conn.close(),
     onMessage: (l) => conn.onMessage((raw) => l(raw as Record<string, unknown>)),
     onClose: (l) => conn.onClose(l),
+    onKeyAuthenticated: (l) => conn.onKeyAuthenticated(l),
   };
 }
 
@@ -235,8 +238,9 @@ export async function startFakeAgent(
         for (const stream of streams.keys()) releaseHolder(stream);
         if (attached && holders.get(attached) === conn) holders.delete(attached);
       });
-      conn.onMessage((msg) => {
-        received.push(msg);
+      // Faithful to the real handler: once served at once, the phone's own auth is answered already.
+      let authed = false;
+      const route = (msg: Record<string, unknown>) => {
         const send = conn.send;
         switch (msg.type) {
           case 'auth': {
@@ -248,7 +252,10 @@ export async function startFakeAgent(
             const isToken = msg.token === TOKEN;
             if (byKey === 'device' && isToken) {
               conn.refuse(REFUSAL.tokenNotNeeded);
+            } else if (authed) {
+              break;
             } else if (byKey || isToken) {
+              authed = true;
               send({ type: 'authResult', ok: true, credential: byKey ?? 'token' });
             } else {
               send({ type: 'authResult', ok: false });
@@ -476,6 +483,15 @@ export async function startFakeAgent(
           default:
             break;
         }
+      };
+      conn.onMessage((msg) => {
+        received.push(msg);
+        route(msg);
+      });
+      conn.onKeyAuthenticated(() => {
+        authed = true;
+        conn.send({ type: 'authResult', ok: true, credential: 'device', pushed: true });
+        for (const type of ['list', 'listCommands', 'listKeyterms']) route({ type });
       });
     };
     const relays = startRelayLinks({

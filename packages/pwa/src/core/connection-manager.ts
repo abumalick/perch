@@ -81,6 +81,10 @@ export class ConnectionManager {
         schedule: this.deps.schedule,
         now: this.now,
         refusalContext: { machine: config.name, credential: credentialKind(config) },
+        // The agent only returns workspaces in response to `list` (or pushes them when it serves
+        // the phone at once); asking on every (re)connect is what re-syncs the list, and what picks
+        // up an edit to the agent's ~/.perch/commands.json or ~/.perch/keyterms.txt.
+        openingRequests: [{ type: 'list' }, { type: 'listCommands' }, { type: 'listKeyterms' }],
         onDiagnostic: (diagnostic) => this.deps.onDiagnostic?.(config.id, diagnostic),
         onMessage: (message) => {
           const since = this.listPending.get(config.id);
@@ -93,19 +97,7 @@ export class ConnectionManager {
         },
         onStatus: (status) => {
           if (status === 'connecting') this.listPending.set(config.id, this.now());
-          if (status === 'offline') {
-            this.deps.aggregator.setMachineOffline(config.id);
-          } else if (status === 'online') {
-            // The agent only returns workspaces in response to `list`; request it on
-            // every (re)connect so the list populates and re-syncs after a reconnect.
-            this.connections.get(config.id)?.send({ type: 'list' });
-            // Same deal for the keyboard bar's command shortcuts: asking on every
-            // (re)connect is what picks up an edit to the agent's ~/.perch/commands.json.
-            this.connections.get(config.id)?.send({ type: 'listCommands' });
-            // And the dictation vocabulary, for the same reason: asking on every (re)connect
-            // is what picks up an edit to the agent's ~/.perch/keyterms.txt.
-            this.connections.get(config.id)?.send({ type: 'listKeyterms' });
-          }
+          if (status === 'offline') this.deps.aggregator.setMachineOffline(config.id);
           this.deps.onStatus(config.id, status);
         },
       });

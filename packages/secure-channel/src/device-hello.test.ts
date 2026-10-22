@@ -10,6 +10,13 @@ describe('device hello', () => {
     expect(parseDeviceHello(encodeDeviceHello(hello))).toEqual(hello);
   });
 
+  it('carries whether the phone asks to be served at once, and ignores a value it does not know', () => {
+    const sig = generateDeviceKeys().ed25519.publicKey;
+    expect(parseDeviceHello(encodeDeviceHello({ sig, name: 'p', push: true }))?.push).toBe(true);
+    const encode = (s: string) => new TextEncoder().encode(s);
+    expect(parseDeviceHello(encode(JSON.stringify({ sig, name: 'p', push: 'yes' }))))?.toEqual({ sig, name: 'p' });
+  });
+
   it('returns null for anything else', () => {
     const encode = (s: string) => new TextEncoder().encode(s);
     expect(parseDeviceHello(new Uint8Array(0))).toBeNull();

@@ -40,6 +40,9 @@ export interface MachineConnectionDeps {
   // then on. `pairing`: an agent from before it said so accepted the pairing secret, which is
   // spent.
   onCredentialsSpent?: (scope: 'all' | 'pairing') => void;
+  // Asked for on every (re)connect once authenticated, unless the agent already pushed the
+  // replies with its authResult (`pushed`).
+  openingRequests?: ClientMessage[];
 }
 
 const BASE_BACKOFF_MS = 250;
@@ -285,6 +288,7 @@ export class MachineConnection {
         this.failCount = 0;
         this.everConnected = true;
         this.startHeartbeat(socket);
+        if (!message.pushed) this.deps.openingRequests?.forEach((request) => socket.send(JSON.stringify(request)));
         this.deps.onStatus('online');
       } else {
         this.rejected = true;

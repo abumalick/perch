@@ -115,6 +115,7 @@ export class ConnectionHandler {
     conn.onMessage((raw) => {
       void this.handle(raw);
     });
+    conn.onKeyAuthenticated?.(() => void this.serveAtOnce());
     conn.onClose(() => {
       this.onClose();
     });
@@ -174,6 +175,8 @@ export class ConnectionHandler {
         this.conn.refuse(REFUSAL.tokenNotNeeded);
         return;
       }
+      // A phone served at once still sends its auth; it was answered already.
+      if (this.authed) return;
       if (byKey || isToken) {
         this.authed = true;
         this.conn.send({ type: 'authResult', ok: true, credential: byKey ?? 'token' });
@@ -193,6 +196,20 @@ export class ConnectionHandler {
       await this.route(message as Exclude<ClientMessage, { type: 'auth' }>);
     } catch (err) {
       this.conn.send({ type: 'error', code: 'internal', message: errMsg(err) });
+    }
+  }
+
+  // The transport proved an enrolled device key and the phone asked to be served at once: answer
+  // `authResult` and what the phone asks for on every connect, without waiting for its `auth`.
+  private async serveAtOnce(): Promise<void> {
+    this.authed = true;
+    this.conn.send({ type: 'authResult', ok: true, credential: 'device', pushed: true });
+    for (const type of ['list', 'listCommands', 'listKeyterms'] as const) {
+      try {
+        await this.route({ type });
+      } catch (err) {
+        this.conn.send({ type: 'error', code: 'internal', message: errMsg(err) });
+      }
     }
   }
 

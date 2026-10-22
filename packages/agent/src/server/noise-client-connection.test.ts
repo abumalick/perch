@@ -95,6 +95,7 @@ function setup() {
   const gate = new FakeGate();
   const logs: string[] = [];
   const authenticated: string[] = [];
+  const pushes: string[] = [];
   const conn = new NoiseClientConnection(socket, staticPrivate, {
     devices: gate,
     onAuthenticated: () => authenticated.push('auth'),
@@ -109,7 +110,8 @@ function setup() {
   });
   const received: unknown[] = [];
   conn.onMessage((raw) => received.push(raw));
-  return { socket, conn, received, timers, gate, logs, authenticated };
+  conn.onKeyAuthenticated(() => pushes.push('push'));
+  return { socket, conn, received, timers, gate, logs, authenticated, pushes };
 }
 
 // Plays a phone with a device key: an IK handshake, then its end of the session. Its hello proves
@@ -117,13 +119,14 @@ function setup() {
 async function ikHandshake(
   socket: FakeFrameSocket,
   device = generateDeviceKeys(),
-  hello: { proof?: boolean; relayKey?: string } = {},
+  hello: { proof?: boolean; relayKey?: string; push?: boolean } = {},
 ): Promise<SecureSession> {
   const initiator = new IkInitiator(rawStaticKey(b64url.decode(device.x25519.privateKey)), b64url.decode(agentKeys.x25519.publicKey));
   const payload = async (hash: Uint8Array) =>
     encodeDeviceHello({
       sig: hello.relayKey ?? device.ed25519.publicKey,
       name: 'test phone',
+      ...(hello.push ? { push: true } : {}),
       ...(hello.proof === false
         ? {}
         : { proof: await signDeviceHello(ed25519Signer(device.ed25519.privateKey), b64url.decode(device.x25519.publicKey), hash) }),
@@ -278,6 +281,71 @@ describe('NoiseClientConnection', () => {
   });
 });
 
+const replies = (socket: FakeFrameSocket, phone: SecureSession) =>
+  socket.sent
+    .slice(1)
+    .map((f) => phone.open(f))
+    .filter((m): m is Uint8Array => m !== null)
+    .map((m) => JSON.parse(new TextDecoder().decode(m)) as Record<string, unknown>);
+
+// A phone whose key is enrolled is authenticated by the handshake alone, so one that asks (`push`
+// in its hello) is served at once: the agent answers `authResult` and the opening requests right
+// behind message 2, a round trip sooner. Message 1 can be replayed by the relay, so the session
+// still counts as unauthenticated (deadline, dial-back slot) until the phone itself speaks in it.
+describe('NoiseClientConnection serving an enrolled device at once', () => {
+  const enrolledPhone = (gate: FakeGate) => {
+    const device = generateDeviceKeys();
+    gate.standings.set(device.x25519.publicKey, 'enrolled');
+    return device;
+  };
+  const deliver = (socket: FakeFrameSocket, phone: SecureSession, message: unknown) => {
+    for (const frame of phone.seal(utf8(message))) socket.deliver(frame);
+  };
+
+  it('offers it right after message 2 to an enrolled device that asked', async () => {
+    const { socket, gate, pushes } = setup();
+    await ikHandshake(socket, enrolledPhone(gate), { push: true });
+    expect(pushes).toEqual(['push']);
+  });
+
+  it('offers nothing to an enrolled device that did not ask, nor to an unknown one that did', async () => {
+    const quiet = setup();
+    await ikHandshake(quiet.socket, enrolledPhone(quiet.gate));
+    expect(quiet.pushes).toEqual([]);
+    const unknown = setup();
+    const phone = await ikHandshake(unknown.socket, generateDeviceKeys(), { push: true });
+    expect(unknown.pushes).toEqual([]);
+    // Still the unknown device's rule: auth and nothing else.
+    deliver(unknown.socket, phone, { type: 'list' });
+    expect(unknown.socket.closedWith).toEqual({ code: 4003, reason: 'device not enrolled' });
+  });
+
+  it('seals the pushed authResult as enrolled, but counts the session authenticated only once the phone speaks', async () => {
+    const { socket, conn, gate, timers, authenticated } = setup();
+    const phone = await ikHandshake(socket, enrolledPhone(gate), { push: true });
+    conn.send({ type: 'authResult', ok: true, credential: 'device' });
+    expect(replies(socket, phone)).toEqual([{ type: 'authResult', ok: true, credential: 'device', enrolled: true }]);
+    expect(timers[0]!.cancelled).toBe(false);
+    expect(authenticated).toEqual([]);
+    deliver(socket, phone, { type: 'auth', token: '' });
+    expect(timers[0]!.cancelled).toBe(true);
+    expect(authenticated).toEqual(['auth']);
+    deliver(socket, phone, { type: 'list' });
+    expect(authenticated).toEqual(['auth']);
+  });
+
+  // A replayed message 1: the agent's answer is unreadable to whoever replayed it, and nothing it
+  // sends back can be opened, so the session is closed at the usual deadline.
+  it('closes a pushed session in which the phone never speaks', async () => {
+    const { socket, conn, gate, timers, authenticated } = setup();
+    await ikHandshake(socket, enrolledPhone(gate), { push: true });
+    conn.send({ type: 'authResult', ok: true, credential: 'device' });
+    timers[0]!.fn();
+    expect(socket.closedWith).toEqual({ code: 4002, reason: 'authentication timeout' });
+    expect(authenticated).toEqual([]);
+  });
+});
+
 describe('NoiseClientConnection with device keys (IK)', () => {
   const deliver = (socket: FakeFrameSocket, phone: SecureSession, message: unknown) => {
     for (const frame of phone.seal(utf8(message))) socket.deliver(frame);
@@ -352,13 +420,6 @@ describe('NoiseClientConnection with device keys (IK)', () => {
     deliver(socket, phone, { type: 'list' });
     expect(received.at(-1)).toEqual({ type: 'list' });
   });
-
-  const replies = (socket: FakeFrameSocket, phone: SecureSession) =>
-    socket.sent
-      .slice(1)
-      .map((f) => phone.open(f))
-      .filter((m): m is Uint8Array => m !== null)
-      .map((m) => JSON.parse(new TextDecoder().decode(m)) as Record<string, unknown>);
 
   // The phone forgets its token once its key is enrolled, so `enrolled` must mean written: the
   // authResult waits for the roster, and whatever the handler sends meanwhile follows it.

@@ -10,5 +10,9 @@ export interface ClientConnection {
   // Closes with a refusal the phone can read.
   refuse?(reason: string): void;
   onMessage(listener: (raw: unknown) => void): void;
+  // Fired when the transport authenticated the client by its enrolled key at the handshake and
+  // the client asked to be served at once: the handler answers `authResult` and the opening
+  // replies without waiting for its `auth`.
+  onKeyAuthenticated?(listener: () => void): void;
   onClose(listener: () => void): void;
 }

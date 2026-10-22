@@ -228,7 +228,7 @@ describe('noise socket', () => {
     expect(events).toEqual([]);
     const responder = new IkResponder(b64url.decode(agent.x25519.privateKey));
     const hello = parseDeviceHello(responder.readMessage1(readHandshakeFrame(inner.sent[0]!, 'ik')));
-    expect(hello).toEqual({ sig: (await identity).ed25519Public, name: 'Test phone', proof: expect.any(String) });
+    expect(hello).toEqual({ sig: (await identity).ed25519Public, name: 'Test phone', proof: expect.any(String), push: true });
     expect(b64url.encode(responder.remoteStatic())).toBe((await identity).x25519Public);
     // The hello proves its relay key over this handshake, as the agent requires to enrol it.
     expect(await verifyDeviceHello(hello!, responder.remoteStatic(), responder.payloadHash())).toBe(true);

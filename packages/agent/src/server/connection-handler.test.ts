@@ -323,6 +323,55 @@ describe('ConnectionHandler auth', () => {
   });
 });
 
+// A phone whose device key the handshake proved enrolled, and that asked to be served at once:
+// the transport fires `onKeyAuthenticated`, and the handler answers what the phone would ask for.
+describe('ConnectionHandler serving an enrolled device at once', () => {
+  function pushed() {
+    const keyed = fakeConn();
+    let fire: () => void = () => undefined;
+    const refused: string[] = [];
+    Object.assign(keyed.conn, {
+      keyCredential: 'device',
+      refuse: (reason: string) => refused.push(reason),
+      onKeyAuthenticated: (listener: () => void) => (fire = listener),
+    });
+    const deps = baseDeps();
+    deps.keyterms = { list: async () => ['Perch'] };
+    new ConnectionHandler(keyed.conn, deps);
+    return { ...keyed, fire: () => fire(), refused };
+  }
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  it('answers authResult, then the workspaces, commands and dictation vocabulary', async () => {
+    const p = pushed();
+    p.fire();
+    await settle();
+    expect(p.sent.map((m) => m.type)).toEqual(['authResult', 'workspaces', 'browserSessions', 'commands', 'keyterms']);
+    expect(p.sent[0]).toEqual({ type: 'authResult', ok: true, credential: 'device', pushed: true });
+    expect(p.sent.at(-1)).toEqual({ type: 'keyterms', keyterms: ['Perch'] });
+  });
+
+  it("answers the phone's own auth that follows with nothing more", async () => {
+    const p = pushed();
+    p.fire();
+    await settle();
+    const before = p.sent.length;
+    p.emit({ type: 'auth', token: '' });
+    p.emit({ type: 'auth', token: 'p'.repeat(43) });
+    await settle();
+    expect(p.sent.length).toBe(before);
+    expect(p.refused).toEqual([]);
+  });
+
+  it('still refuses the token from a phone it served at once', async () => {
+    const p = pushed();
+    p.fire();
+    await settle();
+    p.emit({ type: 'auth', token: 'secret' });
+    expect(p.refused).toEqual([REFUSAL.tokenNotNeeded]);
+  });
+});
+
 describe('ConnectionHandler control routing', () => {
   it('lists workspaces after auth', async () => {
     new ConnectionHandler(f.conn, baseDeps());

@@ -15,6 +15,11 @@ describe('session channels on the wire', () => {
     expect(parseAgentMessage({ type: 'authResult', ok: true, credential: 'passkey' })).toEqual({ type: 'authResult', ok: true });
   });
 
+  it('keeps that the agent pushed the opening replies, and drops a value it does not know', () => {
+    expect(parseAgentMessage({ type: 'authResult', ok: true, pushed: true })).toEqual({ type: 'authResult', ok: true, pushed: true });
+    expect(parseAgentMessage({ type: 'authResult', ok: true, pushed: 'yes' })).toEqual({ type: 'authResult', ok: true });
+  });
+
   it('drops the channel list an older agent still advertises on authResult', () => {
     expect(parseAgentMessage({ type: 'authResult', ok: true, channels: ['media', 'browser'] })).toEqual({ type: 'authResult', ok: true });
   });

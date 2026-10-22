@@ -23,6 +23,9 @@ const helloSchema = z.object({
   sig: z.string().refine(isEd25519PublicKey),
   name: z.string().max(64).transform(sanitizeDeviceName),
   proof: z.string().regex(/^[A-Za-z0-9_-]{86}$/).optional(),
+  // The phone asks to be served at once if its key is enrolled: `authResult` and the opening
+  // replies right behind message 2, without waiting for its `auth`. An older agent ignores it.
+  push: z.literal(true).optional().catch(undefined),
 });
 
 export type DeviceHello = z.infer<typeof helloSchema>;

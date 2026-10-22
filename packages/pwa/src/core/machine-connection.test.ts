@@ -629,3 +629,43 @@ describe('MachineConnection authResult channels', () => {
     expect(events).toEqual(['connecting', 'online', 'connecting', 'online']);
   });
 });
+
+// An agent that served the phone at once (`pushed`) already sent what the phone asks for on every
+// connect; any other agent is asked, right after its authResult and before `online`.
+describe('MachineConnection opening requests', () => {
+  function opening() {
+    const sockets: ReturnType<typeof fakeSocket>[] = [];
+    const events: string[] = [];
+    const conn = new MachineConnection({
+      url: 'wss://m1',
+      token: '',
+      socketFactory: () => {
+        const f = fakeSocket();
+        sockets.push(f);
+        f.socket.send = (d) => void (f.sent.push(d), events.push(`sent ${(JSON.parse(d) as { type: string }).type}`));
+        return f.socket;
+      },
+      onMessage: (m) => events.push(`message ${m.type}`),
+      onStatus: (s) => events.push(s),
+      schedule: () => undefined,
+      startTimer: () => () => undefined,
+      openingRequests: [{ type: 'list' }, { type: 'listCommands' }],
+    });
+    conn.connect();
+    sockets[0]!.open();
+    return { sockets, events };
+  }
+
+  it('asks for them after an authResult that did not bring them, then goes online', () => {
+    const { sockets, events } = opening();
+    sockets[0]!.deliver({ type: 'authResult', ok: true, credential: 'device', enrolled: true });
+    expect(events).toEqual(['connecting', 'sent auth', 'sent list', 'sent listCommands', 'online']);
+  });
+
+  it('asks for nothing when the agent pushed them, and still sends its auth', () => {
+    const { sockets, events } = opening();
+    sockets[0]!.deliver({ type: 'authResult', ok: true, credential: 'device', enrolled: true, pushed: true });
+    sockets[0]!.deliver({ type: 'workspaces', workspaces: [] });
+    expect(events).toEqual(['connecting', 'sent auth', 'online', 'message workspaces']);
+  });
+});

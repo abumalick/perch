@@ -43,6 +43,16 @@ test('a paired key is admitted by the relay on its own: no proof, no token', asy
   expect(agent.received.filter((m) => m.type === 'auth')).toEqual([{ type: 'auth', token: '' }]);
 });
 
+// The handshake proved the enrolled key, so the agent sends the workspaces with its authResult and
+// the phone asks for nothing: it only sends the auth that proves it holds the session.
+test('a paired key is served at once: the list arrives without the phone asking for it', async ({ page, baseURL }) => {
+  await pair(page, baseURL!);
+  agent.received.length = 0;
+  await page.reload();
+  await expect(page.getByText('demo', { exact: true })).toBeVisible();
+  expect(agent.received.filter((m) => ['list', 'listCommands', 'listKeyterms'].includes(String(m.type)))).toEqual([]);
+});
+
 test('a revoked key loses its session at once and is refused from then on', async ({ page, baseURL }) => {
   await pair(page, baseURL!);
   await agent.revokeAll();

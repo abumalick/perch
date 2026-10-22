@@ -275,6 +275,7 @@ export function noiseSocketFactory(inner: FrameSocketFactory, agentKey: string, 
                 sig: identity.ed25519Public,
                 name: options.deviceName,
                 proof: await signDeviceHello(identity.sign, b64url.decode(identity.x25519Public), hash),
+                push: true,
               });
             frames.send(handshakeFrame(await initiator.writeMessage1(hello), 'ik'));
           } catch (err) {

@@ -113,6 +113,15 @@ class HandshakeError extends Error {}
 // do by closing the socket.
 export class WrongStaticKeyError extends HandshakeError {}
 
+// The one encoding of an X25519 key that key generation produces: top bit clear, value below
+// 2^255 - 19. X25519 accepts the others as the same point, so a key compared by its bytes could
+// otherwise be spelled two ways.
+function isCanonicalX25519(u: Uint8Array): boolean {
+  if (u[31]! & 0x80) return false;
+  if (u[31] !== 0x7f || u[0]! < 0xed) return true;
+  return u.subarray(1, 31).some((b) => b !== 0xff);
+}
+
 function dh(priv: Uint8Array, pub: Uint8Array): Uint8Array {
   try {
     return x25519.getSharedSecret(priv, pub);
@@ -229,6 +238,7 @@ export class IkResponder {
     } catch {
       throw new WrongStaticKeyError('initiator targeted another static key');
     }
+    if (!isCanonicalX25519(rs)) throw new HandshakeError('non-canonical static key');
     try {
       this.ss.mixKey(dh(this.staticPrivate, rs));
       this.hashAtPayload = this.ss.handshakeHash();

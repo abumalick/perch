@@ -392,7 +392,12 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     and it is enrolled only when the handler's `authResult ok` goes out. **A new key must prove
     the Ed25519 relay key its hello names** (`hello.proof`: a signature over its X25519 key and
     the IK handshake hash the hello is sealed under, `IkResponder.payloadHash()`), or one phone
-    could have the agent publish another's; an enrolled key needs none. Hello names are
+    could have the agent publish another's; an enrolled key needs none. **The roster knows a key
+    by its bytes, so the responder refuses a non-canonical X25519 encoding** (top bit set, or
+    ≥ p): X25519 ignores the top bit, and a revoked key re-spelled would come back as unknown.
+    Enrolment likewise refuses a new key naming a revoked Ed25519 relay key. **Nothing the phone
+    sends behind an accepted `auth` reaches the handler until the roster write settles** (it is
+    held with the outgoing `authResult`, and dropped if the roster declines). Hello names are
     sanitised (control characters, bidi overrides) before the journal and `perch devices`. The
     relay admits the Ed25519 keys the agent publishes over the control socket (a zod-parsed
     `policy`), after a signature over its own challenge. **Challenges are stateless** (expiry +

@@ -65,7 +65,7 @@ export function enrolDevice(
   keys: { x25519: string; ed25519: string; name: string },
   at: Date,
 ): DeviceRoster {
-  if (standingOf(roster, keys.x25519) !== 'unknown') return roster;
+  if (standingOf(roster, keys.x25519) !== 'unknown' || isRevokedRelayKey(roster, keys.ed25519)) return roster;
   // An id is 48 bits, so two keys sharing one can be searched out; the second is refused, or
   // `perch devices` could no longer tell them apart by id.
   const id = deviceFingerprint(keys.x25519);

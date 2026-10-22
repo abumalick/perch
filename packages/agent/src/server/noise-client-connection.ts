@@ -42,6 +42,9 @@ export interface NoiseClientConnectionOptions {
   // one, no device is.
   pushBudget?: { take(deviceKey: string): boolean };
   log?: (message: string) => void;
+  // For lines a stranger can cause at will (one shared across connections, see LimitedLog); `log`
+  // takes them without one.
+  refusalLog?: { line(key: string, text: string): void };
   startTimer?: (fn: () => void, ms: number) => () => void;
 }
 
@@ -114,8 +117,11 @@ export class NoiseClientConnection implements ClientConnection {
       if (this.state.kind === 'enrolling') {
         const hello = this.state.hello;
         this.outbox = [];
+        // What the phone sends behind its auth waits too: the roster may still refuse the device.
+        this.held ??= [];
         void this.enrol(hello).then(async (outcome) => {
           if (outcome === 'declined') {
+            this.held = null;
             this.fail(await this.declinedReason(), DEVICE_REFUSED);
             return;
           }
@@ -124,6 +130,9 @@ export class NoiseClientConnection implements ClientConnection {
           this.seal({ ...accepted, enrolled: outcome === 'enrolled' });
           this.options.onAuthenticated?.();
           held.forEach((m) => this.send(m));
+          const incoming = this.held ?? [];
+          this.held = null;
+          incoming.forEach((raw) => this.dispatch(raw));
         });
         return;
       }
@@ -212,7 +221,9 @@ export class NoiseClientConnection implements ClientConnection {
   // key already; a new one must prove the relay key the agent is about to publish for it.
   private admit(responder: IkResponder, hello: DeviceHello, key: string, standing: DeviceStanding, enrolment: EnrolmentMode, proven: boolean): void {
     if (this.state.kind !== 'checking') return;
-    this.options.log?.(`relay client: device ${deviceFingerprint(key)} "${hello.name}" ${standing}`);
+    const line = `relay client: device ${deviceFingerprint(key)} "${hello.name}" ${standing}`;
+    if (standing === 'enrolled') this.options.log?.(line);
+    else this.logRefusal(`handshake:${standing}`, line);
     if (standing === 'revoked') {
       this.fail(REFUSAL.revoked, DEVICE_REFUSED);
       return;
@@ -309,7 +320,7 @@ export class NoiseClientConnection implements ClientConnection {
       // A code this agent knows is dead (spent, or expired since the relay let it through): say
       // so. An unknown one may be a token after all, so the handler checks it.
       if (!redemption.redeemed && redemption.reason) {
-        this.options.log?.(`relay client: device ${fingerprint} refused: ${redemption.reason}`);
+        this.logRefusal(redemption.reason, `relay client: device ${fingerprint} refused: ${redemption.reason}`);
         this.fail(redemption.reason, DEVICE_REFUSED);
         return;
       }
@@ -333,7 +344,7 @@ export class NoiseClientConnection implements ClientConnection {
   // may enrol it: refused here, so the token never gets as far as the handler.
   private refusesToken(): boolean {
     if (this.state.kind !== 'enrolling' || this.state.tokenEnrols || this.keyAuth !== null) return false;
-    this.options.log?.(`relay client: device ${deviceFingerprint(this.deviceKey!)} refused: token enrolment is off`);
+    this.logRefusal('token-off', `relay client: device ${deviceFingerprint(this.deviceKey!)} refused: token enrolment is off`);
     this.fail(REFUSAL.enrolmentOff, DEVICE_REFUSED);
     return true;
   }
@@ -370,6 +381,11 @@ export class NoiseClientConnection implements ClientConnection {
       // Named generically below.
     }
     return REFUSAL.enrolmentRefused;
+  }
+
+  private logRefusal(key: string, line: string): void {
+    if (this.options.refusalLog) this.options.refusalLog.line(key, line);
+    else this.options.log?.(line);
   }
 
   private fail(reason: string, code = SECURE_CHANNEL_FAILED): void {

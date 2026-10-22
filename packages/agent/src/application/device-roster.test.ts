@@ -39,6 +39,17 @@ describe('device roster', () => {
     expect(enrolDevice(roster, p, AT)).toBe(roster);
   });
 
+  // The relay admits by the Ed25519 key: a new X25519 key must not bring a revoked one back into
+  // the policy, whatever the relay let through.
+  it('refuses a new key that names a revoked relay key', () => {
+    const p = phone();
+    const enrolled = enrolDevice(EMPTY_ROSTER, p, AT);
+    const { roster } = revokeDevice(enrolled, enrolled.devices[0]!.id, AT);
+    const newcomer = { ...phone(), ed25519: p.ed25519 };
+    expect(enrolDevice(roster, newcomer, AT)).toBe(roster);
+    expect(standingOf(enrolDevice(roster, newcomer, AT), newcomer.x25519)).toBe('unknown');
+  });
+
   it('forgets a device from either list, so it can enrol again', () => {
     const p = phone();
     const enrolled = enrolDevice(EMPTY_ROSTER, p, AT);

@@ -1,6 +1,7 @@
 import { accountId, b64url, enrolKey, signAgentAuth, startTimer, type AgentKeys } from '@perch/secure-channel';
 import { RelayLink } from '../application/relay-link';
 import { PushBudget } from '../application/push-budget';
+import { LimitedLog } from '../application/limited-log';
 import { RosterDevices, RosterMonitor } from '../application/device-gate';
 import { relayPolicy, standingOf } from '../application/device-roster';
 import type { DeviceStorePort } from '../ports/device-store-port';
@@ -46,6 +47,7 @@ export function startRelayLinks(deps: RelayWiringDeps): RelayWiring {
     onChange: publishAll,
   });
   const pushBudget = new PushBudget(() => Date.now());
+  const refusalLog = new LimitedLog(log, () => Date.now());
   // One key, so one account on every relay: the phone keeps an entry per relay and toggles.
   for (const url of config.relayUrls) {
     const link = new RelayLink({
@@ -58,7 +60,7 @@ export function startRelayLinks(deps: RelayWiringDeps): RelayWiring {
       // The dial's slot is held until the session authenticates or the socket closes.
       onSocket: (socket, release) => {
         socket.onClose(release);
-        server.acceptRelaySocket(socket, staticPrivate, { devices, log, onAuthenticated: release, pushBudget });
+        server.acceptRelaySocket(socket, staticPrivate, { devices, log, refusalLog, onAuthenticated: release, pushBudget });
       },
       policy: async () => relayPolicy(await store.read()),
       admitEnrolment: (enrol) => devices.admitsEnrolment(enrol),

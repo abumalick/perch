@@ -379,10 +379,14 @@ export class Relay {
   }
 
   private openGate(account: string, upgrade: PendingUpgrade): void {
-    const waiting = [...this.gates].filter(([, gate]) => !gate.answered);
-    if (waiting.length >= MAX_WAITING_GATES) this.closeGate(waiting[0]![0], IN_BAND_REFUSAL + 429, REFUSAL.tooManyPending);
     const peer = upgrade.accept({ kind: 'gate' });
     if (!peer) return;
+    // A gate a rebuilt relay never knew has no deadline left to close it.
+    for (const orphan of this.deps.directory.find({ kind: 'gate' })) {
+      if (orphan !== peer && !this.gates.has(orphan)) orphan.close(IN_BAND_REFUSAL + 401, REFUSAL.challenge);
+    }
+    const waiting = [...this.gates].filter(([, gate]) => !gate.answered);
+    if (waiting.length >= MAX_WAITING_GATES) this.closeGate(waiting[0]![0], IN_BAND_REFUSAL + 429, REFUSAL.tooManyPending);
     const cancelTimeout = this.deps.startTimer(
       () => this.closeGate(peer, IN_BAND_REFUSAL + 408, REFUSAL.challengeUnanswered),
       this.deps.gateTimeoutMs ?? DEFAULT_GATE_TIMEOUT_MS,
@@ -417,8 +421,13 @@ export class Relay {
       accept: (label) => {
         if (!live()) return null;
         this.gates.delete(peer);
+        try {
+          peer.send(GATE_READY, false);
+        } catch {
+          // Closed by the phone, and not yet reported so: the pair is not made.
+          return null;
+        }
         this.deps.directory.relabel(peer, label);
-        peer.send(GATE_READY, false);
         return peer;
       },
       reject: (status, reason) => {
@@ -507,6 +516,8 @@ export class Relay {
       cancelTimeout();
       this.pending.delete(id);
     });
+    // The client may already be gone (a gate that hung up while its answer was checked).
+    if (!this.pending.has(id)) return;
     try {
       control.send(JSON.stringify({ type: 'dial', id, ...(enrol ? { enrol } : {}) }), false);
     } catch {

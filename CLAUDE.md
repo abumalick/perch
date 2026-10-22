@@ -509,7 +509,9 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     sends `ready` once the socket is paired; the phone starts IK only then. That spares a TLS
     connection per connect. Things not to "simplify": **a gate is held unauthenticated, so it is
     bounded** (5 s deadline, 4408; 8 waiting per account, and the ninth closes the *oldest*
-    waiting one, never the newcomer, or holding 8 idle sockets would lock the owner out);
+    waiting one, never the newcomer, or holding 8 idle sockets would lock the owner out; a phone
+    whose gate is closed before `ready` with 4429/4408 goes on over the fetched challenge, so a
+    stranger opening gates fast enough to evict it costs the owner speed, not access);
     **anything but one well-formed text reply closes it** (4400), and nothing from it is ever
     forwarded; **the nonce is not bound to the gate** (the MAC and spent set carry replay, as for
     a fetched one), so a Durable Object that lost a gate's memory just closes it (4401). Socket

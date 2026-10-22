@@ -8,12 +8,15 @@ import { sameLabel, type Peer, type PeerDirectory, type PeerLabel } from '@perch
 export class DoDirectory implements PeerDirectory {
   private readonly peers = new WeakMap<WebSocket, Peer>();
   private readonly sockets = new WeakMap<Peer, WebSocket>();
+  // Every forwarded frame looks labels up, and reading an attachment deserializes it.
+  private readonly labels = new WeakMap<WebSocket, PeerLabel | null>();
 
   constructor(private readonly ctx: DurableObjectState) {}
 
   accept(socket: WebSocket, label: PeerLabel): Peer {
     this.ctx.acceptWebSocket(socket, tagsFor(label));
     socket.serializeAttachment(label);
+    this.labels.set(socket, label);
     return this.peerOf(socket);
   }
 
@@ -56,7 +59,10 @@ export class DoDirectory implements PeerDirectory {
   }
 
   relabel(peer: Peer, label: PeerLabel): void {
-    this.sockets.get(peer)?.serializeAttachment(label);
+    const socket = this.sockets.get(peer);
+    if (!socket) return;
+    socket.serializeAttachment(label);
+    this.labels.set(socket, label);
   }
 
   count(kind: PeerLabel['kind']): number {
@@ -64,7 +70,12 @@ export class DoDirectory implements PeerDirectory {
   }
 
   private labelOfSocket(socket: WebSocket): PeerLabel | null {
-    return (socket.deserializeAttachment() as PeerLabel | null) ?? labelFromTags(this.ctx.getTags(socket));
+    let label = this.labels.get(socket);
+    if (label === undefined) {
+      label = (socket.deserializeAttachment() as PeerLabel | null) ?? labelFromTags(this.ctx.getTags(socket));
+      this.labels.set(socket, label);
+    }
+    return label;
   }
 
   private open(): WebSocket[] {

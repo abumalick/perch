@@ -566,6 +566,23 @@ describe('noise socket through the in-band gate', () => {
     expect(next.urls[0]).toContain('nonce=fetched-nonce');
   });
 
+  it('goes on over the fetched challenge when its gate is closed before ready, without remembering it', async () => {
+    for (const reason of [REFUSAL.tooManyPending, REFUSAL.challengeUnanswered]) {
+      const legacyRelays = new Set<string>();
+      const { sockets, urls, events, phases } = gated({ legacyRelays });
+      await flush();
+      sockets[0]!.fireOpen();
+      sockets[0]!.deliverText(encodeGateChallenge('n'));
+      await flush();
+      sockets[0]!.fireClose({ code: reason === REFUSAL.tooManyPending ? 4429 : 4408, reason });
+      await flush();
+      expect(events).toEqual([]);
+      expect(urls[1]).toContain('nonce=fetched-nonce');
+      expect(phases.some((p) => p.startsWith('challenge-fallback gate closed'))).toBe(true);
+      expect(legacyRelays.size).toBe(0);
+    }
+  });
+
   it('keeps "device key required" final once the gate has sent its challenge', async () => {
     const legacyRelays = new Set<string>();
     const { sockets, closeInfo } = gated({ legacyRelays });

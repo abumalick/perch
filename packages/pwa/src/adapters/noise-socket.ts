@@ -256,6 +256,12 @@ export function noiseSocketFactory(inner: FrameSocketFactory, agentKey: string, 
           fallBack(frames, identity, 'legacy relay');
           return;
         }
+        // A gate can be closed by strangers opening gates faster than this phone answers (the
+        // relay closes the oldest waiting one); the fetched challenge does not wait in that line.
+        if (gated && !admitted && (info?.reason === REFUSAL.tooManyPending || info?.reason === REFUSAL.challengeUnanswered)) {
+          fallBack(frames, identity, 'gate closed');
+          return;
+        }
         reportClose(info);
       });
       frames.onError?.(() => current() && errorListeners.forEach((l) => l()));

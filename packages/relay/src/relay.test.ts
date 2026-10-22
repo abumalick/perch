@@ -1023,6 +1023,46 @@ describe('Relay in-band gate', () => {
     expect(answered.peer!.closedWith).toBeNull();
   });
 
+  it('asks the agent for nothing when the phone hangs up while its answer is checked', async () => {
+    const s = gated();
+    const up = open(s);
+    await answer(s, up.peer!);
+    s.drop(up.peer!, 1001);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(s.control.sent).toEqual([]);
+  });
+
+  it('makes no pair when the ready cannot be sent to a phone already gone', async () => {
+    const s = gated();
+    const filed = spare(s, 's1');
+    const up = open(s);
+    const send = up.peer!.send.bind(up.peer!);
+    up.peer!.send = (data, binary) => (data === GATE_READY ? (() => { throw new Error('closed'); })() : send(data, binary));
+    await answer(s, up.peer!);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(s.directory.labelOf(up.peer!)).toEqual({ kind: 'gate' });
+    expect(filed.peer!.sent).toEqual([]);
+  });
+
+  it('closes no waiting gate for a newcomer that is gone before it is accepted', () => {
+    const s = gated();
+    const waiting = Array.from({ length: 8 }, () => open(s));
+    const gone = s.upgrade();
+    gone.gone = true;
+    s.relay.handle({ role: 'client', account: 'acct', inBand: true }, gone);
+    expect(waiting.every((up) => up.peer!.closedWith === null)).toBe(true);
+  });
+
+  it('closes the gates it has no record of when the next one opens, as after its relay was rebuilt', () => {
+    const s = gated();
+    const orphan = open(s);
+    const rebuilt = new Relay(s.deps);
+    const up = s.upgrade();
+    rebuilt.handle({ role: 'client', account: 'acct', inBand: true }, up);
+    expect(orphan.peer!.closedWith).toEqual({ code: 4401, reason: REFUSAL.challenge });
+    expect(up.peer!.closedWith).toBeNull();
+  });
+
   it('drops the pending dial of a gate that hangs up, and refuses that dial', async () => {
     const s = gated();
     const up = open(s);

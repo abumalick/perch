@@ -62,7 +62,7 @@ function build(
   seed: unknown[] = [],
   applyUpdate?: () => void,
   startTimer?: (fn: () => void, ms: number) => () => void,
-  log?: { connectionLog: import('./core/connection-log').ConnectionLog },
+  log?: { connectionLog: import('./core/connection-log').ConnectionLog; sinceLaunch?: () => number },
   ask: { confirm?: (message: string) => boolean; alert?: (message: string) => void } = {},
 ) {
   const sockets: Record<string, { open: () => void; deliver: (m: unknown) => void; sent: string[] }> = {};
@@ -1829,6 +1829,14 @@ describe('PerchStore connection logging', () => {
     store.start();
     store.setConnectionError('mac', { message: 'connection timed out', code: 1000, at: 1, attempt: 2, retryInMs: 500 });
     expect(lg.pushed).toEqual([{ machineId: 'mac', kind: 'close', extra: { code: 1000, reason: 'connection timed out [attempt 2, retry in 500ms]' } }]);
+  });
+
+  it('records how long after launch the first connect began, once', () => {
+    const lg = fakeLog();
+    const { store } = build([mac], undefined, undefined, { ...lg, sinceLaunch: () => 412.6 });
+    store.start();
+    store.start();
+    expect(lg.pushed.filter((e) => e.kind === 'boot')).toEqual([{ machineId: null, kind: 'boot', extra: { reason: '413ms' } }]);
   });
 
   it('records a phase of a relay connect with its detail', () => {

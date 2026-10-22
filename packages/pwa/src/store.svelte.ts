@@ -226,6 +226,7 @@ export class PerchStore {
   // Bumped by every media load, so a superseded one (another file, or the same one reopened)
   // never writes its result.
   private mediaLoad = 0;
+  private bootLogged = false;
   // The session the browser view is showing (null when the view is closed).
   browserTarget = $state<{ connectionId: string; session: string } | null>(null);
   // Where closeBrowserView returns to (terminal when opened from a workspace, list from home).
@@ -295,6 +296,9 @@ export class PerchStore {
       // that don't exercise logging; when absent, event recording and flushing are no-ops.
       connectionLog?: ConnectionLog;
       logMeta?: { ua?: string; shell?: string };
+      // Milliseconds since the app was launched (navigation start); logged once as `boot` when
+      // the first connect begins, so the time before connecting is measured too.
+      sinceLaunch?: () => number;
       deviceKey?: () => Promise<DeviceKeyInfo>;
       replaceDeviceKey?: () => Promise<DeviceKeyInfo>;
       // Asks the owner before a tapped pairing link adds anything, and says why one was refused.
@@ -342,6 +346,10 @@ export class PerchStore {
     this.folderFilter = this.deps.settings.folderFilter();
     this.folderHidden = this.deps.settings.folderHidden();
     this.folderFilterMode = this.deps.settings.folderFilterMode();
+    if (this.deps.sinceLaunch && !this.bootLogged) {
+      this.bootLogged = true;
+      this.deps.connectionLog?.push(null, 'boot', { reason: `${Math.round(this.deps.sinceLaunch())}ms` });
+    }
     this.deps.manager.setMachines(this.machines);
     this.recomputeGrace();
   }

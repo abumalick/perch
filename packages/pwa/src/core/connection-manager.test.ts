@@ -90,6 +90,39 @@ describe('ConnectionManager relay machines', () => {
     expect(h.phases).toEqual(['mini challenge ok 12ms']);
   });
 
+  it('reports when the workspace list arrives, once per connect, timed from the attempt', () => {
+    let clock = 1000;
+    const phases: string[] = [];
+    const fakes: Array<ReturnType<typeof fakeSocket>> = [];
+    const manager = new ConnectionManager({
+      secureSocketFactory: () => () => {
+        const f = fakeSocket();
+        fakes.push(f);
+        return f.socket;
+      },
+      aggregator: new WorkspaceAggregator(),
+      onMessage: () => undefined,
+      onStatus: () => undefined,
+      onPhase: (id, phase, detail) => phases.push(`${id} ${phase} ${detail}`),
+      schedule: () => undefined,
+      now: () => clock,
+    });
+    manager.setMachines([mini]);
+    fakes[0]!.open();
+    fakes[0]!.deliver({ type: 'authResult', ok: true });
+    clock = 1740;
+    fakes[0]!.deliver({ type: 'workspaces', workspaces: [] });
+    fakes[0]!.deliver({ type: 'workspaces', workspaces: [] });
+    expect(phases).toEqual(['mini list 740ms']);
+    clock = 5000;
+    manager.reconnect('mini');
+    fakes[1]!.open();
+    fakes[1]!.deliver({ type: 'authResult', ok: true });
+    clock = 5100;
+    fakes[1]!.deliver({ type: 'workspaces', workspaces: [] });
+    expect(phases).toEqual(['mini list 740ms', 'mini list 100ms']);
+  });
+
   it('authenticates with the pairing secret while the entry holds one, even beside a token', () => {
     const h = harness();
     h.manager.setMachines([{ ...mini, pairing: 'S'.repeat(43) }]);

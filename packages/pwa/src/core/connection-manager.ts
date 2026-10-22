@@ -43,6 +43,8 @@ export class ConnectionManager {
   // Each entry as it connects now: its credential is dropped here as soon as it is spent, so a
   // reconnect proves nothing with it before the store has rebuilt anything.
   private readonly configs = new Map<string, MachineConfig>();
+  // When each machine's connect attempt began, until its workspace list arrives (the `list` phase).
+  private readonly listPending = new Map<string, number>();
   private readonly now: () => number;
 
   constructor(private readonly deps: ConnectionManagerDeps) {
@@ -81,10 +83,16 @@ export class ConnectionManager {
         refusalContext: { machine: config.name, credential: credentialKind(config) },
         onDiagnostic: (diagnostic) => this.deps.onDiagnostic?.(config.id, diagnostic),
         onMessage: (message) => {
+          const since = this.listPending.get(config.id);
+          if (message.type === 'workspaces' && since !== undefined) {
+            this.listPending.delete(config.id);
+            this.deps.onPhase?.(config.id, 'list', `${this.now() - since}ms`);
+          }
           this.deps.aggregator.apply(config.id, message);
           this.deps.onMessage(config.id, message);
         },
         onStatus: (status) => {
+          if (status === 'connecting') this.listPending.set(config.id, this.now());
           if (status === 'offline') {
             this.deps.aggregator.setMachineOffline(config.id);
           } else if (status === 'online') {

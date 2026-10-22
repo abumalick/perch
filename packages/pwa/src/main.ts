@@ -131,6 +131,7 @@ store = new PerchStore({
   ),
   connectionLog,
   logMeta,
+  sinceLaunch: () => performance.now(),
   deviceKey: () => keyInfo(deviceIdentity()),
   replaceDeviceKey: () => keyInfo(cacheIdentity(replaceUnreadableDeviceIdentity(indexedDbIdentityStore()))),
   ...prompts,

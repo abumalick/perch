@@ -69,7 +69,7 @@ test('an old direct entry is shown as unsupported, never connected, and can be d
   expect(agent.upgrades).toBe(0);
   expect(agent.received).toEqual([]);
 
-  await page.getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Remove Test' }).click();
   await expect(page.getByText('Old direct entry')).toHaveCount(0);
   expect(await stored(page)).toEqual([]);
@@ -82,7 +82,9 @@ test('removing a machine is only possible from its own page, after confirming', 
   await page.getByRole('button', { name: 'Settings' }).click();
 
   // The list has no remove control: the machine page holds it.
-  await expect(page.getByRole('button', { name: /remove|delete/i })).toHaveCount(0);
+  const machines = page.getByRole('list').filter({ has: page.getByRole('button', { name: /^Test/ }) });
+  await expect(machines).toHaveCount(1);
+  await expect(machines.getByRole('button', { name: /remove|delete/i })).toHaveCount(0);
   await page.getByRole('button', { name: /^Test/ }).click();
   await page.getByRole('button', { name: 'Remove machine' }).click();
 

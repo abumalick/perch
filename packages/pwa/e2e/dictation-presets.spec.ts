@@ -63,3 +63,18 @@ test('picking a preset changes the badge and survives a reload', async ({ page }
   await openTerminal(page);
   await expect(mic(page)).toContainText('CL');
 });
+
+test('a preset added in Settings is offered by the mic', async ({ page }) => {
+  await seedMachine(page, agent);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Add preset' }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Translate');
+  await page.getByLabel('Badge').fill('TR');
+  await page.getByRole('button', { name: 'Save preset' }).click();
+  await expect(page.getByRole('button', { name: /Edit Translate/ })).toBeVisible();
+
+  await openTerminal(page);
+  await holdMic(page);
+  await expect(page.getByRole('option', { name: /Translate/ })).toContainText('TR');
+});

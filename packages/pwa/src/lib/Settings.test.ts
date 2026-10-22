@@ -1,9 +1,10 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { render, screen, fireEvent, within } from '@testing-library/svelte';
 import { generateAgentKeys } from '@perch/secure-channel';
 import Settings from './Settings.svelte';
 
 import { inputLog } from '../core/terminal-input-log';
+import { DEFAULT_PRESETS } from '../core/dictation-presets';
 
 const KEY = generateAgentKeys().x25519.publicKey;
 
@@ -23,6 +24,11 @@ function fakeStore(overrides: Record<string, unknown> = {}) {
     goNewMachine: vi.fn(),
     elevenLabsApiKey: '',
     setElevenLabsApiKey: vi.fn(),
+    openRouterApiKey: '',
+    setOpenRouterApiKey: vi.fn(),
+    dictationPresets: [...DEFAULT_PRESETS],
+    saveDictationPresets: vi.fn(),
+    resetDictationPresets: vi.fn(),
     shareLinks: false,
     setShareLinks: vi.fn(),
     ...overrides,
@@ -41,8 +47,9 @@ describe('Settings — machines list', () => {
   it('shows each machine with its status, and no way to remove it from the list', () => {
     const store = fakeStore({ statuses: { mac: 'online' } });
     render(Settings, { props: { store: store as never } });
-    expect(screen.getByRole('button', { name: /^Mac/ })).toHaveTextContent('Online');
-    expect(screen.queryByRole('button', { name: /remove|delete/i })).toBeNull();
+    const mac = screen.getByRole('button', { name: /^Mac/ });
+    expect(mac).toHaveTextContent('Online');
+    expect(within(mac.closest('ul')!).queryByRole('button', { name: /remove|delete/i })).toBeNull();
   });
 
   it('opens the machine detail on tap, and comes back', async () => {
@@ -144,9 +151,25 @@ describe('Settings — dictation', () => {
     const store = fakeStore();
     render(Settings, { props: { store: store as never } });
     await fireEvent.input(screen.getByLabelText(/elevenlabs api key/i), { target: { value: 'sk_new' } });
-    await fireEvent.click(screen.getByRole('button', { name: /save key/i }));
+    await fireEvent.click(screen.getAllByRole('button', { name: /save key/i })[0]!);
     expect(store.setElevenLabsApiKey).toHaveBeenCalledWith('sk_new');
     expect(screen.getByRole('status')).toHaveTextContent('Saved');
+  });
+
+  it('saves the OpenRouter key and says where recordings go', async () => {
+    const store = fakeStore({ openRouterApiKey: 'sk-or-old' });
+    render(Settings, { props: { store: store as never } });
+    const field = screen.getByLabelText(/openrouter api key/i) as HTMLInputElement;
+    expect(field.value).toBe('sk-or-old');
+    expect(screen.getByText(/Recordings sent with an OpenRouter preset go to OpenRouter and the model's provider/)).toBeInTheDocument();
+    await fireEvent.input(field, { target: { value: 'sk-or-new' } });
+    await fireEvent.click(screen.getAllByRole('button', { name: /save key/i })[1]!);
+    expect(store.setOpenRouterApiKey).toHaveBeenCalledWith('sk-or-new');
+  });
+
+  it('lists the dictation presets', () => {
+    render(Settings, { props: { store: fakeStore() as never } });
+    expect(screen.getByRole('button', { name: /Edit Clean up/ })).toBeInTheDocument();
   });
 });
 

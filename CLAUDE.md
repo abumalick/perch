@@ -118,6 +118,27 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   Custom is kept). A remembered command runs as typed, with no model picker; `forgetLauncher`
   removes one. An agent that predates this never answers, and the PWA keeps the fixed
   Claude/Codex/Bash list. Needs an agent restart per machine.
+- **Dictation presets are on-device config: no agent, no protocol.** The 🎤 records in the PWA
+  and sends the audio straight from the phone, either to ElevenLabs Scribe or to an OpenRouter
+  model that hears it and follows the preset's prompt (`adapters/openrouter-transcriber.ts`);
+  `PresetTranscriber` picks one per dictation from the current preset. A long press (500 ms,
+  `HOLD_MS`) on the mic opens the presets; its badge shows the current one; Settings edits them
+  and holds both keys. Things not to "simplify":
+  - **The defaults live in code until the user edits the list** (`DEFAULT_PRESETS`, nothing
+    seeded into `perch.dictationPresets`), so an update can replace a model id OpenRouter has
+    retired for everyone who never customised. Nothing personal ships: the default prompt
+    cleans up in the language spoken, and a translation preset is the user's own.
+  - **An OpenRouter reply is typed as one line.** A newline reaching the pty submits the line
+    (a shell would run a half-dictated command); a bracketed paste is no better, since Claude
+    Code folds it into an unreadable `[Pasted text]`.
+  - **Each attempt gets 15 s + 10 s per MB of audio, then one retry** (hang, network error,
+    429/5xx, or a 200 carrying an upstream `error`). Measured: Gemini Flash answers in ~2 s
+    when routed through Vertex and in ~13 s through AI Studio, which OpenRouter picks about one
+    time in three, with rare minutes-long hangs. The `google-vertex` provider order is
+    best-effort tuning, not a guarantee; forbidding fallbacks produced the worst hang.
+  - **The long press ends the key's press itself** (`cancel()` in the hold timer): the finger
+    lifts over the menu's backdrop, so the mic never sees its own `pointerup`. While recording
+    the hold is not armed, so a slow press still stops the recording.
 - **Connection-event log — a client→agent diagnostic that survives drops.** The PWA records
   connection lifecycle events (`connect`/`online`/`close`/`manual-reconnect` per machine —
   `manual-reconnect` = the user tapped Reconnect, `auto-reconnect` = a foreground/`online`

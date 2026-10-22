@@ -9,6 +9,7 @@
   import { isRelayMachine } from '../core/settings-store';
   import PairMachine from './PairMachine.svelte';
   import MachineDetail from './MachineDetail.svelte';
+  import DictationPresets from './DictationPresets.svelte';
   import ConfirmRemove from './ConfirmRemove.svelte';
   import { STATUS_LABEL, describeConnectionError } from './machine-status';
   import { isAndroid } from './android-input';
@@ -43,6 +44,8 @@
   // intentional initial-value read (not a reactive dependency).
   let apiKey = $state(untrack(() => store.elevenLabsApiKey));
   let apiKeySaved = $state(false);
+  let openRouterKey = $state(untrack(() => store.openRouterApiKey));
+  let openRouterKeySaved = $state(false);
 
   let openId = $state<string | null>(null);
   // Closes by itself if the entry goes away underneath (removed from another page context).
@@ -68,6 +71,12 @@
     event.preventDefault();
     store.setElevenLabsApiKey(apiKey.trim());
     apiKeySaved = true;
+  }
+
+  function saveOpenRouterKey(event: SubmitEvent): void {
+    event.preventDefault();
+    store.setOpenRouterApiKey(openRouterKey.trim());
+    openRouterKeySaved = true;
   }
 </script>
 
@@ -164,6 +173,23 @@
         <p class="hint">Stored on this device only. Used for speech-to-text in the terminal.</p>
       {/if}
     </form>
+    <form class="card" onsubmit={saveOpenRouterKey}>
+      <label for="openrouter-key">OpenRouter API key</label>
+      <div class="inline">
+        <input id="openrouter-key" bind:value={openRouterKey} oninput={() => (openRouterKeySaved = false)} type="password" placeholder="sk-or-…" />
+        <button type="submit" class="small">Save key</button>
+      </div>
+      {#if openRouterKeySaved}
+        <p class="hint ok" role="status">Saved ✓</p>
+      {:else}
+        <p class="hint">Stored on this device only. Recordings sent with an OpenRouter preset go to OpenRouter and the model's provider.</p>
+      {/if}
+    </form>
+    <div class="card">
+      <span class="name">Presets</span>
+      <p class="hint">Hold the 🎤 in the terminal to switch between them.</p>
+      <DictationPresets {store} />
+    </div>
 
     {#if canShareLinks}
       <p class="group">Terminal links</p>

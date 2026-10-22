@@ -140,4 +140,44 @@ describe('IK handshake', () => {
   it('refuses a message 1 too short to hold the static key', () => {
     expect(() => new IkResponder(keypair().priv).readMessage1(new Uint8Array(64))).toThrow();
   });
+
+  // X25519 ignores the top bit, so one key has two encodings: the agent knows a device by its
+  // encoding, and a revoked one re-encoded would otherwise come back as an unknown device.
+  it('refuses a static key in a non-canonical encoding, which would name a known device under another spelling', async () => {
+    const agent = keypair();
+    const phone = keypair();
+    const real = rawStaticKey(phone.priv);
+    const aliased = real.publicKey.slice();
+    aliased[31]! |= 0x80;
+    const initiator = new IkInitiator({ publicKey: aliased, dh: real.dh }, agent.pub);
+    const m1 = await initiator.writeMessage1();
+    const error = (() => {
+      try {
+        new IkResponder(agent.priv).readMessage1(m1);
+      } catch (err) {
+        return err;
+      }
+    })();
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(WrongStaticKeyError);
+    expect((error as Error).message).toMatch(/non-canonical/);
+  });
+
+  it('refuses a static key encoded at or above the field prime', async () => {
+    const agent = keypair();
+    const p = new Uint8Array(32).fill(0xff);
+    p[0] = 0xed;
+    p[31] = 0x7f;
+    const initiator = new IkInitiator({ publicKey: p, dh: async () => new Uint8Array(32).fill(1) }, agent.pub);
+    const m1 = await initiator.writeMessage1();
+    expect(() => new IkResponder(agent.priv).readMessage1(m1)).toThrow(/non-canonical/);
+  });
+
+  it('accepts the canonical encoding of the same key', async () => {
+    const agent = keypair();
+    const phone = keypair();
+    const responder = new IkResponder(agent.priv);
+    responder.readMessage1(await new IkInitiator(rawStaticKey(phone.priv), agent.pub).writeMessage1());
+    expect(responder.remoteStatic()).toEqual(phone.pub);
+  });
 });

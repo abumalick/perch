@@ -3,6 +3,7 @@ import type { RelaySpare, RelayTransport } from '../ports/relay-port';
 import type { EnrolmentVerdict } from '../ports/device-gate-port';
 import { withoutTrailingSlash } from './relay-url';
 import { policyWarning } from './device-roster';
+import { LimitedLog } from './limited-log';
 
 type Enrolment = NonNullable<Extract<RelayControl, { type: 'dial' }>['enrol']>;
 
@@ -43,7 +44,6 @@ const SUPERSEDED_BACKOFF_MS = 60_000;
 const MAX_SUPERSEDED_BACKOFF_MS = 15 * 60_000;
 // Holding the relay this long means the rival is gone, so a later supersede starts over.
 const SUPERSEDED_RESET_MS = 60 * 60_000;
-const REFUSAL_LOG_EVERY_MS = 60_000;
 // Dial-backs not yet authenticated: still connecting, or opened and in their handshake. A phone
 // connect is one; the relay's own caps keep an honest relay far below this, so past it the relay
 // is the one misbehaving. Each one is released within the session's auth deadline.
@@ -65,7 +65,7 @@ const MAX_SPARE_RETRY_MS = 15 * 60_000;
 export class RelayLink<S> {
   private backoff = BASE_BACKOFF_MS;
   // Per reason, so a stranger's stream of bad proofs cannot hide the owner's expired code.
-  private readonly refusalLog = new Map<string, { last: number; held: number }>();
+  private readonly refusalLog = new LimitedLog((m) => this.deps.log(m), () => this.now());
   private supersededCount = 0;
   private dialsUnauthenticated = 0;
   private enrolmentChecks = 0;
@@ -199,18 +199,8 @@ export class RelayLink<S> {
     reply(JSON.stringify({ type: 'refuse', id, ...(reason ? { reason } : {}) }));
   }
 
-  // A stranger can repeat these as fast as the relay lets them through, so the journal gets one
-  // line a minute for each reason.
   private logLimited(reason: string, line: string): void {
-    const now = this.now();
-    const entry = this.refusalLog.get(reason) ?? { last: -Infinity, held: 0 };
-    if (now - entry.last >= REFUSAL_LOG_EVERY_MS) {
-      const held = entry.held ? ` (and ${entry.held} more in the last minute)` : '';
-      this.deps.log(`${line}${held}`);
-      this.refusalLog.set(reason, { last: now, held: 0 });
-    } else {
-      this.refusalLog.set(reason, { ...entry, held: entry.held + 1 });
-    }
+    this.refusalLog.line(reason, line);
   }
 
   private openSpare(): void {

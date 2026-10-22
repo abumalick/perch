@@ -58,6 +58,9 @@ export function describeRefusal(code: number | undefined, reason: string | undef
       return final(`The relay refused this phone: ${machine} accepts only phones with a device key`);
     case REFUSAL.challenge:
       return passing('The relay refused this phone: its sign-in challenge had expired — retrying');
+    case REFUSAL.challengeUnanswered:
+    case REFUSAL.invalidReply:
+      return passing('The relay did not receive this phone’s sign-in — retrying');
     case REFUSAL.unknownAccount:
       return final(`The relay does not know ${machine} — run \`perch connect\` on it again`);
     case REFUSAL.agentOffline:

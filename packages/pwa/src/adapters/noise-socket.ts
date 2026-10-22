@@ -1,14 +1,20 @@
 import {
+  GATE_PARAM,
+  GATE_READY,
   IkInitiator,
+  REFUSAL,
   SecureSession,
   b64url,
+  encodeGateReply,
   encodeDeviceHello,
   signDeviceHello,
   enrolKey,
   enrolProof,
   handshakeFrame,
+  parseGateChallenge,
   readHandshakeFrame,
   signDeviceAuth,
+  type DeviceParams,
 } from '@perch/secure-channel';
 import type { CloseInfo, Socket, SocketFactory } from '../core/ports/socket';
 import type { FrameSocketFactory, FrameSocket } from '../core/ports/frame-socket';
@@ -33,11 +39,14 @@ export interface RelayDeviceOptions {
   // What `token` is. Sent beside the proof so the agent can say in its log which one failed.
   credential?: 'pairing' | 'token' | 'none';
   deviceName: string;
-  // The relay's single-use challenge. It rejects with a ChallengeError when there is none to be
-  // had, which fails the attempt so it is retried: without one the relay refuses the upgrade.
+  // The relay's single-use challenge over HTTP, for a relay that predates the in-band gate. It
+  // rejects with a ChallengeError when there is none to be had, which fails the attempt so it is
+  // retried: without one the relay refuses the upgrade.
   fetchChallenge: (url: string) => Promise<string>;
+  // Relay URLs known to predate the in-band gate, shared by every attempt of the app session.
+  legacyRelays?: Set<string>;
   // Each phase of a connect with its outcome and the time since the attempt began, for the
-  // connection log: `challenge`, `ws-open`, `handshake`.
+  // connection log: `ws-open`, `challenge`, `admitted`, `handshake`, and `challenge-fallback`.
   onPhase?: (phase: string, detail: string) => void;
   now?: () => number;
 }
@@ -66,12 +75,35 @@ const challengeFailure = (err: ChallengeError) =>
 // Long enough for a slow but healthy fetch; short of the connection's own 10 s deadline so a
 // hung one is retried sooner.
 const CHALLENGE_TIMEOUT_MS = 5_000;
+// A relay that predates the gate, with no device policy yet (moments after it restarted), dials
+// a gate socket straight to the agent, which waits for the handshake: nothing ever arrives.
+// A gated relay sends its challenge as soon as the socket opens.
+export const GATE_WAIT_MS = 3_000;
 
 // ws(s)://host/<account> → http(s)://host/<account>?role=challenge
 export function challengeUrl(relayUrl: string): string {
   const url = new URL(relayUrl.replace(/^ws/, 'http'));
   url.search = '';
   url.searchParams.set('role', 'challenge');
+  return url.toString();
+}
+
+function accountOf(url: string): string {
+  return new URL(url).pathname.replace(/^\/+|\/+$/g, '');
+}
+
+async function deviceParams(account: string, nonce: string, identity: DeviceIdentity, options: RelayDeviceOptions): Promise<DeviceParams> {
+  const claim = { account, nonce, device: identity.ed25519Public };
+  const params: DeviceParams = { key: identity.ed25519Public, nonce, sig: await signDeviceAuth(identity.sign, claim) };
+  if (!options.token) return params;
+  params.proof = enrolProof(enrolKey(options.token, account), claim);
+  if (options.credential === 'pairing' || options.credential === 'token') params.cred = options.credential;
+  return params;
+}
+
+export function gateUrl(relayUrl: string): string {
+  const url = new URL(relayUrl);
+  url.searchParams.set(GATE_PARAM, '1');
   return url.toString();
 }
 
@@ -86,20 +118,18 @@ async function deviceUrl(url: string, identity: DeviceIdentity, options: RelayDe
   }
   options.onPhase?.('challenge', `ok ${since()}`);
   const target = new URL(url);
-  const account = target.pathname.replace(/^\/+|\/+$/g, '');
-  const claim = { account, nonce, device: identity.ed25519Public };
-  target.searchParams.set('device', identity.ed25519Public);
-  target.searchParams.set('nonce', nonce);
-  target.searchParams.set('sig', await signDeviceAuth(identity.sign, claim));
-  if (options.token) {
-    target.searchParams.set('proof', enrolProof(enrolKey(options.token, account), claim));
-    if (options.credential === 'pairing' || options.credential === 'token') target.searchParams.set('cred', options.credential);
-  }
+  const { key, nonce: signed, sig, proof, cred } = await deviceParams(accountOf(url), nonce, identity, options);
+  target.searchParams.set('device', key);
+  target.searchParams.set('nonce', signed);
+  target.searchParams.set('sig', sig);
+  if (proof) target.searchParams.set('proof', proof);
+  if (cred) target.searchParams.set('cred', cred);
   return target.toString();
 }
 
-// A relay machine's socket. The phone signs the relay's challenge with its device key, then
-// everything the connection sends, `auth` first, travels inside a Noise IK session pinned to
+// A relay machine's socket. The phone signs the relay's challenge with its device key: one sent
+// on the socket itself (the relay's gate), or, for a relay that predates the gate, one fetched
+// over HTTP and signed into the upgrade's query. Then everything the connection sends, `auth` first, travels inside a Noise IK session pinned to
 // the agent's public key and carrying the phone's own static key, so the relay only ever
 // carries ciphertext and the agent knows which device it serves. `open` is reported only once
 // the handshake has proven the far end holds the agent's key; until then sends are dropped,
@@ -136,28 +166,107 @@ export function noiseSocketFactory(inner: FrameSocketFactory, agentKey: string, 
     }
     const agentPublic: Uint8Array = parsedKey;
 
+    const legacy = options.legacyRelays ?? new Set<string>();
+
     void (async () => {
       let identity: DeviceIdentity;
-      let target: string;
       try {
         identity = await options.device();
+      } catch (err) {
+        fail(deviceKeyUnavailable(err));
+        return;
+      }
+      if (closed || failure) return;
+      if (legacy.has(url)) await connectFetched(identity);
+      else connect(inner(gateUrl(url)), identity, true);
+    })();
+
+    async function connectFetched(identity: DeviceIdentity): Promise<void> {
+      let target: string;
+      try {
         target = await deviceUrl(url, identity, options, since);
       } catch (err) {
         fail(err instanceof ChallengeError ? challengeFailure(err) : deviceKeyUnavailable(err));
         return;
       }
       if (closed || failure) return;
-      connect(inner(target), identity);
-    })();
+      connect(inner(target), identity, false);
+    }
 
-    function connect(frames: FrameSocket, identity: DeviceIdentity): void {
+    // The gate failed in a way only a relay from before it fails: this attempt goes on over the
+    // fetched challenge, on a new socket.
+    function fallBack(frames: FrameSocket, identity: DeviceIdentity, why: string): void {
+      if (socket !== frames || failure || closed) return;
+      options.onPhase?.('challenge-fallback', `${why} ${since()}`);
+      socket = null;
+      frames.close();
+      void connectFetched(identity);
+    }
+
+    function connect(frames: FrameSocket, identity: DeviceIdentity, gated: boolean): void {
       socket = frames;
       const initiator = new IkInitiator(identity.x25519, agentPublic);
       // Handshake steps are asynchronous (the device key's DH is WebCrypto), so frames are
       // handled one at a time, in order.
       let queue = Promise.resolve();
+      let challenged = false;
+      let admitted = !gated;
+      let wait: ReturnType<typeof setTimeout> | undefined;
+      const current = () => socket === frames;
       frames.onOpen(() => {
+        if (!current()) return;
         options.onPhase?.('ws-open', since());
+        if (admitted) handshake();
+        else wait = setTimeout(() => !challenged && fallBack(frames, identity, 'no challenge'), GATE_WAIT_MS);
+      });
+      frames.onText((text) => {
+        if (!current() || failure) return;
+        if (!challenged) {
+          const nonce = parseGateChallenge(text);
+          if (!nonce) return fail('relay challenge failed: invalid challenge');
+          challenged = true;
+          clearTimeout(wait);
+          options.onPhase?.('challenge', `ok ${since()}`);
+          queue = queue.then(async () => {
+            try {
+              frames.sendText(encodeGateReply(await deviceParams(accountOf(url), nonce, identity, options)));
+            } catch (err) {
+              fail(deviceKeyUnavailable(err));
+            }
+          });
+        } else if (!admitted && text === GATE_READY) {
+          admitted = true;
+          options.onPhase?.('admitted', since());
+          handshake();
+        } else {
+          fail('secure channel failed');
+        }
+      });
+      frames.onFrame((frame) => {
+        if (!current()) return;
+        if (!admitted) return fail('secure channel failed');
+        queue = queue.then(() => receive(frame, initiator));
+      });
+      frames.onClose((info) => {
+        if (!current()) return;
+        clearTimeout(wait);
+        // Only a relay from before the gate refuses a phone for having no device parameters.
+        if (gated && !challenged && info?.reason === REFUSAL.deviceKeyRequired) {
+          legacy.add(url);
+          fallBack(frames, identity, 'legacy relay');
+          return;
+        }
+        // A gate can be closed by strangers opening gates faster than this phone answers (the
+        // relay closes the oldest waiting one); the fetched challenge does not wait in that line.
+        if (gated && !admitted && (info?.reason === REFUSAL.tooManyPending || info?.reason === REFUSAL.challengeUnanswered)) {
+          fallBack(frames, identity, 'gate closed');
+          return;
+        }
+        reportClose(info);
+      });
+      frames.onError?.(() => current() && errorListeners.forEach((l) => l()));
+
+      function handshake(): void {
         queue = queue.then(async () => {
           try {
             // The hello proves the relay key is this phone's own, over this handshake.
@@ -173,12 +282,7 @@ export function noiseSocketFactory(inner: FrameSocketFactory, agentKey: string, 
             fail(keyError ? deviceKeyUnavailable(keyError) : 'secure channel failed');
           }
         });
-      });
-      frames.onFrame((frame) => {
-        queue = queue.then(() => receive(frame, initiator));
-      });
-      frames.onClose((info) => reportClose(info));
-      frames.onError?.(() => errorListeners.forEach((l) => l()));
+      }
     }
 
     async function receive(frame: Uint8Array, initiator: IkInitiator): Promise<void> {

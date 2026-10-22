@@ -4,6 +4,9 @@
 // as the close reason. The agent closes a session with the same words (DEVICE_REFUSED).
 export const REFUSAL = {
   challenge: 'unknown or expired challenge',
+  // The phone's answer to a challenge sent on its socket was not one the relay could read.
+  invalidReply: 'invalid challenge reply',
+  challengeUnanswered: 'challenge not answered',
   signature: 'device signature invalid',
   deviceKeyRequired: 'device key required',
   notEnrolled: 'device not enrolled',

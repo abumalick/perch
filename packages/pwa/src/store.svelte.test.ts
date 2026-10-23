@@ -2150,6 +2150,15 @@ describe('PerchStore dictation presets', () => {
     expect(store.currentPreset.id).toBe('scribe');
   });
 
+  it('leaves the terminal for Settings with a new preset to fill in', () => {
+    const { store } = build();
+    store.start();
+    store.addDictationPreset();
+    expect(store.view).toBe('settings');
+    expect(store.active).toBeNull();
+    expect(store.addingPreset).toBe(true);
+  });
+
   it('resets to the built-in defaults', () => {
     const { store, storage } = build();
     store.start();

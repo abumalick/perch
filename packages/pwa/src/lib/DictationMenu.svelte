@@ -12,6 +12,7 @@
     anchor,
     onSelect,
     onClose,
+    onAdd,
   }: {
     presets: DictationPreset[];
     currentId: string;
@@ -19,6 +20,7 @@
     anchor: { bottom: number; right: number };
     onSelect: (id: string) => void;
     onClose: () => void;
+    onAdd: () => void;
   } = $props();
 
   const keepFocus = (e: Event) => e.preventDefault();
@@ -32,24 +34,27 @@
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') onClose(); }} />
 
 <button type="button" class="backdrop" aria-label="Close dictation presets" onpointerdown={keepFocus} onclick={onClose}></button>
-<ul class="menu" role="listbox" aria-label="Dictation presets" style="bottom: {anchor.bottom}px; right: {anchor.right}px">
-  {#each presets as preset (preset.id)}
-    {@const missing = needsKey(preset, keys)}
-    <li>
-      <button
-        type="button"
-        role="option"
-        aria-selected={preset.id === currentId}
-        onpointerdown={keepFocus}
-        onclick={() => choose(preset.id)}
-      >
-        <span class="badge">{preset.badge}</span>
-        <span class="name">{preset.name}</span>
-        {#if missing}<span class="hint">needs key</span>{:else if preset.id === currentId}<span class="hint">✓</span>{/if}
-      </button>
-    </li>
-  {/each}
-</ul>
+<div class="menu" style="bottom: {anchor.bottom}px; right: {anchor.right}px">
+  <ul role="listbox" aria-label="Dictation presets">
+    {#each presets as preset (preset.id)}
+      {@const missing = needsKey(preset, keys)}
+      <li>
+        <button
+          type="button"
+          role="option"
+          aria-selected={preset.id === currentId}
+          onpointerdown={keepFocus}
+          onclick={() => choose(preset.id)}
+        >
+          <span class="badge">{preset.badge}</span>
+          <span class="name">{preset.name}</span>
+          {#if missing}<span class="hint">needs key</span>{:else if preset.id === currentId}<span class="hint">✓</span>{/if}
+        </button>
+      </li>
+    {/each}
+  </ul>
+  <button type="button" class="add" onpointerdown={keepFocus} onclick={() => { onClose(); onAdd(); }}>Add preset…</button>
+</div>
 
 <style>
   .backdrop {
@@ -65,7 +70,6 @@
     z-index: 21;
     margin: 0;
     padding: 0.25rem;
-    list-style: none;
     min-width: 12rem;
     max-width: calc(100vw - 8px);
     max-height: 50vh;
@@ -75,6 +79,8 @@
     border-radius: var(--radius);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   }
+  ul { margin: 0; padding: 0; list-style: none; }
+  .menu .add { border-top: 1px solid var(--border); border-radius: 0; color: var(--text-dim, var(--text)); }
   .menu button {
     display: flex;
     align-items: center;

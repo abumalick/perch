@@ -43,6 +43,7 @@
     currentPresetId = null,
     presetKeys = { elevenlabs: true, openrouter: true },
     onSelectPreset = () => {},
+    onAddPreset = () => {},
     onPickFile,
     ctrl = $bindable('off'),
     alt = $bindable('off'),
@@ -59,6 +60,7 @@
     currentPresetId?: string | null;
     presetKeys?: Record<DictationProvider, boolean>;
     onSelectPreset?: (id: string) => void;
+    onAddPreset?: () => void;
     // When wired (terminal view), shows an attach-file button backed by the OS file picker.
     // Omitted elsewhere (e.g. BrowserView) so the button doesn't appear where it has no target.
     onPickFile?: (file: File) => void;
@@ -330,6 +332,7 @@
       anchor={presetAnchor}
       onSelect={onSelectPreset}
       onClose={() => (presetAnchor = null)}
+      onAdd={onAddPreset}
     />
   {/if}
   {#snippet navKey(key: Key)}

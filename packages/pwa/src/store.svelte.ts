@@ -210,6 +210,8 @@ export class PerchStore {
   // The dictation presets (the user's, or the built-in defaults) and the one the mic uses.
   dictationPresets = $state<DictationPreset[]>([...DEFAULT_PRESETS]);
   currentPresetId = $state<string | null>(null);
+  // Set by the mic menu's "Add preset…": Settings opens a new preset's form, then clears it.
+  addingPreset = $state(false);
   // Project-folder filter on the home list, persisted via settings (loaded in start()).
   // Two independent selections — the live one is whichever `folderFilterMode` names — so
   // focusing on a project for a moment doesn't discard a hide set once.
@@ -1007,6 +1009,12 @@ export class PerchStore {
   saveDictationPresets(presets: DictationPreset[]): void {
     this.dictationPresets = presets;
     this.deps.settings.setDictationPresets(presets);
+  }
+
+  addDictationPreset(): void {
+    this.back();
+    this.addingPreset = true;
+    this.view = 'settings';
   }
 
   resetDictationPresets(): void {

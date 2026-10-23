@@ -408,6 +408,7 @@
     currentPresetId={store.currentPresetId}
     presetKeys={{ elevenlabs: !!store.elevenLabsApiKey, openrouter: !!store.openRouterApiKey }}
     onSelectPreset={(id) => store.selectPreset(id)}
+    onAddPreset={() => store.addDictationPreset()}
     commands={commandShortcuts}
     onPickFile={pickFile}
 

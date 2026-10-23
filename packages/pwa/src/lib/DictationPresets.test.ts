@@ -3,9 +3,12 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import DictationPresets from './DictationPresets.svelte';
 import { DEFAULT_CLEANUP_PROMPT, DEFAULT_PRESETS, type DictationPreset } from '../core/dictation-presets';
 
-function fakeStore(presets: DictationPreset[] = [...DEFAULT_PRESETS]) {
+function fakeStore(presets: DictationPreset[] = [...DEFAULT_PRESETS], extra: { currentPresetId?: string | null; addingPreset?: boolean } = {}) {
   return {
     dictationPresets: presets,
+    currentPresetId: null as string | null,
+    addingPreset: false,
+    ...extra,
     saveDictationPresets: vi.fn(),
     resetDictationPresets: vi.fn(),
   };
@@ -17,6 +20,37 @@ describe('DictationPresets', () => {
     render(DictationPresets, { props: { store: fakeStore() as never } });
     expect(screen.getByRole('button', { name: /Edit Scribe/ })).toHaveTextContent('EL');
     expect(screen.getByRole('button', { name: /Edit Clean up/ })).toBeInTheDocument();
+  });
+
+  it('highlights the preset in use, the first one when none was picked', () => {
+    const { rerender } = render(DictationPresets, { props: { store: fakeStore(undefined, { currentPresetId: 'fast' }) as never } });
+    expect(screen.getByRole('button', { name: /Edit Fast/ }).closest('li')).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('button', { name: /Edit Scribe/ }).closest('li')).not.toHaveAttribute('aria-current');
+    expect(screen.getByText('In use')).toBeInTheDocument();
+    rerender({ store: fakeStore() as never });
+    expect(screen.getByRole('button', { name: /Edit Scribe/ }).closest('li')).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('opens a new preset when the mic menu asked for one, once', () => {
+    const store = fakeStore(undefined, { addingPreset: true });
+    render(DictationPresets, { props: { store: store as never } });
+    expect(screen.getByLabelText('Prompt')).toHaveValue(DEFAULT_CLEANUP_PROMPT);
+    expect(screen.getByLabelText('Name')).toHaveValue('');
+    expect(store.addingPreset).toBe(false);
+  });
+
+  it('edits in a modal that Cancel and Escape close without saving', async () => {
+    const store = fakeStore();
+    render(DictationPresets, { props: { store: store as never } });
+    await fireEvent.click(screen.getByRole('button', { name: /Edit Clean up/ }));
+    expect(screen.getByRole('dialog', { name: 'Edit preset' })).toHaveAttribute('aria-modal', 'true');
+    await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Add preset' }));
+    expect(screen.getByRole('dialog', { name: 'New preset' })).toBeInTheDocument();
+    await fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(store.saveDictationPresets).not.toHaveBeenCalled();
   });
 
   it('edits a preset and saves the whole list', async () => {

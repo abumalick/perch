@@ -1,16 +1,25 @@
 <script lang="ts">
   // Settings editor for the dictation presets the mic's long-press menu offers. Every change
-  // saves the whole list, which from then on replaces the built-in defaults.
+  // saves the whole list, which from then on replaces the built-in defaults. A preset is
+  // edited in a modal; only Cancel and Escape close it, so a stray tap keeps a half-typed prompt.
+  import { onMount } from 'svelte';
   import type { PerchStore } from '../store.svelte';
   import {
     DEFAULT_CLEANUP_PROMPT,
+    currentPreset,
     presetError,
     type DictationPreset,
     type DictationProvider,
   } from '../core/dictation-presets';
 
-  let { store }: { store: Pick<PerchStore, 'dictationPresets' | 'saveDictationPresets' | 'resetDictationPresets'> } =
-    $props();
+  let {
+    store,
+  }: {
+    store: Pick<
+      PerchStore,
+      'dictationPresets' | 'currentPresetId' | 'addingPreset' | 'saveDictationPresets' | 'resetDictationPresets'
+    >;
+  } = $props();
 
   type Draft = { id: string; name: string; badge: string; provider: DictationProvider; model: string; prompt: string };
 
@@ -19,6 +28,7 @@
   let confirmingReset = $state(false);
 
   const presets = $derived(store.dictationPresets);
+  const inUseId = $derived(presets.length ? currentPreset(presets, store.currentPresetId).id : null);
   const draftPreset = $derived(editing ? toPreset(editing.draft) : null);
   const draftError = $derived(draftPreset ? presetError(draftPreset) : null);
 
@@ -67,6 +77,12 @@
     store.saveDictationPresets(presets.filter((_, i) => i !== index));
   }
 
+  onMount(() => {
+    if (!store.addingPreset) return;
+    store.addingPreset = false;
+    add();
+  });
+
   function reset() {
     store.resetDictationPresets();
     confirmingReset = false;
@@ -76,10 +92,11 @@
 
 <ul class="presets">
   {#each presets as preset, i (preset.id)}
-    <li class="preset">
+    <li class="preset" class:current={preset.id === inUseId} aria-current={preset.id === inUseId ? 'true' : undefined}>
       <button type="button" class="open" aria-label="Edit {preset.name}" onclick={() => edit(i)}>
         <span class="badge">{preset.badge}</span>
         <span class="label">{preset.name}</span>
+        {#if preset.id === inUseId}<span class="in-use">In use</span>{/if}
         <span class="provider">{preset.provider === 'openrouter' ? preset.model : 'ElevenLabs'}</span>
       </button>
       <button type="button" class="icon" aria-label="Move {preset.name} up" disabled={i === 0} onclick={() => move(i, -1)}>↑</button>
@@ -91,38 +108,44 @@
   {/each}
 </ul>
 
+<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && editing) editing = null; }} />
+
+<div class="actions">
+  <button type="button" class="small" onclick={add}>Add preset</button>
+  {#if confirmingReset}
+    <button type="button" class="small danger" onclick={reset}>Confirm reset</button>
+    <button type="button" class="small" onclick={() => (confirmingReset = false)}>Keep mine</button>
+  {:else}
+    <button type="button" class="small" onclick={() => (confirmingReset = true)}>Reset to defaults</button>
+  {/if}
+</div>
+
 {#if editing}
-  <form class="editor" onsubmit={save} oninput={() => editing && (editing.touched = true)}>
-    <label for="preset-name">Name</label>
-    <input id="preset-name" bind:value={editing.draft.name} placeholder="Clean up" />
-    <label for="preset-badge">Badge</label>
-    <input id="preset-badge" bind:value={editing.draft.badge} placeholder="CL" />
-    <label for="preset-provider">Provider</label>
-    <select id="preset-provider" bind:value={editing.draft.provider}>
-      <option value="elevenlabs">ElevenLabs (plain transcript)</option>
-      <option value="openrouter">OpenRouter (model + prompt)</option>
-    </select>
-    {#if editing.draft.provider === 'openrouter'}
-      <label for="preset-model">Model</label>
-      <input id="preset-model" bind:value={editing.draft.model} placeholder="google/gemini-3.8-flash" autocapitalize="off" spellcheck="false" />
-      <label for="preset-prompt">Prompt</label>
-      <textarea id="preset-prompt" rows="8" bind:value={editing.draft.prompt}></textarea>
-    {/if}
-    {#if draftError && editing.touched}<p class="hint error" role="alert">{draftError}</p>{/if}
-    <div class="actions">
-      <button type="submit" class="small" disabled={!!draftError}>Save preset</button>
-      <button type="button" class="small" onclick={() => (editing = null)}>Cancel</button>
-    </div>
-  </form>
-{:else}
-  <div class="actions">
-    <button type="button" class="small" onclick={add}>Add preset</button>
-    {#if confirmingReset}
-      <button type="button" class="small danger" onclick={reset}>Confirm reset</button>
-      <button type="button" class="small" onclick={() => (confirmingReset = false)}>Keep mine</button>
-    {:else}
-      <button type="button" class="small" onclick={() => (confirmingReset = true)}>Reset to defaults</button>
-    {/if}
+  <div class="scrim"></div>
+  <div class="editor" role="dialog" aria-modal="true" aria-labelledby="preset-editor-title">
+    <form onsubmit={save} oninput={() => editing && (editing.touched = true)}>
+      <h2 id="preset-editor-title">{editing.index === null ? 'New preset' : 'Edit preset'}</h2>
+      <label for="preset-name">Name</label>
+      <input id="preset-name" bind:value={editing.draft.name} placeholder="Clean up" />
+      <label for="preset-badge">Badge</label>
+      <input id="preset-badge" bind:value={editing.draft.badge} placeholder="CL" />
+      <label for="preset-provider">Provider</label>
+      <select id="preset-provider" bind:value={editing.draft.provider}>
+        <option value="elevenlabs">ElevenLabs (plain transcript)</option>
+        <option value="openrouter">OpenRouter (model + prompt)</option>
+      </select>
+      {#if editing.draft.provider === 'openrouter'}
+        <label for="preset-model">Model</label>
+        <input id="preset-model" bind:value={editing.draft.model} placeholder="google/gemini-3.8-flash" autocapitalize="off" spellcheck="false" />
+        <label for="preset-prompt">Prompt</label>
+        <textarea id="preset-prompt" rows="8" bind:value={editing.draft.prompt}></textarea>
+      {/if}
+      {#if draftError && editing.touched}<p class="hint error" role="alert">{draftError}</p>{/if}
+      <div class="actions">
+        <button type="submit" class="small" disabled={!!draftError}>Save preset</button>
+        <button type="button" class="small" onclick={() => (editing = null)}>Cancel</button>
+      </div>
+    </form>
   </div>
 {/if}
 
@@ -130,6 +153,21 @@
   .presets { list-style: none; margin: 0.6rem 0 0; padding: 0; }
   .preset { display: flex; align-items: center; gap: 0.3rem; }
   .preset + .preset { border-top: 1px solid var(--border); }
+  .preset.current {
+    margin: 0 -0.5rem;
+    padding: 0 0.5rem;
+    border-radius: var(--radius);
+    background: var(--surface-press);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .preset.current + .preset,
+  .preset:has(+ .current) + .current { border-top-color: transparent; }
+  .in-use {
+    flex: 0 0 auto;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent);
+  }
   .open {
     display: flex;
     align-items: center;
@@ -165,7 +203,30 @@
   }
   .icon:disabled { opacity: 0.4; }
   .icon.danger { color: var(--danger); background: transparent; }
-  .editor { margin-top: 0.6rem; }
+  .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgba(0, 0, 0, 0.6);
+  }
+  .editor {
+    position: fixed;
+    top: max(1rem, env(safe-area-inset-top));
+    left: 1rem;
+    right: 1rem;
+    max-width: 32rem;
+    max-height: calc(100dvh - 2rem);
+    margin: 0 auto;
+    z-index: 41;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 1.25rem 1.25rem 1rem;
+    border-radius: 0.9rem;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.5);
+  }
+  h2 { margin: 0; font-size: 1.05rem; }
   label { display: block; margin-top: 0.6rem; font-size: 0.85rem; color: var(--text-dim); }
   input,
   select,

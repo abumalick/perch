@@ -10,6 +10,7 @@ const props = {
   anchor: { bottom: 50, right: 10 },
   onSelect: vi.fn(),
   onClose: vi.fn(),
+  onAdd: vi.fn(),
 };
 
 describe('DictationMenu', () => {
@@ -38,6 +39,16 @@ describe('DictationMenu', () => {
     render(DictationMenu, { props: { ...props, keys: { elevenlabs: true, openrouter: true }, onSelect, onClose } });
     await fireEvent.click(screen.getByRole('option', { name: /Fast/ }));
     expect(onSelect).toHaveBeenCalledWith('fast');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('offers to add a preset, outside the list of choices', async () => {
+    const onAdd = vi.fn();
+    const onClose = vi.fn();
+    render(DictationMenu, { props: { ...props, onAdd, onClose } });
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+    await fireEvent.click(screen.getByRole('button', { name: 'Add preset…' }));
+    expect(onAdd).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
   });
 

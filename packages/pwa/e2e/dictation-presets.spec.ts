@@ -78,3 +78,22 @@ test('a preset added in Settings is offered by the mic', async ({ page }) => {
   await holdMic(page);
   await expect(page.getByRole('option', { name: /Translate/ })).toContainText('TR');
 });
+
+test("the mic menu's Add preset opens a new preset in Settings, above the highlighted list", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('perch.dictationPreset', 'fast'));
+  await seedMachine(page, agent);
+  await openTerminal(page);
+  await holdMic(page);
+  await page.getByRole('button', { name: 'Add preset…' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'New preset' });
+  await expect(dialog).toBeVisible();
+  const box = (await dialog.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(390);
+  expect(box.y + box.height).toBeLessThanOrEqual(844);
+
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('li[aria-current="true"]')).toContainText('Fast');
+});

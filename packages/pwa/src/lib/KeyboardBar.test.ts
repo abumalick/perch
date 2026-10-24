@@ -12,6 +12,7 @@ const base = {
   onToggleSelect: vi.fn(),
   dictation: 'idle' as const,
   onDictate: vi.fn(),
+  presets: [...DEFAULT_PRESETS],
 };
 
 // jsdom does not implement PointerEvent, so fireEvent's pointer helpers drop clientX/Y.
@@ -179,7 +180,7 @@ describe('KeyboardBar', () => {
       'Option',
       'Command',
       '␣',
-      'Dictate',
+      'Dictate (Scribe)',
       'Cursor pad',
       '⏎',
       '⎋',
@@ -472,6 +473,16 @@ describe('KeyboardBar dictation presets', () => {
   const presets = [...DEFAULT_PRESETS];
   const mic = () => screen.getByRole('button', { name: /^dictate/i });
   const menu = () => screen.queryByRole('listbox', { name: 'Dictation presets' });
+
+  it('has no mic until some preset has its key', () => {
+    render(KeyboardBar, { props: { ...base, presetKeys: { elevenlabs: false, openrouter: false } } });
+    expect(screen.queryByRole('button', { name: /^dictate/i })).toBeNull();
+  });
+
+  it('dictates with a preset that has a key when the chosen one has none', () => {
+    render(KeyboardBar, { props: { ...base, currentPresetId: 'scribe', presetKeys: { elevenlabs: false, openrouter: true } } });
+    expect(mic()).toHaveAccessibleName('Dictate (Clean up)');
+  });
 
   it('shows the current preset as a badge and in the label', () => {
     render(KeyboardBar, { props: { ...base, presets, currentPresetId: 'clean' } });

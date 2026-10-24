@@ -406,7 +406,7 @@
     onDictate={() => store.toggleDictation()}
     presets={store.dictationPresets}
     currentPresetId={store.currentPresetId}
-    presetKeys={{ elevenlabs: !!store.elevenLabsApiKey, openrouter: !!store.openRouterApiKey }}
+    presetKeys={store.presetKeys}
     onSelectPreset={(id) => store.selectPreset(id)}
     onAddPreset={() => store.addDictationPreset()}
     commands={commandShortcuts}

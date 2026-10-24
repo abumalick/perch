@@ -89,10 +89,21 @@ export function parsePresets(raw: string | null): DictationPreset[] | null {
   return presets.length ? presets : null;
 }
 
-export function currentPreset(presets: readonly DictationPreset[], id: string | null): DictationPreset {
-  return presets.find((p) => p.id === id) ?? presets[0]!;
-}
-
 export function needsKey(p: DictationPreset, keys: Record<DictationProvider, boolean>): boolean {
   return !keys[p.provider];
+}
+
+export function hasUsablePreset(presets: readonly DictationPreset[], keys: Record<DictationProvider, boolean>): boolean {
+  return presets.some((p) => !needsKey(p, keys));
+}
+
+// The preset dictation uses: the chosen one if its provider has a key, else the first that does.
+// With no key at all there is no mic, so the plain lookup is only a fallback.
+export function currentPreset(
+  presets: readonly DictationPreset[],
+  id: string | null,
+  keys: Record<DictationProvider, boolean>,
+): DictationPreset {
+  const usable = presets.filter((p) => !needsKey(p, keys));
+  return usable.find((p) => p.id === id) ?? usable[0] ?? presets.find((p) => p.id === id) ?? presets[0]!;
 }

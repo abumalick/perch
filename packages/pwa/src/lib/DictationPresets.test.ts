@@ -3,10 +3,10 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import DictationPresets from './DictationPresets.svelte';
 import { DEFAULT_CLEANUP_PROMPT, DEFAULT_PRESETS, type DictationPreset } from '../core/dictation-presets';
 
-function fakeStore(presets: DictationPreset[] = [...DEFAULT_PRESETS], extra: { currentPresetId?: string | null; addingPreset?: boolean } = {}) {
+function fakeStore(presets: DictationPreset[] = [...DEFAULT_PRESETS], extra: { currentPreset?: DictationPreset; addingPreset?: boolean } = {}) {
   return {
     dictationPresets: presets,
-    currentPresetId: null as string | null,
+    currentPreset: presets[0],
     addingPreset: false,
     ...extra,
     saveDictationPresets: vi.fn(),
@@ -22,13 +22,11 @@ describe('DictationPresets', () => {
     expect(screen.getByRole('button', { name: /Edit Clean up/ })).toBeInTheDocument();
   });
 
-  it('highlights the preset in use, the first one when none was picked', () => {
-    const { rerender } = render(DictationPresets, { props: { store: fakeStore(undefined, { currentPresetId: 'fast' }) as never } });
+  it('highlights the preset in use', () => {
+    render(DictationPresets, { props: { store: fakeStore(undefined, { currentPreset: DEFAULT_PRESETS[2] }) as never } });
     expect(screen.getByRole('button', { name: /Edit Fast/ }).closest('li')).toHaveAttribute('aria-current', 'true');
     expect(screen.getByRole('button', { name: /Edit Scribe/ }).closest('li')).not.toHaveAttribute('aria-current');
     expect(screen.getByText('In use')).toBeInTheDocument();
-    rerender({ store: fakeStore() as never });
-    expect(screen.getByRole('button', { name: /Edit Scribe/ }).closest('li')).toHaveAttribute('aria-current', 'true');
   });
 
   it('opens a new preset when the mic menu asked for one, once', () => {

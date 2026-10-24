@@ -123,7 +123,10 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   model that hears it and follows the preset's prompt (`adapters/openrouter-transcriber.ts`);
   `PresetTranscriber` picks one per dictation from the current preset. A long press (500 ms,
   `HOLD_MS`) on the mic opens the presets; its badge shows the current one; Settings edits them
-  and holds both keys. Things not to "simplify":
+  and holds both keys. **Only a preset whose provider has a key can be used**: the current
+  preset is the chosen one if it has its key, else the first that does (`currentPreset`), a
+  keyless one is disabled in the menu, and with no key at all the mic is not rendered.
+  Things not to "simplify":
   - **The defaults live in code until the user edits the list** (`DEFAULT_PRESETS`, nothing
     seeded into `perch.dictationPresets`), so an update can replace a model id OpenRouter has
     retired for everyone who never customised. Nothing personal ships: the default prompt

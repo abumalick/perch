@@ -29,7 +29,7 @@
   import { startGesture, moveGesture, type PadState, type PadDirection } from '../core/cursor-pad';
   import CommandPicker from './CommandPicker.svelte';
   import DictationMenu from './DictationMenu.svelte';
-  import { currentPreset, type DictationPreset, type DictationProvider } from '../core/dictation-presets';
+  import { currentPreset, hasUsablePreset, type DictationPreset, type DictationProvider } from '../core/dictation-presets';
 
   let {
     send,
@@ -137,7 +137,8 @@
   // tests do) is never suppressed.
   let suppressClick = false;
 
-  const preset = $derived(presets.length ? currentPreset(presets, currentPresetId) : null);
+  // No mic at all until some preset's provider has a key: a tap could only fail.
+  const preset = $derived(hasUsablePreset(presets, presetKeys) ? currentPreset(presets, currentPresetId, presetKeys) : null);
   let mic = $state<HTMLButtonElement | null>(null);
   let presetAnchor = $state<{ bottom: number; right: number } | null>(null);
 
@@ -305,13 +306,14 @@
     use:press
     onclick={() => (meta = cycleModifier(meta))}>⌘</button>
   {@render navKey(spaceKey)}
+  {#if preset}
   <button
     type="button"
     class="mic"
     class:recording={dictation === 'recording'}
     class:error={dictation === 'error'}
     bind:this={mic}
-    aria-label={preset ? `Dictate (${preset.name})` : 'Dictate'}
+    aria-label="Dictate ({preset.name})"
     aria-pressed={dictation === 'recording'}
     disabled={dictation === 'transcribing'}
     use:press={{ fire: onDictate, hold: dictation === 'idle' || dictation === 'error' ? openPresets : undefined }}
@@ -323,7 +325,8 @@
       }
       onDictate();
     }}
-    >{dictation === 'transcribing' ? '⏳' : dictation === 'error' ? '⚠️' : '🎤'}{#if preset}<span class="badge" aria-hidden="true">{preset.badge}</span>{/if}</button>
+    >{dictation === 'transcribing' ? '⏳' : dictation === 'error' ? '⚠️' : '🎤'}<span class="badge" aria-hidden="true">{preset.badge}</span></button>
+  {/if}
   {#if presetAnchor && preset}
     <DictationMenu
       {presets}

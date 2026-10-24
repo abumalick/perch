@@ -25,10 +25,10 @@ describe('DictationMenu', () => {
     expect(screen.getByRole('option', { name: /Scribe/ })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('flags a preset whose provider has no key, leaving it selectable', () => {
+  it('disables a preset whose provider has no key, and says why', () => {
     render(DictationMenu, { props });
     const clean = screen.getByRole('option', { name: /Clean up/ });
-    expect(clean).toBeEnabled();
+    expect(clean).toBeDisabled();
     expect(clean).toHaveTextContent('needs key');
     expect(screen.getByRole('option', { name: /Scribe/ })).not.toHaveTextContent('needs key');
   });

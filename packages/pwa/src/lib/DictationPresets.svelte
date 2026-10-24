@@ -6,7 +6,6 @@
   import type { PerchStore } from '../store.svelte';
   import {
     DEFAULT_CLEANUP_PROMPT,
-    currentPreset,
     presetError,
     type DictationPreset,
     type DictationProvider,
@@ -17,7 +16,7 @@
   }: {
     store: Pick<
       PerchStore,
-      'dictationPresets' | 'currentPresetId' | 'addingPreset' | 'saveDictationPresets' | 'resetDictationPresets'
+      'dictationPresets' | 'currentPreset' | 'addingPreset' | 'saveDictationPresets' | 'resetDictationPresets'
     >;
   } = $props();
 
@@ -28,7 +27,7 @@
   let confirmingReset = $state(false);
 
   const presets = $derived(store.dictationPresets);
-  const inUseId = $derived(presets.length ? currentPreset(presets, store.currentPresetId).id : null);
+  const inUseId = $derived(store.currentPreset?.id);
   const draftPreset = $derived(editing ? toPreset(editing.draft) : null);
   const draftError = $derived(draftPreset ? presetError(draftPreset) : null);
 
@@ -130,10 +129,12 @@
       <label for="preset-badge">Badge</label>
       <input id="preset-badge" bind:value={editing.draft.badge} placeholder="CL" />
       <label for="preset-provider">Provider</label>
-      <select id="preset-provider" bind:value={editing.draft.provider}>
-        <option value="elevenlabs">ElevenLabs (plain transcript)</option>
-        <option value="openrouter">OpenRouter (model + prompt)</option>
-      </select>
+      <div class="select">
+        <select id="preset-provider" bind:value={editing.draft.provider}>
+          <option value="elevenlabs">ElevenLabs (plain transcript)</option>
+          <option value="openrouter">OpenRouter (model + prompt)</option>
+        </select>
+      </div>
       {#if editing.draft.provider === 'openrouter'}
         <label for="preset-model">Model</label>
         <input id="preset-model" bind:value={editing.draft.model} placeholder="google/gemini-3.8-flash" autocapitalize="off" spellcheck="false" />
@@ -240,7 +241,18 @@
   select { min-height: 44px; }
   /* The app's global field style covers input and select only, and WebKit keeps drawing its
      own light select unless its appearance is reset. 16px keeps iOS from zooming on focus. */
-  select { -webkit-appearance: none; appearance: none; }
+  select { -webkit-appearance: none; appearance: none; padding-right: 2rem; }
+  /* Resetting the appearance drops the native arrow, so draw one. */
+  .select { position: relative; }
+  .select::after {
+    content: '▾';
+    position: absolute;
+    right: 0.8rem;
+    top: calc(50% + 0.15rem);
+    transform: translateY(-50%);
+    color: var(--text-dim);
+    pointer-events: none;
+  }
   textarea {
     padding: 0.5rem 0.7rem;
     border: 1px solid var(--border);

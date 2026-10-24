@@ -1,8 +1,7 @@
 <script lang="ts">
   // The mic's long-press menu: pick the dictation preset the next recording uses. Positioned
   // fixed against the viewport like CommandPicker, since the keyboard bar clips its overflow.
-  // A preset whose provider has no key stays selectable, only flagged: dictating with it then
-  // says which key to set, and a user with no key at all can still switch back.
+  // A preset whose provider has no key is shown but disabled; with no key at all there is no mic.
   import { needsKey, type DictationPreset, type DictationProvider } from '../core/dictation-presets';
 
   let {
@@ -43,6 +42,7 @@
           type="button"
           role="option"
           aria-selected={preset.id === currentId}
+        disabled={missing}
           onpointerdown={keepFocus}
           onclick={() => choose(preset.id)}
         >
@@ -96,6 +96,7 @@
     touch-action: manipulation;
   }
   .menu button:active { background: var(--surface-press); }
+  .menu button:disabled { opacity: 0.5; }
   .menu button[aria-selected='true'] { background: var(--surface-press); }
   .badge {
     min-width: 2rem;

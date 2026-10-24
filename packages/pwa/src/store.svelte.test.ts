@@ -2134,6 +2134,8 @@ describe('PerchStore dictation presets', () => {
   it('starts on the first preset, and remembers the one picked', () => {
     const { store, storage } = build();
     store.start();
+    store.setElevenLabsApiKey('sk-el');
+    store.setOpenRouterApiKey('sk-or');
     expect(store.currentPreset.id).toBe('scribe');
     store.selectPreset('clean');
     expect(store.currentPreset.id).toBe('clean');
@@ -2143,11 +2145,20 @@ describe('PerchStore dictation presets', () => {
   it('saves an edited list, falling back to the first preset when the current one is gone', () => {
     const { store } = build();
     store.start();
+    store.setElevenLabsApiKey('sk-el');
+    store.setOpenRouterApiKey('sk-or');
     store.selectPreset('fast');
     const list = DEFAULT_PRESETS.filter((p) => p.id !== 'fast');
     store.saveDictationPresets(list);
     expect(store.dictationPresets).toEqual(list);
     expect(store.currentPreset.id).toBe('scribe');
+  });
+
+  it('uses a preset that has a key when the chosen one has none', () => {
+    const { store } = build();
+    store.start();
+    store.setOpenRouterApiKey('sk-or');
+    expect(store.currentPreset.id).toBe('clean');
   });
 
   it('leaves the terminal for Settings with a new preset to fill in', () => {

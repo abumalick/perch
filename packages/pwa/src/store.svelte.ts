@@ -28,7 +28,7 @@ export interface DeviceKeyInfo {
 }
 import { SpeechToText, type DictationState } from './core/speech-to-text';
 import { mergeKeyterms } from './core/keyterms';
-import { DEFAULT_PRESETS, currentPreset, type DictationPreset } from './core/dictation-presets';
+import { DEFAULT_PRESETS, currentPreset, type DictationPreset, type DictationProvider } from './core/dictation-presets';
 import type { AudioRecorder } from './core/ports/audio-recorder';
 import type { Transcriber } from './core/ports/transcriber';
 
@@ -997,8 +997,12 @@ export class PerchStore {
     this.deps.settings.setOpenRouterApiKey(key);
   }
 
+  get presetKeys(): Record<DictationProvider, boolean> {
+    return { elevenlabs: !!this.elevenLabsApiKey, openrouter: !!this.openRouterApiKey };
+  }
+
   get currentPreset(): DictationPreset {
-    return currentPreset(this.dictationPresets, this.currentPresetId);
+    return currentPreset(this.dictationPresets, this.currentPresetId, this.presetKeys);
   }
 
   selectPreset(id: string): void {

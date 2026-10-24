@@ -31,7 +31,15 @@ async function holdMic(page: Page) {
   await page.mouse.up();
 }
 
+test('there is no mic until a dictation key is set', async ({ page }) => {
+  await seedMachine(page, agent);
+  await openTerminal(page);
+  await expect(page.getByRole('toolbar', { name: 'Terminal keys' }).getByRole('button', { name: '⏎' })).toBeVisible();
+  await expect(mic(page)).toHaveCount(0);
+});
+
 test('the mic shows the current preset, and a long press opens the presets on screen', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('perch.elevenLabsApiKey', 'sk-el-test'));
   await seedMachine(page, agent);
   await openTerminal(page);
   await expect(mic(page)).toHaveAccessibleName('Dictate (Scribe)');
@@ -45,6 +53,7 @@ test('the mic shows the current preset, and a long press opens the presets on sc
   expect(box.y).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width).toBeLessThanOrEqual(390);
   await expect(menu.getByRole('option', { name: /Clean up/ })).toContainText('needs key');
+  await expect(menu.getByRole('option', { name: /Clean up/ })).toBeDisabled();
   // The press ended when the menu opened, though the finger lifted over the backdrop.
   await expect(mic(page)).not.toHaveClass(/pressed/);
 });
@@ -65,6 +74,7 @@ test('picking a preset changes the badge and survives a reload', async ({ page }
 });
 
 test('a preset added in Settings is offered by the mic', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('perch.openRouterApiKey', 'sk-or-test'));
   await seedMachine(page, agent);
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings' }).click();
@@ -80,7 +90,10 @@ test('a preset added in Settings is offered by the mic', async ({ page }) => {
 });
 
 test("the mic menu's Add preset opens a new preset in Settings, above the highlighted list", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('perch.dictationPreset', 'fast'));
+  await page.addInitScript(() => {
+    localStorage.setItem('perch.openRouterApiKey', 'sk-or-test');
+    localStorage.setItem('perch.dictationPreset', 'fast');
+  });
   await seedMachine(page, agent);
   await openTerminal(page);
   await holdMic(page);

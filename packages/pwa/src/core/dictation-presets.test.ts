@@ -3,6 +3,7 @@ import {
   DEFAULT_CLEANUP_PROMPT,
   DEFAULT_PRESETS,
   currentPreset,
+  hasUsablePreset,
   needsKey,
   parsePresets,
   presetError,
@@ -58,13 +59,34 @@ describe('parsePresets', () => {
 });
 
 describe('currentPreset', () => {
+  const both = { elevenlabs: true, openrouter: true };
+  const openRouterOnly = { elevenlabs: false, openrouter: true };
+
   it('finds the preset by id', () => {
-    expect(currentPreset(DEFAULT_PRESETS, 'clean').id).toBe('clean');
+    expect(currentPreset(DEFAULT_PRESETS, 'clean', both).id).toBe('clean');
   });
 
   it('falls back to the first preset for an unknown or missing id', () => {
-    expect(currentPreset(DEFAULT_PRESETS, 'gone').id).toBe('scribe');
-    expect(currentPreset(DEFAULT_PRESETS, null).id).toBe('scribe');
+    expect(currentPreset(DEFAULT_PRESETS, 'gone', both).id).toBe('scribe');
+    expect(currentPreset(DEFAULT_PRESETS, null, both).id).toBe('scribe');
+  });
+
+  it('skips presets whose provider has no key', () => {
+    expect(currentPreset(DEFAULT_PRESETS, null, openRouterOnly).id).toBe('clean');
+    expect(currentPreset(DEFAULT_PRESETS, 'scribe', openRouterOnly).id).toBe('clean');
+    expect(currentPreset(DEFAULT_PRESETS, 'fast', openRouterOnly).id).toBe('fast');
+  });
+
+  it('keeps the old choice when no preset has a key', () => {
+    expect(currentPreset(DEFAULT_PRESETS, 'fast', { elevenlabs: false, openrouter: false }).id).toBe('fast');
+  });
+});
+
+describe('hasUsablePreset', () => {
+  it('is true only when some preset has its key', () => {
+    expect(hasUsablePreset(DEFAULT_PRESETS, { elevenlabs: false, openrouter: true })).toBe(true);
+    expect(hasUsablePreset(DEFAULT_PRESETS, { elevenlabs: false, openrouter: false })).toBe(false);
+    expect(hasUsablePreset([clean], { elevenlabs: true, openrouter: false })).toBe(false);
   });
 });
 

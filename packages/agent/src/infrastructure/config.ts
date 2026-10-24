@@ -16,6 +16,7 @@ export interface AgentConfig {
   launchersPath: string;
   keytermsPath: string;
   clientLogPath: string;
+  hookEventLogPath: string;
   workspaceLogPath: string;
   parkedStorePath: string;
   liveSnapshotPath: string;
@@ -65,6 +66,7 @@ export function loadConfig(env: NodeJS.ProcessEnv, home: string): AgentConfig {
     // serve every machine; PERCH_KEYTERMS_PATH points at it directly instead.
     keytermsPath: env.PERCH_KEYTERMS_PATH ?? join(home, '.perch', 'keyterms.txt'),
     clientLogPath: join(home, '.perch', 'client-log.jsonl'),
+    hookEventLogPath: join(home, '.perch', 'hook-events.jsonl'),
     workspaceLogPath: join(home, '.perch', 'workspace-log.jsonl'),
     parkedStorePath: join(home, '.perch', 'parked.json'),
     liveSnapshotPath: join(home, '.perch', 'live.json'),

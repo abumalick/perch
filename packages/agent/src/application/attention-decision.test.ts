@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { attentionDecision } from './attention-decision';
+import { attentionDecision as decide } from './attention-decision';
+
+// The cases below pin what the decision does; `reason` (only for the hook-event log) has its own.
+function attentionDecision(input: Parameters<typeof decide>[0]) {
+  const { reason: _reason, ...rest } = decide(input);
+  return rest;
+}
 
 // Payloads shaped like a real `claude` 2.1.210 run's; ids are placeholders.
 const runningShell = {
@@ -53,6 +59,46 @@ describe('attentionDecision', () => {
         status: null,
         deferral: 'set',
       });
+    });
+
+    // Shapes from the claude 2.1.310 Stop payload builder. The Monitor tool and `until` loops
+    // run as `shell` tasks; an MCP monitor or task names its `server`.
+    it.each([
+      ['a workflow', { id: 'w1', type: 'workflow', status: 'running', name: 'review' }],
+      ['a teammate', { id: 't1', type: 'teammate', status: 'running' }],
+      ['a cloud session', { id: 'r1', type: 'cloud session', status: 'running' }],
+      ['an MCP monitor', { id: 'm1', type: 'monitor', status: 'running', server: 'slack', tool: 'watch' }],
+      ['an MCP task', { id: 'm2', type: 'MCP task', status: 'pending', server: 'jobs', tool: 'run' }],
+    ])('defers while %s is running', (_label, task) => {
+      expect(attentionDecision({ event: 'Stop', claude: { background_tasks: [task] }, wasDeferred: false })).toEqual({
+        status: null,
+        deferral: 'set',
+      });
+    });
+
+    // A watched artifact is a `monitor` task with no server, running for the session's whole
+    // life: counting it kept the workspace `working` until it was closed. Nor does Claude's own
+    // housekeeping, or a kind this code has never seen, say the session is busy.
+    it.each([
+      ['an artifact watch', { id: 'a1', type: 'monitor', status: 'running', description: 'Watching artifact' }],
+      ['a dream', { id: 'd1', type: 'dream', status: 'running' }],
+      ['an auto-mode scan', { id: 's1', type: 'auto-mode scan', status: 'running' }],
+      ['an unknown kind', { id: 'u1', type: 'something-new', status: 'running' }],
+    ])('needs feedback when only %s is running', (_label, task) => {
+      expect(attentionDecision({ event: 'Stop', claude: { background_tasks: [task] }, wasDeferred: true })).toEqual({
+        status: 'needs-feedback',
+        deferral: 'clear',
+      });
+    });
+
+    it('defers when real work runs beside an artifact watch', () => {
+      const tasks = [
+        { id: 'a1', type: 'monitor', status: 'running' },
+        { id: 'b1', type: 'shell', status: 'running', command: 'sleep 300' },
+      ];
+      expect(attentionDecision({ event: 'Stop', claude: { background_tasks: tasks }, wasDeferred: false }).deferral).toBe(
+        'set',
+      );
     });
 
     it('needs feedback when no background task is running', () => {
@@ -353,6 +399,77 @@ describe('attentionDecision', () => {
         deferral: 'clear',
         question: 'clear',
       });
+    });
+  });
+
+  // Claude Code fires StopFailure instead of Stop when an API error (usage limit, overload, a
+  // dropped connection) ends the turn: the turn is over, whatever it was waiting on.
+  describe('StopFailure', () => {
+    it('needs feedback and drops every mark', () => {
+      expect(
+        attentionDecision({
+          event: 'StopFailure',
+          claude: runningShell,
+          wasDeferred: true,
+          messagedLast: true,
+          questionPending: true,
+        }),
+      ).toEqual({ status: 'needs-feedback', deferral: 'clear', messagedLast: 'clear', question: 'clear' });
+    });
+  });
+
+  // A new `claude` process in the workspace (started, resumed, or `/clear`ed) has no turn in
+  // flight and none of the background tasks the old one was parked on.
+  describe('SessionStart', () => {
+    it.each(['startup', 'resume', 'clear', 'fork'])('a %s drops every mark and ends a stale working', (source) => {
+      expect(
+        attentionDecision({
+          event: 'SessionStart',
+          claude: { source },
+          wasDeferred: true,
+          messagedLast: true,
+          questionPending: true,
+          currentStatus: 'working',
+        }),
+      ).toEqual({ status: 'needs-feedback', deferral: 'clear', messagedLast: 'clear', question: 'clear' });
+    });
+
+    // An unpark sets `idle` and its resume fires SessionStart; a status the user or a hook set
+    // is not this event's to overwrite.
+    it.each(['idle', 'needs-feedback', 'finished', undefined] as const)('leaves a %s status alone', (currentStatus) => {
+      expect(
+        attentionDecision({ event: 'SessionStart', claude: { source: 'resume' }, wasDeferred: false, currentStatus }),
+      ).toEqual({ status: null, deferral: 'clear', messagedLast: 'clear', question: 'clear' });
+    });
+
+    // Auto-compaction fires SessionStart in the middle of a turn.
+    it.each([{ source: 'compact' }, {}, undefined])('ignores a compaction or an unknown source (%o)', (claude) => {
+      expect(
+        attentionDecision({ event: 'SessionStart', claude, wasDeferred: true, messagedLast: true, currentStatus: 'working' }),
+      ).toEqual({ status: null, deferral: 'keep' });
+    });
+  });
+
+  describe('reason', () => {
+    it.each([
+      [{ event: 'Stop', claude: runningShell, wasDeferred: false }, 'stop-background'],
+      [{ event: 'Stop', claude: {}, wasDeferred: false, messagedLast: true }, 'stop-messaged'],
+      [{ event: 'Stop', claude: {}, wasDeferred: false }, 'stop'],
+      [{ event: 'StopFailure', claude: {}, wasDeferred: false }, 'stop-failure'],
+      [{ event: 'Notification', claude: idlePrompt, wasDeferred: true }, 'idle-suppressed'],
+      [{ event: 'Notification', claude: idlePrompt, wasDeferred: false }, 'notification'],
+      [{ event: 'UserPromptSubmit', wasDeferred: false }, 'prompt'],
+      [{ event: 'PermissionRequest', wasDeferred: false }, 'permission'],
+      [{ event: 'PreToolUse', claude: subagentToolCall, wasDeferred: false }, 'subagent-tool'],
+      [{ event: 'PreToolUse', claude: { tool_name: 'Bash' }, wasDeferred: false, questionPending: true }, 'question-pending'],
+      [{ event: 'PreToolUse', claude: { tool_name: 'request_user_input' }, wasDeferred: false }, 'question'],
+      [{ event: 'PreToolUse', claude: { tool_name: 'AskUserQuestion' }, wasDeferred: false }, 'blocking-tool'],
+      [{ event: 'PostToolUse', claude: ownMessage, wasDeferred: false }, 'tool'],
+      [{ event: 'SessionStart', claude: { source: 'clear' }, wasDeferred: false, currentStatus: 'working' }, 'session-start'],
+      [{ event: 'SessionStart', claude: { source: 'compact' }, wasDeferred: false }, 'compact'],
+      [{ event: 'Whatever', wasDeferred: false }, 'unknown-event'],
+    ] as const)('%o → %s', (input, reason) => {
+      expect(decide(input).reason).toBe(reason);
     });
   });
 

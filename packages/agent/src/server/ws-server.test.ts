@@ -33,6 +33,7 @@ import type { ConnectUpstream } from '../ports/browser-stream-port';
 import type { SystemStatsPort } from '../ports/system-stats-port';
 import { connectBrowserUpstream } from '../infrastructure/ws-browser-stream-socket';
 import { wsFrameSocket } from '../infrastructure/ws-frame-socket';
+import type { HookEventEntry } from '../ports/hook-event-log-port';
 import type { AgentMessage } from '@perch/contracts';
 import {
   SecureSession,
@@ -159,6 +160,7 @@ function testConfig(home: string, overrides: Partial<AgentConfig> = {}): AgentCo
     launchersPath: join(home, 'launchers.json'),
     keytermsPath: join(home, 'keyterms.txt'),
     clientLogPath: join(home, 'client-log.jsonl'),
+    hookEventLogPath: join(home, 'hook-events.jsonl'),
     workspaceLogPath: join(home, 'workspace-log.jsonl'),
     parkedStorePath: join(home, 'parked.json'),
     liveSnapshotPath: join(home, 'live.json'),
@@ -905,6 +907,27 @@ describe('WsServer (E2E, real tmux)', () => {
         s.close();
       });
     }
+  });
+
+  it('records each accepted hook event in the hook-event log', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-hooklog-'));
+    dirs.push(home);
+    const config = testConfig(home);
+    const entries: HookEventEntry[] = [];
+    server = new WsServer({
+      ...makeServerDeps(config, noClientLog),
+      hookEventLog: { append: async (e) => void entries.push(e) },
+    });
+    await server.start();
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/hooks`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer hook-secret' },
+      body: JSON.stringify({ sessionName: 'perch-x', event: 'StopFailure', claude: { error: 'overloaded' } }),
+    });
+    expect(res.status).toBe(204);
+    expect(entries).toMatchObject([
+      { workspace: 'perch-x', event: 'StopFailure', error: 'overloaded', reason: 'stop-failure', after: { status: 'needs-feedback' } },
+    ]);
   });
 
   it('rejects a /hooks POST without the bearer token', async () => {

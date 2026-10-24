@@ -956,13 +956,35 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   `Stop` would overwrite anything Claude tried to set, so auto-`finished` isn't possible
   without a side channel; intentionally out of scope). Mapping `Pre`/`PostToolUse` to
   `working` is what unsticks a stale "Needs you" after a mid-task permission/idle
-  `Notification` once Claude resumes — keep all five events registered in `install-hooks.ts`.
+  `Notification` once Claude resumes — keep these five registered in `install-hooks.ts`, beside the two
+  that end a stale `working`: **`StopFailure`**, which Claude Code fires *instead of*
+  `Stop` when an API error (usage limit, overload, dropped connection) ends the turn, maps to
+  `needs-feedback`; and **`SessionStart`** with source `startup`/`resume`/`clear`/`fork` (a new
+  `claude` process or conversation, which has none of the old one's background tasks) drops all
+  three in-memory marks and turns a `working` into `needs-feedback`, leaving any other status
+  alone (an unpark sets `idle` just before its resume fires it). Source `compact` fires
+  mid-turn on auto-compaction and changes nothing. An Esc interrupt fires no hook at all, so it
+  still leaves `working` behind.
+- **Every hook event is logged with the rule that decided it.** `applyHookEvent` appends one
+  JSON line per event to a gitignored `~/.perch/hook-events.jsonl` (`FileHookEventLog`, moved to
+  `.1` past 50 MB): workspace, event, session id, tool, notification type, source, whether a
+  subagent made the call, the Stop's `background_tasks` (trimmed), a `StopFailure`'s `error`,
+  the `reason` (`AttentionReason`), and the status and three marks before and after. Never the
+  prompt, a tool's input or output, or the assistant's message. It is what answers "why is this
+  workspace still `working`": `rg '"workspace":"perch-xxxx"' ~/.perch/hook-events.jsonl | tail`.
+  Best-effort: a failed write never changes the decision or the 204. No PWA/UI.
 - **A session parked on background work stays `working`, and the 60s idle notification must
   not undo it.** `perch-hook.sh` forwards Claude's hook stdin verbatim as a nested `claude`
   object on `POST /hooks`; `attention-decision.ts` reads `background_tasks` from it. A `Stop`
-  with any `background_tasks[].status === 'running'` (covers backgrounded shells **and**
-  background subagents) leaves the session at `working` and marks it deferred in an in-memory
-  `Set` on `WsServer`. This is **not** an LLM judgement — the Stop payload carries the answer
+  with a running or pending task the session is **waiting on** leaves the session at `working`
+  and marks it deferred in an in-memory `Set` on `WsServer`. That is a task of type `shell`
+  (backgrounded Bash, and also the Monitor tool and `until` loops), `subagent`, `workflow`,
+  `teammate` or `cloud session`, or one naming a `server` (an MCP monitor or task). **A watched
+  artifact is a `monitor` task with no `server` that lasts the session's whole life**, so it
+  must not count: it pinned every session with a `⧉` watch at `working` until closed. Nor do
+  Claude's housekeeping kinds (`dream`, `auto-mode scan`, `memory import`) or any kind not on
+  the list: a wrong "Needs you" costs a glance, a wrong `working` hides a waiting session
+  indefinitely. (Kinds read from the claude 2.1.310 Stop payload builder.) This is **not** an LLM judgement — the Stop payload carries the answer
   as data (`background_tasks`, `last_assistant_message`, `session_crons` — all undocumented,
   so read defensively; anything unexpected falls back to `needs-feedback`, i.e. the old
   behaviour). **Claude Code emits a `Notification` with `notification_type: 'idle_prompt'`

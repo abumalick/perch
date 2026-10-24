@@ -1,12 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { applyHookEvent } from './apply-hook-event';
+import type { WorkspaceStatus } from '@perch/contracts';
 import type { StatusStorePort } from '../ports/status-store-port';
+import type { HookEventEntry } from '../ports/hook-event-log-port';
 
-function fakeStore() {
+function fakeStore(initial: Record<string, WorkspaceStatus> = {}) {
   const sets: Array<[string, string]> = [];
   const sessionIds: Array<[string, string]> = [];
-  const store: Pick<StatusStorePort, 'set' | 'setClaudeSessionId'> = {
-    set: (id, s) => sets.push([id, s]),
+  const current = new Map(Object.entries(initial));
+  const store: Pick<StatusStorePort, 'get' | 'set' | 'setClaudeSessionId'> = {
+    get: (id) => current.get(id),
+    set: (id, s) => {
+      sets.push([id, s]);
+      current.set(id, s);
+    },
     setClaudeSessionId: (id, sessionId) => sessionIds.push([id, sessionId]),
   };
   return { store, sets, sessionIds };
@@ -154,6 +161,111 @@ describe('applyHookEvent', () => {
     );
     expect(f.sessionIds).toEqual([]);
     expect(f.sets).toEqual([['perch-aa', 'working']]);
+  });
+
+  it('a resumed session ends a working the previous process left behind', () => {
+    const f = fakeStore({ 'perch-aa': 'working' });
+    const deps = { store: f.store, deferred: new Set(['perch-aa']), messagedLast: new Set<string>(), questionPending: new Set<string>() };
+    applyHookEvent(deps, { sessionName: 'perch-aa', event: 'SessionStart', claude: { source: 'resume' } });
+    expect(f.sets).toEqual([['perch-aa', 'needs-feedback']]);
+    expect(deps.deferred.has('perch-aa')).toBe(false);
+  });
+
+  it('an unparked session keeps the idle its unpark set', () => {
+    const f = fakeStore({ 'perch-aa': 'idle' });
+    applyHookEvent(
+      { store: f.store, deferred: new Set(), messagedLast: new Set(), questionPending: new Set<string>() },
+      { sessionName: 'perch-aa', event: 'SessionStart', claude: { source: 'resume' } },
+    );
+    expect(f.sets).toEqual([]);
+  });
+
+  describe('hook-event log', () => {
+    function logged(initial: Record<string, WorkspaceStatus> = {}) {
+      const entries: HookEventEntry[] = [];
+      const f = fakeStore(initial);
+      const deps = {
+        store: f.store,
+        deferred: new Set<string>(),
+        messagedLast: new Set<string>(),
+        questionPending: new Set<string>(),
+        log: { append: async (e: HookEventEntry) => void entries.push(e) },
+      };
+      return { entries, deps };
+    }
+
+    it('records the event, the rule that decided, and the status and marks around it', () => {
+      const { entries, deps } = logged({ 'perch-aa': 'working' });
+      applyHookEvent(deps, {
+        sessionName: 'perch-aa',
+        event: 'Stop',
+        claude: { session_id: 'sid-1', ...runningTask, last_assistant_message: 'private' },
+      });
+      expect(entries).toEqual([
+        {
+          workspace: 'perch-aa',
+          event: 'Stop',
+          sessionId: 'sid-1',
+          backgroundTasks: runningTask.background_tasks,
+          reason: 'stop-background',
+          before: { status: 'working', deferred: false, messagedLast: false, questionPending: false },
+          after: { status: 'working', deferred: true, messagedLast: false, questionPending: false },
+        },
+      ]);
+    });
+
+    it('keeps the fields that place an event and never the conversation', () => {
+      const { entries, deps } = logged();
+      applyHookEvent(deps, {
+        sessionName: 'perch-aa',
+        event: 'PreToolUse',
+        agent: 'codex',
+        claude: { tool_name: 'Bash', tool_input: { command: 'cat secrets' }, agent_id: 'a1', prompt: 'hi' },
+      });
+      applyHookEvent(deps, { sessionName: 'perch-aa', event: 'Notification', claude: idlePrompt });
+      applyHookEvent(deps, { sessionName: 'perch-aa', event: 'SessionStart', claude: { source: 'compact' } });
+      applyHookEvent(deps, {
+        sessionName: 'perch-aa',
+        event: 'StopFailure',
+        claude: { error: 'rate_limit', last_assistant_message: 'private' },
+      });
+      expect(entries.map(({ before: _b, after: _a, ...rest }) => rest)).toEqual([
+        { workspace: 'perch-aa', event: 'PreToolUse', agent: 'codex', tool: 'Bash', subagent: true, reason: 'subagent-tool' },
+        { workspace: 'perch-aa', event: 'Notification', notificationType: 'idle_prompt', reason: 'notification' },
+        { workspace: 'perch-aa', event: 'SessionStart', source: 'compact', reason: 'compact' },
+        { workspace: 'perch-aa', event: 'StopFailure', error: 'rate_limit', reason: 'stop-failure' },
+      ]);
+    });
+
+    it('records a StopFailure error that is an object', () => {
+      const { entries, deps } = logged();
+      applyHookEvent(deps, { sessionName: 'perch-aa', event: 'StopFailure', claude: { error: { type: 'overloaded' } } });
+      expect(entries[0]!.error).toBe('{"type":"overloaded"}');
+    });
+
+    it('trims long background task fields and caps their number', () => {
+      const { entries, deps } = logged();
+      const tasks = Array.from({ length: 30 }, (_, i) => ({ id: `b${i}`, type: 'shell', status: 'running', command: 'x'.repeat(500) }));
+      applyHookEvent(deps, { sessionName: 'perch-aa', event: 'Stop', claude: { background_tasks: tasks } });
+      const logged0 = entries[0]!.backgroundTasks as Array<{ command: string }>;
+      expect(logged0).toHaveLength(20);
+      expect(logged0[0]!.command.length).toBeLessThanOrEqual(201);
+    });
+
+    it('a failing log write neither throws nor changes the decision', () => {
+      const f = fakeStore();
+      const result = applyHookEvent(
+        {
+          store: f.store,
+          deferred: new Set(),
+          messagedLast: new Set(),
+          questionPending: new Set<string>(),
+          log: { append: () => Promise.reject(new Error('disk full')) },
+        },
+        { sessionName: 'perch-aa', event: 'Stop' },
+      );
+      expect(result).toEqual({ workspaceId: 'perch-aa', status: 'needs-feedback' });
+    });
   });
 
   it('holds a Codex question at needs-feedback until it is answered', () => {

@@ -4,6 +4,10 @@ const HOOK_EVENTS = [
   'UserPromptSubmit',
   'PreToolUse',
   'PostToolUse',
+  // Fired instead of Stop when an API error ends the turn.
+  'StopFailure',
+  // A new `claude` process or conversation: drops what the previous one left behind.
+  'SessionStart',
 ] as const;
 
 // Codex has no Notification event; it asks for approval through PermissionRequest instead.

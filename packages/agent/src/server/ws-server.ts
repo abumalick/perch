@@ -37,6 +37,7 @@ import type { Workspace } from '@perch/contracts';
 import { ConnectionHandler } from './connection-handler';
 import { ViewerRegistry } from './viewer-registry';
 import { applyHookEvent } from '../application/apply-hook-event';
+import type { HookEventLogPort } from '../ports/hook-event-log-port';
 import { listWorkspaces } from '../application/list-workspaces';
 import { isHiddenPath } from '../application/is-hidden-path';
 import { closeWorkspaceBrowserSessions } from '../application/close-workspace-browsers';
@@ -66,6 +67,8 @@ export interface WsServerDeps {
   detectInstalled: (names: string[]) => Promise<string[]>;
   keyterms: KeytermsPort;
   clientLog: ClientLogPort;
+  // Optional: where every hook event and its decision is recorded (applyHookEvent).
+  hookEventLog?: HookEventLogPort;
   workspaceLog: WorkspaceLogPort;
   parked: ParkedStorePort;
   // Optional: where the live workspaces are snapshotted so those lost with their tmux server
@@ -277,6 +280,7 @@ export class WsServer {
             deferred: this.deferred,
             messagedLast: this.messagedLast,
             questionPending: this.questionPending,
+            log: this.deps.hookEventLog,
           },
           { sessionName, event, claude, agent: typeof agent === 'string' ? agent : undefined },
         );

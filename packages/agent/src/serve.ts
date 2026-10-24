@@ -13,6 +13,7 @@ import { FileClaudeSessionsStore } from './infrastructure/file-claude-sessions-s
 import { ProcSystemStats } from './infrastructure/proc-system-stats';
 import { SystemdScopeReaper } from './infrastructure/systemd-scope-reaper';
 import { FileClientLogStore } from './infrastructure/file-client-log-store';
+import { FileHookEventLog } from './infrastructure/file-hook-event-log';
 import { FileWorkspaceLogStore } from './infrastructure/file-workspace-log-store';
 import { FileParkedStore } from './infrastructure/file-parked-store';
 import { reconcileParked } from './application/reconcile-parked';
@@ -114,6 +115,7 @@ async function main(): Promise<void> {
     detectInstalled: (names) => detectInstalled(names, loginShellResolver()),
     keyterms: new FileKeytermsStore(config.keytermsPath),
     clientLog: new FileClientLogStore(config.clientLogPath),
+    hookEventLog: new FileHookEventLog(config.hookEventLogPath),
     workspaceLog,
     parked,
     liveSnapshot,

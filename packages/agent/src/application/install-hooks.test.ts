@@ -4,14 +4,16 @@ import { installHooks } from './install-hooks';
 const HOOK_COMMAND = 'bash ~/.perch/perch-hook.sh';
 
 describe('installHooks', () => {
-  it('adds Stop, Notification, UserPromptSubmit, PreToolUse, and PostToolUse hook entries', () => {
+  it('adds the Stop, StopFailure, SessionStart, Notification, UserPromptSubmit, PreToolUse, and PostToolUse hook entries', () => {
     const result = installHooks({ settings: {} }, { hookCommand: HOOK_COMMAND, port: 8787 });
     const hooks = result.hooks as Record<string, Array<{ hooks: Array<{ command: string }> }>>;
     expect(Object.keys(hooks).sort()).toEqual([
       'Notification',
       'PostToolUse',
       'PreToolUse',
+      'SessionStart',
       'Stop',
+      'StopFailure',
       'UserPromptSubmit',
     ]);
     expect(hooks.Stop?.[0]?.hooks?.[0]?.command).toBe(`${HOOK_COMMAND} Stop 8787`);

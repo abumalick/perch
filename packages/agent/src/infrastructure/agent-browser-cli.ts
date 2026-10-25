@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { BrowserCommandPort } from '../ports/browser-command-port';
+import { procSessionLaunchEnv, type SessionLaunchEnv } from './agent-browser-session-env';
 import { childEnv } from './child-env';
 
 const exec = promisify(execFile);
@@ -8,25 +9,24 @@ const exec = promisify(execFile);
 export type CommandRunner = (
   cmd: string,
   args: string[],
-  env: Record<string, string>,
+  launchEnv: Record<string, string> | null,
 ) => Promise<void>;
 
-// argv array, never a shell string — the URL must not reach a shell. The env
-// overlay extends the agent's env (PERCH_ variables aside): the agent runs as a service,
-// and the child needs the inherited PATH to locate the agent-browser mise shim.
-export const execFileRunner: CommandRunner = async (cmd, args, env) => {
-  await exec(cmd, args, { env: { ...childEnv(), ...env } });
+// argv array, never a shell string — the URL must not reach a shell. The child gets the
+// agent's env (PERCH_ variables aside): the agent runs as a service, and the child needs the
+// inherited PATH to locate the agent-browser mise shim. A session's launch env replaces every
+// inherited AGENT_BROWSER_* variable rather than extending them: one the session was created
+// without would still change its config.
+export const execFileRunner: CommandRunner = async (cmd, args, launchEnv) => {
+  const env = childEnv();
+  if (launchEnv) {
+    for (const name of Object.keys(env)) {
+      if (name.startsWith('AGENT_BROWSER_')) delete env[name];
+    }
+    Object.assign(env, launchEnv);
+  }
+  await exec(cmd, args, { env });
 };
-
-// Every command runs with an empty env overlay (NO_ENV). agent-browser derives a session's
-// config hash from the launch env, and it relaunches the browser — dropping the current page
-// and the live stream — whenever a command's config differs from how the session was created.
-// Imposing AGENT_BROWSER_IDLE_TIMEOUT_MS here therefore nukes any session created with a
-// different (or no) idle-timeout env — exactly what happened to agent-created sessions the
-// moment Perch steered them (setViewport on viewer attach). Staying env-less keeps Perch's
-// commands config-compatible with those sessions. The cost is that Perch no longer sets a
-// 30-minute idle auto-close on the sessions it starts; they close via the UI's ✕ instead.
-const NO_ENV: Record<string, string> = {};
 
 function isHttpUrl(url: string): boolean {
   let parsed: URL;
@@ -38,11 +38,25 @@ function isHttpUrl(url: string): boolean {
   return parsed.protocol === 'http:' || parsed.protocol === 'https:';
 }
 
+// agent-browser relaunches a session's browser — dropping the current page, the live stream
+// and, for a session on a persistent profile, the profile itself — whenever a command's launch
+// config (headed, profile, executable, args, init scripts…) differs from the one the session
+// was created with, and restarts its daemon when the idle timeout or a policy differs. So each
+// command replays the session's own launch env, read from its daemon. Perch cannot impose a
+// config of its own (it once set an idle timeout, which nuked every session created without
+// one); a session with no daemon to read (Perch's own `start`) inherits the agent's env.
 export class AgentBrowserCli implements BrowserCommandPort {
-  constructor(private readonly run: CommandRunner = execFileRunner) {}
+  constructor(
+    private readonly run: CommandRunner = execFileRunner,
+    private readonly launchEnv: SessionLaunchEnv = procSessionLaunchEnv(),
+  ) {}
+
+  private async agentBrowser(session: string, args: string[]): Promise<void> {
+    await this.run('agent-browser', ['--session', session, ...args], await this.launchEnv(session));
+  }
 
   async start(session: string): Promise<void> {
-    await this.run('agent-browser', ['--session', session, 'open', 'about:blank'], NO_ENV);
+    await this.agentBrowser(session, ['open', 'about:blank']);
     await this.setPhoneViewport(session);
   }
 
@@ -51,11 +65,7 @@ export class AgentBrowserCli implements BrowserCommandPort {
   // an older CLI without `set viewport` still yields a usable session.
   private async setPhoneViewport(session: string): Promise<void> {
     try {
-      await this.run(
-        'agent-browser',
-        ['--session', session, 'set', 'viewport', '390', '700'],
-        NO_ENV,
-      );
+      await this.agentBrowser(session, ['set', 'viewport', '390', '700']);
     } catch {
       // viewport is an enhancement, not a requirement
     }
@@ -65,19 +75,19 @@ export class AgentBrowserCli implements BrowserCommandPort {
     if (!isHttpUrl(url)) {
       throw new Error(`refusing to open non-http(s) URL: ${url}`);
     }
-    await this.run('agent-browser', ['--session', session, 'open', url], NO_ENV);
+    await this.agentBrowser(session, ['open', url]);
   }
 
   async back(session: string): Promise<void> {
-    await this.run('agent-browser', ['--session', session, 'back'], NO_ENV);
+    await this.agentBrowser(session, ['back']);
   }
 
   async forward(session: string): Promise<void> {
-    await this.run('agent-browser', ['--session', session, 'forward'], NO_ENV);
+    await this.agentBrowser(session, ['forward']);
   }
 
   async stop(session: string): Promise<void> {
-    await this.run('agent-browser', ['--session', session, 'close'], NO_ENV);
+    await this.agentBrowser(session, ['close']);
   }
 
   async setViewport(session: string, width: number, height: number): Promise<void> {
@@ -85,10 +95,6 @@ export class AgentBrowserCli implements BrowserCommandPort {
       throw new Error('viewport dimensions must be finite');
     }
     const clamp = (n: number) => String(Math.min(4096, Math.max(200, Math.round(n))));
-    await this.run(
-      'agent-browser',
-      ['--session', session, 'set', 'viewport', clamp(width), clamp(height)],
-      NO_ENV,
-    );
+    await this.agentBrowser(session, ['set', 'viewport', clamp(width), clamp(height)]);
   }
 }

@@ -893,6 +893,21 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   deletes nothing) and submits a form on Enter only with `text: '\r'`; so the keyboard bar's
   keys never worked either. `keyMessages` always sets `text` and the virtual key code; measured
   against a live session's stream socket, not assumed. The agent forwards the message verbatim.
+- **Every browser command replays the launch env of the session it targets.** agent-browser
+  (0.31.1) relaunches a session's browser when a command's launch config differs from the one
+  that created it (headed, profile, executable, args, init scripts, proxy, user agent…), and
+  restarts its daemon when the idle timeout or a policy differs. A session started on a
+  persistent profile, headed under Xvfb (Google/Shopify/Cloudflare logins), came back as a
+  profile-less `about:blank` on the first Perch command, so opening the viewer (it sends
+  `set viewport`) logged it out. The CLI hands each setting to the daemon it spawns as an
+  `AGENT_BROWSER_*` variable, so `procSessionLaunchEnv` reads `<session>.pid` →
+  `/proc/<pid>/environ` (only when it says `AGENT_BROWSER_DAEMON=1` and names that session)
+  and `execFileRunner` **replaces** the agent's inherited `AGENT_BROWSER_*` with it, plus
+  `DISPLAY`: extending would keep a variable the session was created without (the service
+  inherits an idle timeout and init scripts from the user's environment). Plumbing
+  (`_DAEMON`, `_SESSION`, `_STREAM_PORT`, `_NAMESPACE`, `_SOCKET_DIR`) is never replayed;
+  `_DAEMON` would make the CLI run as a daemon. With nothing to read (Perch's own `start`,
+  macOS) the inherited env is kept, and Perch never imposes a setting of its own.
 - **An installed Android PWA cannot hand a tapped link to another browser app; the share sheet
   can.** A link picker set as the default browser (LinkSheet) never sees a terminal link: Firefox's
   web-app mode drops any link bound for an installed browser, and Chrome keeps http(s) in-app

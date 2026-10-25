@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { BrowserDiscoveryPort, BrowserSessionInfo } from '../ports/browser-discovery-port';
 
-function defaultDir(): string {
+export function agentBrowserSidecarDir(): string {
   const runtime = process.env.XDG_RUNTIME_DIR;
   return runtime ? join(runtime, 'agent-browser') : join(homedir(), '.agent-browser');
 }
@@ -26,7 +26,7 @@ export class FsBrowserDiscovery implements BrowserDiscoveryPort {
   private readonly isPidAlive: (pid: number) => boolean;
 
   constructor(opts: { dir?: string; isPidAlive?: (pid: number) => boolean } = {}) {
-    this.dir = opts.dir ?? defaultDir();
+    this.dir = opts.dir ?? agentBrowserSidecarDir();
     this.isPidAlive = opts.isPidAlive ?? defaultIsPidAlive;
   }
 

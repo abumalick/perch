@@ -150,10 +150,9 @@ implementation: registry removal precedes eviction, and a repeated removal retur
 404 before calling eviction. The failure itself was exercised only locally.
 
 The existing API credential returned HTTP 403 when attempting the zone/WAF
-configuration read. Therefore the active rate-limit expression, threshold, enabled
-state, and bypass rules remain unverified. A custom domain alone does not prove
-that a WAF rule is installed or effective. Configuration shown in the runbook is
-not evidence of live enforcement.
+configuration read, so the rate-limit rule was first left unverified. It was then read
+from the dashboard (see "Zone rate-limiting rule" in the reassessment below): it is active
+and matches the runbook's Free-plan row.
 
 ## Dependencies
 
@@ -209,8 +208,8 @@ implementation or UI changed.
 
 1. ~~Remediate CF-01 and CF-02~~ — fixed (see the reassessment below): a repeated removal of a
    denied account evicts again; the agent counts auth attempts on arrival and caps the queue.
-2. Verify the actual edge rate-limit and bypass configuration with WAF read access
-   or a configuration export.
+2. ~~Verify the actual edge rate-limit and bypass configuration~~ — read from the dashboard,
+   see the reassessment below.
 3. ~~Establish the deployed bundle's source revision~~ — done, see the reassessment below.
 4. Schedule any live adversarial testing separately against an explicitly selected
    disposable account, with agreed traffic limits.
@@ -282,8 +281,12 @@ check as a dial. The documented cross-relay replay of a control-socket header (t
 message names no relay) lets a hostile relay supersede the real agent elsewhere for up to a
 minute: availability only, since phones pin the agent's static key. No new finding.
 
-### Still unverified
+### Zone rate-limiting rule
 
-The zone rate-limiting rule: the wrangler credential reaches the zone but is refused on its
-rulesets, and the dashboard session kept for this account had expired. Its expression, threshold,
-action and any bypass remain unread. Live adversarial testing was not authorised and was not done.
+Read from the dashboard (Security → Security rules, rate limiting rules) after the API credential
+was refused on the zone's rulesets. The zone is on the Free plan and has one rule, "perch-relay
+rate limit", active and first in order: expression
+`(http.host eq "<RELAY_DOMAIN>" and http.request.uri.path ne "/up")` (the relay's custom domain), counted by `ip.src`,
+60 requests per 10 seconds, action Block for 10 seconds. That is the runbook's Free-plan row. No
+other rule of any type is listed for the zone, so nothing skips it. Live adversarial testing was
+not authorised and was not done.

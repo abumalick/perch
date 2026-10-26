@@ -98,7 +98,9 @@ joins, so it only registers accounts of its own. Both keys sign the same way (an
 `x-perch-join` header, bound to account, role and time); a relay without an admin key answers
 `501` to `machines`, `remove` and `allow`. `--admin-key` works too, but shows in the process list. A removed machine's
 control socket and pairs are closed at once (`4004`) and its account answers `404` again; its
-agent keeps retrying with backoff until its URL is taken out of its `agent.env`.
+agent keeps retrying with backoff until its URL is taken out of its `agent.env`. Removing an
+account that is already removed evicts it again and answers `200`: the registry changes before
+the eviction, so a removal whose eviction failed is retried by running it again.
 
 **A removed account stays removed.** The registry keeps it on a deny list, and a join for it is
 refused with `403` whatever proofs it carries: an operator removes a machine because its agent key

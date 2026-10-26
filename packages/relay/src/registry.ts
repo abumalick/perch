@@ -195,7 +195,13 @@ export async function handleAdminRequest(request: AdminRequest, address: string,
     case 'machines':
       return text(200, JSON.stringify([...(await deps.registry.list()), ...(await deps.registry.removedAccounts())]));
     case 'remove': {
-      if (!(await deps.registry.remove(request.account, new Date(now).toISOString()))) return text(404, 'unknown account');
+      const removed = await deps.registry.remove(request.account, new Date(now).toISOString());
+      // The registry changes before the eviction. Should that fail, the account is denied with its
+      // sockets still open and no longer registered, so a removal repeated for one on the deny
+      // list evicts again (eviction is idempotent) instead of answering 404.
+      if (!removed && !(await deps.registry.removedAccounts()).some((entry) => entry.account === request.account)) {
+        return text(404, 'unknown account');
+      }
       await deps.evict(request.account);
       return text(200, 'removed');
     }

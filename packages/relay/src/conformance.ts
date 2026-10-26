@@ -790,6 +790,9 @@ export function relayConformance(name: string, api: TestApi, getHost: () => Conf
       expect((await removeMachine(machine.account)).status).toBe(200);
       expect(await socket!.closed()).toBe(ACCOUNT_REMOVED);
       expect(await host.request(`/${machine.account}`)).toBe(404);
+      // Removing it again evicts again (a removal whose eviction failed is retried this way).
+      expect((await removeMachine(machine.account)).status).toBe(200);
+      expect(await host.request(`/${machine.account}`)).toBe(404);
     });
 
     // Whoever stole the machine's agent key holds the join key too (every machine does): a removal

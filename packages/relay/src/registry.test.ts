@@ -152,7 +152,28 @@ describe('handleAdminRequest: machines and remove', () => {
     expect((await handle(remove())).status).toBe(200);
     expect(await registry.lookup(account)).toBe(undefined);
     expect(evicted).toEqual([account]);
-    expect((await handle(remove())).status).toBe(404);
+    // Removing it again evicts again: a removal whose eviction failed must be retryable.
+    expect((await handle(remove())).status).toBe(200);
+    expect(evicted).toEqual([account, account]);
+    expect((await handle(remove('never-joined'))).status).toBe(404);
+  });
+
+  // The registry is changed before the account's relay is asked to close what it holds. If that
+  // call fails, the account is on the deny list with its sockets still open; answering 404 to the
+  // next removal (the account is no longer registered) would leave no way to close them.
+  it('evicts on a repeated removal after a failed eviction, instead of answering 404', async () => {
+    const attempts: string[] = [];
+    const { registry, handle } = setup({
+      evict: (acct) => {
+        attempts.push(acct);
+        if (attempts.length === 1) throw new Error('eviction failed');
+      },
+    });
+    await handle(joinRequest());
+    await expect(handle(remove())).rejects.toThrow('eviction failed');
+    expect(await registry.lookup(account)).toBe(undefined);
+    expect((await handle(remove())).status).toBe(200);
+    expect(attempts).toEqual([account, account]);
   });
 
   // A thief holding the account's agent key and the join key (handed to every machine) must not

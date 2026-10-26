@@ -430,7 +430,8 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     dials are capped per account** (10 a minute, 4429), since each costs the agent file reads and
     a key derivation; the window lives in the store, so a Durable Object woken from hibernation
     does not get a fresh one. Until `auth` is accepted the agent reads 8 KiB messages at most and three
-    `auth`s per socket. **The agent bounds what a hostile relay can make it hold, without
+    `auth`s per socket, both counted as messages arrive, and holds at most 16 messages while a
+    credential is being checked (an honest phone sends nothing behind `auth` until `authResult`). **The agent bounds what a hostile relay can make it hold, without
     trusting the relay's own caps:** `RelayLink` keeps at most 32 dial-backs unauthenticated
     (a dial holds its slot until its `authResult` goes out or its socket closes, so don't free it
     on open), checks at most 4 enrolments at once and 10 a minute per link (refusing past either
@@ -600,7 +601,10 @@ See `docs/DEPLOY.md` for the full runbook. In short:
       the cached key is confirmed with the registry (`authorizeCached`), and an evicted
       `RelayRoom` refuses every role as unknown until a join reinstates it (`Relay.evict` marks
       the store; `RelayRoom.evict` wipes storage *before* that, or the mark would be wiped too).
-      A removed account's sockets close with 4004.
+      A removed account's sockets close with 4004. **Removing an account already on the deny list
+      evicts it again and answers 200**: the registry changes before the eviction, so a failed
+      eviction would otherwise leave the account denied, unregistered, and its sockets open with no
+      removal able to reach them.
     - **A removed account is on a deny list a join cannot lift** (`removed` in `accounts.json`,
       a `removed` table in `RegistryRoom`): a join answers 403 until the admin key allows it
       (`perch-relay machines allow`). Its thief holds the join key too, since every machine does.

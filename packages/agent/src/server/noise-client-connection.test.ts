@@ -703,6 +703,55 @@ describe('NoiseClientConnection with device keys (IK)', () => {
     expect(logs.join('\n')).not.toContain(secret);
   });
 
+  // While a pairing secret is being redeemed, what the phone sends waits. The relay forwards
+  // whatever the sender pushes meanwhile, so the wait is bounded in attempts and in messages.
+  it('counts auth attempts as they arrive while a pairing secret is being redeemed', async () => {
+    const { socket, received, gate } = setup();
+    let redeem!: (value: Redemption) => void;
+    gate.redeemPairing = () => new Promise((resolve) => { redeem = resolve; });
+    const phone = await ikHandshake(socket);
+    for (let i = 0; i < 4; i += 1) deliver(socket, phone, { type: 'auth', token: 'q'.repeat(43) });
+    expect(socket.closedWith).toEqual({ code: 4002, reason: 'too many auth attempts' });
+    redeem({ redeemed: false });
+    await flush();
+    expect(received).toEqual([]);
+  });
+
+  it('does not count a held auth again when the queue drains', async () => {
+    const { socket, received, gate } = setup();
+    const secret = 'p'.repeat(43);
+    gate.pairings.add(secret);
+    let redeem!: (value: Redemption) => void;
+    // The first redemption is held; the held auths are then redeemed by the gate as usual.
+    const usual = gate.redeemPairing.bind(gate);
+    gate.redeemPairing = () => {
+      gate.redeemPairing = usual;
+      return new Promise((resolve) => { redeem = resolve; });
+    };
+    const phone = await ikHandshake(socket);
+    for (let i = 0; i < 3; i += 1) deliver(socket, phone, { type: 'auth', token: secret });
+    expect(socket.closedWith).toBeNull();
+    redeem({ redeemed: true, fresh: true });
+    await flush();
+    expect(socket.closedWith).toBeNull();
+    expect(received).toHaveLength(3);
+  });
+
+  it('closes a sender that queues more than 16 messages while its credential is checked', async () => {
+    const { socket, received, gate } = setup();
+    let redeem!: (value: Redemption) => void;
+    gate.redeemPairing = () => new Promise((resolve) => { redeem = resolve; });
+    const phone = await ikHandshake(socket);
+    deliver(socket, phone, { type: 'auth', token: 'q'.repeat(43) });
+    for (let i = 0; i < 16; i += 1) deliver(socket, phone, { type: 'list', n: i });
+    expect(socket.closedWith).toBeNull();
+    deliver(socket, phone, { type: 'list', n: 16 });
+    expect(socket.closedWith).toEqual({ code: 4002, reason: 'too many messages before auth' });
+    redeem({ redeemed: false });
+    await flush();
+    expect(received).toEqual([]);
+  });
+
   it('does not authenticate a spent or unknown pairing secret; the handler then checks it as a token', async () => {
     const { socket, conn, received, gate } = setup();
     const phone = await ikHandshake(socket);

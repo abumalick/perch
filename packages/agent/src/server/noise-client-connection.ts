@@ -30,6 +30,10 @@ const AUTH_TIMEOUT_MS = 10_000;
 export const PRE_AUTH_MAX_MESSAGE_BYTES = 8 * 1024;
 // A phone sends `auth` once per connection; a socket repeating it is probing.
 const MAX_AUTH_ATTEMPTS = 3;
+// What may wait while a credential is being checked. An honest phone sends nothing behind its
+// `auth` until the `authResult`, so the queue only ever holds a prober's traffic, and the relay
+// forwards whatever it pushes meanwhile.
+const MAX_HELD_MESSAGES = 16;
 
 // A pairing secret's shape (32 bytes, base64url), so a token is not looked up as one needlessly.
 const PAIRING_SECRET = /^[A-Za-z0-9_-]{43}$/;
@@ -132,7 +136,7 @@ export class NoiseClientConnection implements ClientConnection {
           held.forEach((m) => this.send(m));
           const incoming = this.held ?? [];
           this.held = null;
-          incoming.forEach((raw) => this.dispatch(raw));
+          incoming.forEach((raw) => this.drain(raw));
         });
         return;
       }
@@ -278,17 +282,36 @@ export class NoiseClientConnection implements ClientConnection {
     this.dispatch(raw);
   }
 
+  // Attempts and the queue are counted as messages arrive, so a sender cannot stack them up
+  // behind a pending credential check; a held message is routed, not dispatched, when it drains.
   private dispatch(raw: unknown): void {
-    if (this.held) {
-      this.held.push(raw);
-      return;
-    }
     if (this.state.kind === 'failed') return;
-    const message = raw as { type?: unknown; token?: unknown } | null;
+    const message = raw as { type?: unknown } | null;
     if (message?.type === 'auth' && ++this.authAttempts > MAX_AUTH_ATTEMPTS) {
       this.fail('too many auth attempts');
       return;
     }
+    if (this.held) {
+      if (this.held.length >= MAX_HELD_MESSAGES) {
+        this.fail('too many messages before auth');
+        return;
+      }
+      this.held.push(raw);
+      return;
+    }
+    this.route(raw);
+  }
+
+  // A held message, once its wait is over: routed, unless routing one before it opened another
+  // wait (an accepted auth holds what follows until the enrolment is written). Counted already.
+  private drain(raw: unknown): void {
+    if (this.held) this.held.push(raw);
+    else this.route(raw);
+  }
+
+  private route(raw: unknown): void {
+    if (this.state.kind === 'failed') return;
+    const message = raw as { type?: unknown; token?: unknown } | null;
     // An unknown device may send `auth` and nothing else, and one with no credential at all (a
     // phone whose enrolment was lost since it paired) can only be told to pair again.
     if (this.state.kind === 'enrolling' && (message?.type !== 'auth' || message.token === '')) {
@@ -326,7 +349,7 @@ export class NoiseClientConnection implements ClientConnection {
       }
       if (!redemption.redeemed && this.refusesToken()) return;
       this.listeners.forEach((l) => l(auth));
-      held.forEach((raw) => this.dispatch(raw));
+      held.forEach((raw) => this.drain(raw));
     };
     const failed = () => resume({ redeemed: false });
     if (this.state.kind === 'enrolling') {

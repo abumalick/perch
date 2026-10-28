@@ -5,6 +5,7 @@ import {
   editChordFromEvent,
   isModifierActive,
   processTerminalInput,
+  processTypedInput,
 } from './keyboard-modifiers';
 
 describe('cycleModifier', () => {
@@ -70,6 +71,25 @@ describe('processTerminalInput', () => {
   test('multi-character input (paste) is not modified and does not consume the modifier', () => {
     const result = processTerminalInput('abc', { ctrl: 'armed', alt: 'off' });
     expect(result).toEqual({ output: 'abc', ctrl: 'armed', alt: 'off' });
+  });
+
+  test('applies modifiers to a space (the keyboard bar ␣)', () => {
+    expect(processTerminalInput(' ', { ctrl: 'armed', alt: 'off' })).toEqual({ output: '\x00', ctrl: 'off', alt: 'off' });
+    expect(processTerminalInput(' ', { ctrl: 'off', alt: 'armed' })).toEqual({ output: '\x1b ', ctrl: 'off', alt: 'off' });
+  });
+});
+
+describe('processTypedInput', () => {
+  test('applies modifiers to a typed letter like processTerminalInput', () => {
+    expect(processTypedInput('b', { ctrl: 'off', alt: 'armed' })).toEqual({ output: '\x1bb', ctrl: 'off', alt: 'off' });
+  });
+
+  // HeliBoard sends the space it owes after a swiped word or a picked suggestion as its own
+  // edit, just before the next letter: the modifier is meant for that letter.
+  test('passes a soft-keyboard space through and keeps the modifier for the next letter', () => {
+    const space = processTypedInput(' ', { ctrl: 'armed', alt: 'armed' });
+    expect(space).toEqual({ output: ' ', ctrl: 'armed', alt: 'armed' });
+    expect(processTypedInput('b', space).output).toBe('\x1b\x02');
   });
 });
 

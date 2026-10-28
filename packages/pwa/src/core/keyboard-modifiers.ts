@@ -41,6 +41,15 @@ export function processTerminalInput(data: string, { ctrl, alt }: Modifiers): Pr
   };
 }
 
+// The soft-keyboard path. A keyboard sends the space it owes after a swiped word or a picked
+// suggestion (HeliBoard's "phantom space") as its own edit just before the next letter, so a
+// typed space must not take the modifier meant for that letter. Ctrl/Alt+Space come from the
+// bar's ␣, which goes through processTerminalInput.
+export function processTypedInput(data: string, modifiers: Modifiers): ProcessResult {
+  if (data === ' ') return { output: data, ...modifiers };
+  return processTerminalInput(data, modifiers);
+}
+
 function consume(state: ModifierState): ModifierState {
   return state === 'armed' ? 'off' : state;
 }

@@ -19,6 +19,7 @@
     applyEditKey,
     cycleModifier,
     isModifierActive,
+    processTerminalInput,
     type EditKey,
     type ModifierState,
   } from '../core/keyboard-modifiers';
@@ -120,6 +121,15 @@
   };
 
   function tapKey(key: Key) {
+    // The soft keyboard's space leaves ⌃/⌥ armed (see processTypedInput), so this is the
+    // one way to send Ctrl+Space or Alt+Space.
+    if (key === spaceKey) {
+      const result = processTerminalInput(key.seq, { ctrl, alt });
+      ctrl = result.ctrl;
+      alt = result.alt;
+      send(result.output);
+      return;
+    }
     if (!key.edit) {
       send(key.seq);
       return;

@@ -18,7 +18,7 @@
   import { attachCopyOnSelect, type CopyOnSelect } from './copy-on-select';
   import {
     editChordFromEvent,
-    processTerminalInput,
+    processTypedInput,
     type ModifierState,
   } from '../core/keyboard-modifiers';
   import { pasteFromClipboard } from '../core/clipboard-paste';
@@ -237,9 +237,9 @@
     store.onOutput = (data) => t.write(data);
     store.onInjectedInput = () => androidInput?.resetContext();
     // Sticky Ctrl/Alt transform for a single typed character (keyboard bar modifiers).
-    // processTerminalInput is a no-op for multi-char data, so it is safe for composed words.
+    // processTypedInput is a no-op for multi-char data, so it is safe for composed words.
     const sendTyped = (data: string) => {
-      const result = processTerminalInput(data, { ctrl, alt });
+      const result = processTypedInput(data, { ctrl, alt });
       ctrl = result.ctrl;
       alt = result.alt;
       store.sendInput(result.output);

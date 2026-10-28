@@ -857,6 +857,12 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
     and `sendTyped`); because the pty then gets a control byte the field does not hold,
     `sendTyped` starts the field over whenever it transforms the input.
     `e2e/android-hardware-keys.spec.ts` drives the real xterm with an Android user agent.
+  - **A soft-keyboard space never takes an armed ⌃/⌥** (`processTypedInput`). After a swiped
+    word or a picked suggestion, HeliBoard sends the space it owes as its own `insertText " "`
+    just before the next letter, so ⌥ then `b` reached the pty as `ESC space` + a plain `b`
+    (captured on a Galaxy Tab: `1b 20 62`). The modifier now waits for the letter; Ctrl/Alt+Space
+    come from the bar's ␣, which does apply them. `e2e/android-bar-modifiers.spec.ts` replays the
+    captured event shapes and asserts the exact bytes for each bar modifier.
   - **The adapter must stop `keypress` too, not just `keydown`.** One soft-keyboard Enter fires
     `keydown`(13) → `keypress`(13) → `beforeinput`(`insertLineBreak`). xterm registers a
     `keypress` listener on its textarea and sends the key from it whenever it did not handle the

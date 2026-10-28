@@ -14,11 +14,12 @@ Two issues were reproduced: incomplete account removal after an eviction failure
 and an authentication queue with no aggregate bound. These results are a focused
 security review, not a proof that every takeover path has been excluded.
 
-Tests used disposable identities, fake terminals, and local listeners. Live
-Cloudflare access was limited to deployment/configuration metadata reads. No
-production protocol probes, load tests, deployments, or configuration changes were
-performed. This branch contains reproductions and this report; it changes no
-runtime implementation.
+The review's reproductions used disposable identities, fake terminals, and local
+listeners. The fixes have since been merged and deployed to production, and live
+adversarial testing against the deployed Worker was later authorised and performed
+with a throwaway account; see "Live adversarial test" below. No production account
+other than that throwaway was touched, and the only load applied was a short paced
+burst from one address to confirm the zone rate-limiting rule.
 
 ## Confirmed findings
 
@@ -288,5 +289,23 @@ was refused on the zone's rulesets. The zone is on the Free plan and has one rul
 rate limit", active and first in order: expression
 `(http.host eq "<RELAY_DOMAIN>" and http.request.uri.path ne "/up")` (the relay's custom domain), counted by `ip.src`,
 60 requests per 10 seconds, action Block for 10 seconds. That is the runbook's Free-plan row. No
-other rule of any type is listed for the zone, so nothing skips it. Live adversarial testing was
-not authorised and was not done.
+other rule of any type is listed for the zone, so nothing skips it.
+
+The rule was then confirmed live (authorised). A single address sending requests paced at ten per
+second to non-`/up` paths passed for the first roughly sixty within a ten-second window, after
+which the edge returned HTTP 429 (Cloudflare error 1015) for every further non-`/up` request,
+for the configured ten-second block. Requests to `/up` interleaved through the same run returned
+200 throughout, including while non-`/up` paths were blocked, so the path exclusion holds. The
+block is per source address: the production agent's control socket, established and on a separate
+concern, was unaffected and did not reconnect.
+
+### Live adversarial test
+
+Authorised and run against the deployed Worker with a throwaway account, exercising CF-01's fix
+and the removal branches end to end. Removing a never-registered account still answered 404.
+Joining the throwaway account answered 201 and it listed as active. Removing it answered 200 and
+it moved to the deny list; removing it a second time while already denied answered 200 (before
+the fix this was 404), the behaviour CF-01 adds. A join while denied was refused 403, an `allow`
+answered 200, and a join then answered 201 again, so the deny list is the only thing holding the
+account out. The throwaway account was left removed, its correct terminal state. No production
+account was affected, and the probes carried no session traffic.

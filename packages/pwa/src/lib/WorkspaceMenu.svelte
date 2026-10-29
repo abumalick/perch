@@ -7,6 +7,7 @@
   let {
     open = $bindable(),
     wide,
+    showStatus,
     fontSize,
     canZoomIn,
     canZoomOut,
@@ -29,6 +30,7 @@
   }: {
     open: boolean;
     wide: boolean;
+    showStatus: boolean;
     fontSize: number;
     canZoomIn: boolean;
     canZoomOut: boolean;
@@ -125,9 +127,11 @@
         />
       </div>
 
-      <div class="picker-wrap">
-        <StatusPicker {status} onSelect={onSetStatus} />
-      </div>
+      {#if showStatus}
+        <div class="picker-wrap">
+          <StatusPicker {status} onSelect={onSetStatus} />
+        </div>
+      {/if}
 
       <button type="button" class="row danger" onclick={() => navigate(onClose)}>
         <span class="icon" aria-hidden="true">✕</span> Close

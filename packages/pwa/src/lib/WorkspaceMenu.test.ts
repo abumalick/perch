@@ -7,6 +7,7 @@ function props(overrides: Record<string, unknown> = {}) {
   return {
     open: true,
     wide: false,
+    showStatus: true,
     fontSize: 16,
     canZoomIn: true,
     canZoomOut: true,
@@ -148,6 +149,12 @@ describe('WorkspaceMenu', () => {
     await fireEvent.click(screen.getByRole('button', { name: /status: idle/i }));
     await fireEvent.click(screen.getByRole('option', { name: /blocked/i }));
     expect(p.onSetStatus).toHaveBeenCalledWith('blocked');
+  });
+
+  it('leaves the status out of the drawer when the header carries it', () => {
+    render(WorkspaceMenu, { props: props({ wide: false, showStatus: false }) as never });
+    expect(screen.queryByRole('button', { name: /status:/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /files/i })).toBeTruthy();
   });
 
   it('marks a workspace urgent from the drawer, keeping it open (non-navigating)', async () => {

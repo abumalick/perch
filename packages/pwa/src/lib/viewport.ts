@@ -21,14 +21,25 @@
 // then on every change; returns a teardown. Falls back to `false` where matchMedia is
 // absent (jsdom under unit tests).
 const WIDE_QUERY = '(min-width: 980px)';
+// Wide enough for the status picker beside the title in the terminal header: a portrait
+// tablet (~600px) gets it, a portrait phone (≤ ~430px) keeps it in the drawer.
+const STATUS_INLINE_QUERY = '(min-width: 560px)';
 
 export function trackWide(onChange: (matches: boolean) => void): () => void {
+  return trackMedia(WIDE_QUERY, onChange);
+}
+
+export function trackStatusInline(onChange: (matches: boolean) => void): () => void {
+  return trackMedia(STATUS_INLINE_QUERY, onChange);
+}
+
+function trackMedia(query: string, onChange: (matches: boolean) => void): () => void {
   const mm = window.matchMedia;
   if (!mm) {
     onChange(false);
     return () => {};
   }
-  const mql = mm.call(window, WIDE_QUERY);
+  const mql = mm.call(window, query);
   onChange(mql.matches);
   const handler = (e: MediaQueryListEvent) => onChange(e.matches);
   mql.addEventListener('change', handler);

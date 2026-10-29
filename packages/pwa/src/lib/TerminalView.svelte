@@ -13,7 +13,7 @@
   import BrowserPicker from './BrowserPicker.svelte';
   import WorkspaceMenu from './WorkspaceMenu.svelte';
   import SharedFileConfirm from './SharedFileConfirm.svelte';
-  import { trackViewport, trackWide } from './viewport';
+  import { trackStatusInline, trackViewport, trackWide } from './viewport';
   import { attachTerminalScroll, type TerminalScroll } from './terminal-scroll';
   import { attachCopyOnSelect, type CopyOnSelect } from './copy-on-select';
   import {
@@ -53,8 +53,10 @@
   // The overflow drawer holds the controls that don't fit the header. On wide
   // viewports the header keeps Files/Browser/Status/Close inline and the drawer
   // carries only Refresh + Font; on phones everything lives in the drawer.
+  // Between the two (a portrait tablet), the header also has room for the status.
   let menuOpen = $state(false);
   let wide = $state(false);
+  let statusInline = $state(false);
 
   // Desktop copy-on-select: write the settled mouse selection to the clipboard with a
   // brief confirmation. Inside a mouse-mode app (Claude Code) a plain drag is captured
@@ -287,6 +289,7 @@
     const stopViewport = trackViewport(() => f.fit());
     // Drive the header/drawer split off the shared 980px "wide" breakpoint.
     const stopWide = trackWide((m) => (wide = m));
+    const stopStatusInline = trackStatusInline((m) => (statusInline = m));
     // The .terminal-screen height is animated (transition: height), so the fit() above
     // runs while the container is still mid-animation and computes too few rows. Re-fit
     // once the height settles so xterm fills the final size. transitionend bubbles up
@@ -306,6 +309,7 @@
       screen?.removeEventListener('transitionend', onTransitionEnd);
       stopViewport();
       stopWide();
+      stopStatusInline();
       scroll?.destroy();
       scroll = null;
       copySelect?.destroy();
@@ -346,9 +350,11 @@
           onStart={startBrowser}
         />
       {/if}
-      {#if store.active}
-        <StatusPicker status={store.active.status} onSelect={(s) => store.setWorkspaceStatus(s)} />
-      {/if}
+    {/if}
+    {#if statusInline && store.active}
+      <StatusPicker status={store.active.status} onSelect={(s) => store.setWorkspaceStatus(s)} />
+    {/if}
+    {#if wide}
       <button type="button" class="icon" aria-label="Close" onclick={() => store.closeActive()}>✕</button>
     {/if}
     <button type="button" class="icon" aria-label="Menu" aria-haspopup="dialog" aria-expanded={menuOpen} onpointerdown={keepFocus} onclick={() => (menuOpen = !menuOpen)}>☰</button>
@@ -372,6 +378,7 @@
   <WorkspaceMenu
     bind:open={menuOpen}
     {wide}
+    showStatus={!statusInline}
     fontSize={store.terminalFontSize}
     canZoomIn={store.terminalFontSize < TERMINAL_FONT_MAX}
     canZoomOut={store.terminalFontSize > TERMINAL_FONT_MIN}

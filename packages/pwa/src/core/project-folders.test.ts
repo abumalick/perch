@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { generateAgentKeys } from '@perch/secure-channel';
 import { projectFolderLabel, deriveProjectFolders, filterWorkspaces, pruneStaleFilter } from './project-folders';
 import type { Workspace } from '@perch/contracts';
 import type { MachineConfig } from './settings-store';
@@ -188,7 +189,9 @@ describe('filterWorkspaces', () => {
 });
 
 describe('pruneStaleFilter', () => {
-  const machines = [machine('m', '/home/u/workspace')];
+  const agentKey = generateAgentKeys().x25519.publicKey;
+  const relay = (id: string, defaultPath: string): MachineConfig => ({ ...machine(id, defaultPath), agentKey });
+  const machines = [relay('m', '/home/u/workspace')];
   const list = [
     ws({ id: '1', machineId: 'm', projectPath: '/home/u/workspace/perch' }),
     ws({ id: '2', machineId: 'm', projectPath: '/home/u/workspace/bar/baz' }),
@@ -197,20 +200,32 @@ describe('pruneStaleFilter', () => {
   it('leaves the selection untouched while workspaces have not loaded yet', () => {
     // The list is empty because the async workspace list hasn't arrived yet, not because the
     // selected folder is actually gone — pruning here would wipe a persisted filter on reload.
-    expect(pruneStaleFilter(new Set(['perch']), [], machines, false)).toEqual(['perch']);
+    expect(pruneStaleFilter(new Set(['perch']), [], machines, [])).toEqual(['perch']);
   });
 
   it('prunes keys with no workspace under them once workspaces have loaded', () => {
-    expect(pruneStaleFilter(new Set(['perch', 'gone']), list, machines, true)).toEqual(['perch']);
+    expect(pruneStaleFilter(new Set(['perch', 'gone']), list, machines, ['m'])).toEqual(['perch']);
+  });
+
+  it("keeps another machine's folder while that machine has not listed", () => {
+    // One machine online, the other offline or slower to answer: its folders are missing from
+    // the list only because its workspaces are, and pruning would forget them for good.
+    const two = [...machines, relay('mac', '/Users/u/code')];
+    expect(pruneStaleFilter(new Set(['perch', 'shop']), list, two, ['m'])).toEqual(['perch', 'shop']);
+  });
+
+  it('prunes once every connectable machine has listed, ignoring a switched-off one', () => {
+    const two = [...machines, { ...relay('mac', '/Users/u/code'), enabled: false }];
+    expect(pruneStaleFilter(new Set(['perch', 'shop']), list, two, ['m'])).toEqual(['perch']);
   });
 
   it('keeps a parent folder that is not shown as its own entry but still holds sessions', () => {
     // With a single project left under bar, the tree collapses bar into bar/baz — the bar
     // selection must survive that, since it still matches a session.
-    expect(pruneStaleFilter(new Set(['bar']), list, machines, true)).toEqual(['bar']);
+    expect(pruneStaleFilter(new Set(['bar']), list, machines, ['m'])).toEqual(['bar']);
   });
 
   it('returns an empty array when nothing is selected', () => {
-    expect(pruneStaleFilter(new Set(), list, machines, true)).toEqual([]);
+    expect(pruneStaleFilter(new Set(), list, machines, ['m'])).toEqual([]);
   });
 });

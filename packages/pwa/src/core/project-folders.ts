@@ -1,5 +1,5 @@
 import type { Workspace } from '@perch/contracts';
-import type { MachineConfig } from './settings-store';
+import { isConnectable, type MachineConfig } from './settings-store';
 import { displayProjectPath } from './resolve-path';
 
 // One entry of the workspace-list folder filter, in display order. `key` is the folder's full
@@ -84,17 +84,17 @@ export function deriveProjectFolders(
 
 // Which persisted filter keys are still valid: a key stays while any session lies under it,
 // even when the tree no longer shows that folder as its own entry (a parent collapses once
-// only one project is left below it). `workspacesLoaded` must be false until the workspace list
-// has actually arrived at least once: it starts empty on every reload (the agent's list reply is
-// async), and an empty list at that point means "not loaded yet", not "the selected folders
-// vanished" — pruning then would wipe a persisted filter before it ever gets a chance to apply.
+// only one project is left below it). Nothing is pruned until every connectable machine has
+// listed: a machine offline or slower to answer contributes no workspaces, so its folders look
+// vanished when they are only unknown, and pruning then would forget them for good.
 export function pruneStaleFilter(
   selected: ReadonlySet<string>,
   workspaces: readonly Workspace[],
   machines: readonly MachineConfig[],
-  workspacesLoaded: boolean,
+  listedMachines: readonly string[],
 ): string[] {
-  if (!workspacesLoaded) return [...selected];
+  const connectable = machines.filter(isConnectable);
+  if (connectable.length === 0 || !connectable.every((m) => listedMachines.includes(m.id))) return [...selected];
   const labels = workspaces.map((ws) => projectFolderLabel(machines, ws));
   return [...selected].filter((key) => labels.some((label) => inFolder(label, key)));
 }

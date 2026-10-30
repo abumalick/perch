@@ -21,6 +21,7 @@ function fakeStore(
   return {
     workspaces,
     machines,
+    listedMachines: machines.map((m) => m.id),
     active,
     statuses,
     refusals: [] as Array<{ id: string; message: string }>,
@@ -325,6 +326,20 @@ describe('WorkspaceList', () => {
     const store = fakeStore([], [{ id: 'mac', name: 'Mac' }], null, undefined, [
       '/home/u/workspace/api',
     ]);
+    store.listedMachines = [];
+    render(WorkspaceList, { props: { store: store as never } });
+    expect(store.setFolderFilter).not.toHaveBeenCalled();
+  });
+
+  it("does not wipe a filter on one machine's folder while another machine has not listed", () => {
+    const store = fakeStore(
+      [ws],
+      [{ id: 'mac', name: 'Mac' }, { id: 'ubuntu', name: 'Ubuntu' }],
+      null,
+      undefined,
+      ['/home/u/workspace/web'],
+    );
+    store.listedMachines = ['mac'];
     render(WorkspaceList, { props: { store: store as never } });
     expect(store.setFolderFilter).not.toHaveBeenCalled();
   });

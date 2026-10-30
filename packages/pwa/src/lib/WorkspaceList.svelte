@@ -51,15 +51,12 @@
   const folders = $derived(deriveProjectFolders(store.workspaces, store.machines, selected));
   // Drop selected keys with no sessions left under them, so a vanished folder can't keep the
   // list filtered to nothing. If this empties the selection, the list falls back to showing all.
-  // Gated on workspaces having actually loaded (non-empty) — store.workspaces starts empty on
-  // every reload until the agent's async `list` reply arrives, and pruning before then would
-  // wipe a persisted filter that just hasn't had a chance to apply yet.
+  // Waits until every machine has listed (see pruneStaleFilter).
   // Both selections are pruned, not just the active one, or the semantics would depend on which
   // mode happened to be active when a project went quiet.
   $effect(() => {
-    const loaded = store.workspaces.length > 0;
     const prune = (keys: string[]) =>
-      pruneStaleFilter(new Set(keys), store.workspaces, store.machines, loaded);
+      pruneStaleFilter(new Set(keys), store.workspaces, store.machines, store.listedMachines);
     const only = prune(store.folderFilter);
     if (only.length !== store.folderFilter.length) store.setFolderFilter(only);
     const hidden = prune(store.folderHidden);

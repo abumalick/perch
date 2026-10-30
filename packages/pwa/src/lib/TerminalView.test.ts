@@ -182,6 +182,14 @@ describe('TerminalView', () => {
     expect(store.setWorkspaceStatus).toHaveBeenCalledWith('blocked');
   });
 
+  it('names a child waiting on its orchestrator in the drawer status picker', async () => {
+    const store = fakeStore();
+    store.active = { ...store.active, status: 'working' as never, waitingOn: 'parent' } as never;
+    render(TerminalView, { props: { store: store as never } });
+    await openMenu();
+    expect(screen.getByRole('button', { name: /status: needs orchestrator/i })).toBeTruthy();
+  });
+
   it('maps a hardware ⌘/⌥ chord to its sequence and swallows the event', () => {
     const store = fakeStore();
     render(TerminalView, { props: { store: store as never } });

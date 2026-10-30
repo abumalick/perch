@@ -113,13 +113,35 @@ Codex statuses only work for a Codex started with `--no-daemon`, which the creat
 default Codex runs its hooks in a shared background daemon, outside the workspace's pane, and
 the hook cannot tell which workspace they belong to, so it reports nothing for them.
 
-Same idea, same per-machine cadence: link the `perch-spawn` skill into the global
-skills directory so a workspace on any project can launch further workspaces. It
-lives in the repo (so it stays in step with the tmux session convention it depends
-on) and is symlinked rather than copied, so `git pull` updates it.
+Same idea, same per-machine cadence: link the `perch-spawn` and `perch-orchestrate` skills
+into the global skills directory so a workspace on any project can launch and follow further
+workspaces. They live in the repo (so they stay in step with the CLI they call) and are
+symlinked rather than copied, so `git pull` updates them. Both use the `perch` CLI, so install
+it too (next section).
 ```sh
 ln -sfn "$(pwd)/.claude/skills/perch-spawn" ~/.claude/skills/perch-spawn
+ln -sfn "$(pwd)/.claude/skills/perch-orchestrate" ~/.claude/skills/perch-orchestrate
 ```
+
+### Perch CLI (each machine)
+Put `perch` on PATH, from the main checkout:
+```sh
+deploy/install-cli.sh   # links ~/.local/bin/perch to deploy/perch-cli.sh; safe to re-run
+```
+The link follows the checkout, so a `git pull` updates the CLI. The shim finds the checkout's
+node through mise and runs `packages/agent/src/cli.ts` from the caller's directory. It refuses
+to replace a `~/.local/bin/perch` that is not a symlink. Every subcommand works through it (`perch
+pair`, `perch devices`, …). These three need no `deploy/agent.env`, so a session in any repo can
+use them:
+- `perch spawn [--title <title>] [--child] [--model <model>] <projectPath>`, with the brief on stdin:
+  starts a workspace running Claude Code on the brief and prints its id (also its Claude session
+  name). `--child` makes the caller's own workspace its orchestrator. The child records the
+  parent's workspace id, cannot ask the user or enter plan mode, and reports back with SendMessage.
+- `perch ls [--json] [--mine] [--parent <workspace id>]`: every workspace, parked ones included,
+  with its messaging name, stored status, time in that status, parent, title and folder. `--mine`
+  lists the caller's children.
+- `perch peek <workspace id> [-n <lines>]`: its status line and the last 40 (or N) non-blank lines
+  of its pane.
 
 ## 5. Host the PWA (the always-on Linux machine only)
 ```sh

@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
+import { SvelteSet } from 'svelte/reactivity';
 import WorkspaceList from './WorkspaceList.svelte';
 import { deriveHomeView, type HomeView } from '../core/home-view';
 
@@ -51,6 +52,10 @@ function fakeStore(
     oomKillsSince: (_machineId: string) => 0,
     parkedExpanded: false,
     toggleParked: vi.fn(),
+    expandedParents: new SvelteSet<string>(),
+    toggleChildren(key: string) {
+      if (!this.expandedParents.delete(key)) this.expandedParents.add(key);
+    },
   };
 }
 
@@ -520,5 +525,84 @@ describe('WorkspaceList parked group', () => {
     );
     render(WorkspaceList, { props: { store: store as never } });
     expect(screen.getByRole('button', { name: /parked · 1/i })).toBeInTheDocument();
+  });
+});
+
+describe('WorkspaceList orchestrator nesting', () => {
+  const parent = { ...ws, id: 'perch-o', name: 'orchestrator', status: 'working' };
+  const childAsks = { ...ws, id: 'perch-c1', name: 'child-asks', status: 'needs-feedback', parentId: 'perch-o' };
+  const childWaits = {
+    ...ws, id: 'perch-c2', name: 'child-waits', status: 'working', parentId: 'perch-o', waitingOn: 'parent',
+  };
+  const other = { ...ws, id: 'perch-x', name: 'other', status: 'idle' };
+  const list = [childAsks, other, childWaits, parent];
+  // jsdom has no Web Animations API; reduced motion makes the fold's slide a no-op.
+  beforeEach(() => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('prefers-reduced-motion'),
+      addEventListener() {},
+      removeEventListener() {},
+    }));
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('folds children under their parent by default, the parent ranked by its most urgent child', () => {
+    render(WorkspaceList, { props: { store: fakeStore(list) as never } });
+    expect(screen.queryByText('child-asks')).toBeNull();
+    expect(screen.queryByText('child-waits')).toBeNull();
+    const names = [...document.querySelectorAll('.row .name')].map((n) => n.textContent);
+    expect(names).toEqual(['orchestrator', 'other']);
+    const toggle = screen.getByRole('button', { name: /show 2 child workspaces/i });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle.textContent).toContain('⧉ 2');
+    expect(toggle.querySelector('.fold-dot')).toHaveAttribute('data-status', 'needs-feedback');
+  });
+
+  it('expands the children indented under the parent without opening it', async () => {
+    const store = fakeStore(list);
+    render(WorkspaceList, { props: { store: store as never } });
+    await fireEvent.click(screen.getByRole('button', { name: /show 2 child workspaces/i }));
+    expect(store.open).not.toHaveBeenCalled();
+    const names = [...document.querySelectorAll('.row .name')].map((n) => n.textContent);
+    expect(names).toEqual(['orchestrator', 'child-asks', 'child-waits', 'other']);
+    expect(document.querySelectorAll('ul.children .row')).toHaveLength(2);
+    const toggle = screen.getByRole('button', { name: /hide 2 child workspaces/i });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await fireEvent.click(toggle);
+    expect(screen.queryByText('child-asks')).toBeNull();
+  });
+
+  it('keeps an orchestrator expanded across a remount of the list', async () => {
+    const store = fakeStore(list);
+    const first = render(WorkspaceList, { props: { store: store as never } });
+    await fireEvent.click(screen.getByRole('button', { name: /show 2 child workspaces/i }));
+    first.unmount();
+    render(WorkspaceList, { props: { store: store as never } });
+    expect(screen.getByText('child-asks')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /hide 2 child workspaces/i })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('labels a child waiting on its orchestrator instead of calling it working', async () => {
+    render(WorkspaceList, { props: { store: fakeStore([parent, childWaits]) as never } });
+    await fireEvent.click(screen.getByRole('button', { name: /show 1 child workspace/i }));
+    const row = screen.getByText('child-waits').closest('.row')!;
+    const badge = row.querySelector('.badge')!;
+    expect(badge.textContent).toBe('Needs orchestrator');
+    expect(badge).toHaveAttribute('data-status', 'working');
+  });
+
+  it('lists a child whose parent is parked at the top level', () => {
+    const parkedParent = { ...parent, status: 'parked' };
+    render(WorkspaceList, { props: { store: fakeStore([parkedParent, childAsks]) as never } });
+    expect(screen.getByText('child-asks')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /child workspace/i })).toBeNull();
+  });
+
+  it('lists a child whose parent is on another machine at the top level', () => {
+    const elsewhere = { ...childAsks, machineId: 'ubuntu' };
+    render(WorkspaceList, {
+      props: { store: fakeStore([parent, elsewhere], [{ id: 'mac' }, { id: 'ubuntu' }]) as never },
+    });
+    expect(screen.getByText('child-asks')).toBeInTheDocument();
   });
 });

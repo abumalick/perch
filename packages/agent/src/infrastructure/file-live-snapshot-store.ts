@@ -55,5 +55,15 @@ function parseEntry(value: unknown): LiveWorkspace | undefined {
     return undefined;
   }
   const claudeSessionId = str('claudeSessionId');
-  return { id, name, projectPath, command, machineId, createdAt, ...(claudeSessionId ? { claudeSessionId } : {}) };
+  const parent = str('parent');
+  return {
+    id,
+    name,
+    projectPath,
+    command,
+    machineId,
+    createdAt,
+    ...(claudeSessionId ? { claudeSessionId } : {}),
+    ...(parent ? { parent } : {}),
+  };
 }

@@ -11,6 +11,8 @@ interface Entry {
   // Manual pin flag, orthogonal to status. Absent/false means not urgent.
   urgent?: boolean;
   claudeSessionId?: string;
+  // Last main-loop tool call was SendMessage. Absent means false.
+  messagedLast?: true;
 }
 
 // Durable last-write-wins status store. Mirrors InMemoryStatusStore's semantics
@@ -82,6 +84,19 @@ export class FileStatusStore implements StatusStorePort {
     this.persist();
   }
 
+  getMessagedLast(workspaceId: string): boolean {
+    return this.statuses.get(workspaceId)?.messagedLast === true;
+  }
+
+  setMessagedLast(workspaceId: string, value: boolean): void {
+    if (this.getMessagedLast(workspaceId) === value) {
+      return;
+    }
+    const { messagedLast: _drop, ...current } = this.statuses.get(workspaceId) ?? { status: 'idle' as const };
+    this.statuses.set(workspaceId, value ? { ...current, messagedLast: true } : current);
+    this.persist();
+  }
+
   onChange(listener: (workspaceId: string, status: WorkspaceStatus) => void): void {
     this.listeners.push(listener);
   }
@@ -146,11 +161,12 @@ function parseEntry(value: unknown): Entry | undefined {
     return { status: bare };
   }
   if (typeof value === 'object' && value !== null) {
-    const { status, changedAt, urgent, claudeSessionId } = value as {
+    const { status, changedAt, urgent, claudeSessionId, messagedLast } = value as {
       status?: unknown;
       changedAt?: unknown;
       urgent?: unknown;
       claudeSessionId?: unknown;
+      messagedLast?: unknown;
     };
     const migrated = migrateStatus(status);
     if (isWorkspaceStatus(migrated)) {
@@ -159,6 +175,7 @@ function parseEntry(value: unknown): Entry | undefined {
         changedAt: typeof changedAt === 'number' ? changedAt : undefined,
         urgent: typeof urgent === 'boolean' ? urgent : undefined,
         claudeSessionId: typeof claudeSessionId === 'string' ? claudeSessionId : undefined,
+        ...(messagedLast === true ? { messagedLast: true as const } : {}),
       };
     }
   }

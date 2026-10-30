@@ -59,8 +59,8 @@ Codex discovers this repository's skills in `.agents/skills/`. Use:
 - `$work` for Perch features, fixes, and behavior changes. It contains the local
   design, worktree, testing, on-device verification, and integration workflow;
   it does not require the Claude Superpowers plugin.
-- `$perch-spawn` when asked to launch a separate local Perch workspace. The shared
-  launcher currently starts **Claude Code**, even when called from Codex.
+- `$perch-spawn` when asked to launch a separate local Perch workspace. Its
+  launcher, `perch spawn`, starts **Claude Code**, even when called from Codex.
 - `$perch-orchestrate` when asked to coordinate delegated work. Use available Codex
   collaboration tools for Codex subagents; they cannot address arbitrary Claude
   sessions by a tmux workspace id.

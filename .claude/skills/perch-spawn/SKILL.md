@@ -9,8 +9,9 @@ description: Use when asked to launch, spawn, or open one or more new Perch work
 
 A Perch workspace *is* a detached tmux session named `perch-<6 hex>`. The Perch
 agent discovers workspaces by running `tmux list-sessions` — nothing registers
-them. So spawning one needs no Perch code, no agent restart and no token:
-`spawn.sh` in this directory does it in two tmux calls.
+them. The `perch` CLI starts one (`perch spawn`); it needs no agent restart and no
+token. It is on PATH once `deploy/install-cli.sh` has run on the machine (see
+"Perch CLI" in the Perch repo's `docs/DEPLOY.md`).
 
 Each workspace runs its own `claude` process with its own context. It cannot see
 this conversation. **The brief is the only thing it will ever know.**
@@ -29,15 +30,18 @@ this conversation. **The brief is the only thing it will ever know.**
 
 ## Workflow
 
-1. **Resolve a project path per item** — absolute, and it must exist. Two items
-   on the same repo get the same path (see Isolation).
-2. **Write a self-contained brief per item** (see below).
-3. **Show the batch as a table and ask before spawning.** One row per workspace:
+1. **Check nothing already covers it.** `perch ls` lists every workspace, parked
+   ones included, with its title and folder; resume or message an existing one
+   rather than spawning a duplicate.
+2. **Resolve a project path per item** — it must exist (a relative one resolves
+   against your cwd). Two items on the same repo get the same path (see Isolation).
+3. **Write a self-contained brief per item** (see below).
+4. **Show the batch as a table and ask before spawning.** One row per workspace:
    project path, and the brief or its first line. N background Claude processes
    is not silently reversible, and the briefs are the part worth checking — the
    user gets to see what each workspace will be told before it starts.
-4. **Spawn each**, after the yes.
-5. **Report the ids.** Names sort themselves out: Claude Code writes the pane
+5. **Spawn each**, after the yes.
+6. **Report the ids.** Names sort themselves out: Claude Code writes the pane
    title and the agent reads that as the workspace name, so each tile ends up
    labelled by what it is doing rather than by the repo. Pass `--title` instead
    when the workspaces come from one batch and their summaries would all look
@@ -46,13 +50,13 @@ this conversation. **The brief is the only thing it will ever know.**
 ## Quick reference
 
 ```bash
-bash ~/.claude/skills/perch-spawn/spawn.sh /abs/path/to/project <<'PROMPT'
+perch spawn /abs/path/to/project <<'PROMPT'
 Work on issue #412. Read it first, then follow this project's conventions.
 PROMPT
 ```
 
-Prints the workspace id. Optional second arg is the model alias (default
-`opus[1m]`); pass `sonnet[1m]` for cheap batch work. Each brief is kept at
+Prints the workspace id. `--model <alias>` picks the model (default
+`opus[1m]`); pass `--model 'sonnet[1m]'` for cheap batch work. Each brief is kept at
 `~/.perch/spawn/<id>.md` as a record of what that workspace was launched to do.
 The Claude session is named after the workspace id, so other sessions can
 `SendMessage` it by the id this prints.
@@ -68,7 +72,7 @@ When you already know what the workspace is for, say so and the name stops
 moving:
 
 ```bash
-bash ~/.claude/skills/perch-spawn/spawn.sh --title 'story foo 9' /abs/path <<'PROMPT'
+perch spawn --title 'story foo 9' /abs/path <<'PROMPT'
 ...
 PROMPT
 ```
@@ -87,28 +91,29 @@ one lets the shell expand `$` and backticks in the brief before it is written.
 
 ## Reporting to an orchestrator
 
-When the spawning session is an orchestrator that will follow the child, pass its
-own session name (the first line of `ListAgents`: "This session is X"):
+When the spawning session is an orchestrator that will follow the child, pass
+`--child`. The caller must itself be a Perch workspace (it is found from
+`$TMUX_PANE`):
 
 ```bash
-bash ~/.claude/skills/perch-spawn/spawn.sh --parent <own name> /abs/path <<'PROMPT'
+perch spawn --child /abs/path <<'PROMPT'
 ...
 PROMPT
 ```
 
 The child then:
-- **cannot use `AskUserQuestion` or plan mode.** A per-workspace hook
-  (`~/.perch/spawn/<id>.settings.json`) denies them and tells it to send the
-  question to the parent with `SendMessage` instead. A peer message can never
-  answer a pending prompt, so without this a child blocks on a question its
-  orchestrator could have answered.
-- **is told in its brief** (a footer `spawn.sh` appends) to send its questions and
-  its final report to the parent.
-- **keeps both across park/unpark**, because they are plain flags in
-  `@perch_command`.
+- **records its parent's workspace id**, a link that survives park/unpark and the
+  tmux server's loss; `perch ls --mine` lists the caller's children from it.
+- **cannot use `AskUserQuestion` or plan mode.** A per-workspace hook denies them
+  and tells it to send the question to the parent with `SendMessage` instead. A
+  peer message can never answer a pending prompt, so without this a child blocks
+  on a question its orchestrator could have answered.
+- **is told in its brief** (an appended footer) to send its questions and its final
+  report to the parent by its current messaging name, and to run `perch ls` if that
+  name stops resolving.
 
-Leave `--parent` off for a workspace the user will drive themselves. The workflow
-on the orchestrator's side is the `perch-orchestrate` skill.
+Without `--child` the workspace is an ordinary one the user drives (the default;
+orchestration is explicit). The orchestrator's side is the `perch-orchestrate` skill.
 
 ## Writing the brief
 
@@ -126,7 +131,7 @@ written down.
   whenever its turn ends, so an agent that stops mid-task to confirm a plan
   looks like it is waiting on the user when it is not. "Work it through, don't
   check in with me" keeps that signal honest. The "Needs you" at the *end* is
-  correct — that one means the workspace is worth looking at. With `--parent`
+  correct — that one means the workspace is worth looking at. With `--child`
   the orchestrator owns this, and the footer covers reporting; don't repeat it.
 - Keep it short. A few sentences beats a page.
 
@@ -139,43 +144,17 @@ themselves. Do not create worktrees or branches here; this is a launcher.
 If a repo has no such convention and two workspaces will touch the same files,
 say so when presenting the table and let the user decide.
 
-## Why raw tmux — don't "fix" this
+## Testing
 
-The agent's `perch create` CLI needs `PERCH_MACHINE_ID` and the checkout path,
-which differ per machine; that is exactly what would stop this working
-everywhere. `spawn.sh` couples to four stable things instead: the `perch-`
-prefix, `new-session -d`, `-c <cwd>`, and the `@perch_command` option. Do not add
-a use-the-CLI-if-present branch.
-
-`@perch_command` is not decorative — it feeds the workspace's `command` field,
-and park/unpark resumes from it. A workspace spawned without it can never be
-parked.
-
-## Testing this script is where the danger is
-
-`spawn.sh` calls bare `tmux` deliberately: in production it must reach the ambient
-server, the one its own workspace lives on. That leaves environment variables as
-the only way to isolate it under test — and `$TMUX` beats `TMUX_TMPDIR`, so a test
-run from inside a Perch pane resolves to the **real** server unless every single
-call is prefixed with `env -u TMUX`.
-
-So a test's own tmux calls, `kill-server` above all, must pass an explicit
-`-S <sandbox socket>`: it overrides both variables and errors out rather than
-falling back, which makes reaching the real server structurally impossible rather
-than merely unlikely. `spawn.test.sh` does this, and asserts its first spawned
-session really landed on the sandbox socket before it touches anything else.
-
-A single missing `env -u TMUX` on a `kill-server` destroys every live workspace on
-the machine. Do not isolate destructive tmux calls with environment variables
-alone.
+`perch spawn` is `spawnWorkspace` in the Perch repo's `packages/agent`, tested there
+with a fake tmux. Never run it as a smoke test: it starts a real Claude process.
 
 ## Common mistakes
 
 | Mistake | What happens |
 |---|---|
-| Interpolating the brief into the tmux command string | An apostrophe or backtick mangles the command, the pane dies instantly and the workspace never appears — no error anywhere |
-| Storing the full command (brief included) in `@perch_command` | Every unpark re-submits the original brief into the resumed conversation |
+| Starting a workspace with raw `tmux new-session` | No `@perch_command`, so it can never be parked; a brief interpolated into the command string dies on its first apostrophe, silently |
 | A brief that says "the bug above" | The workspace has no above; it starts by asking what you mean and then sits idle |
 | Spawning before showing the table | Several Claude processes start on briefs nobody checked |
-| Relative project path | `tmux new-session -c` falls back to `$HOME`; `spawn.sh` rejects it, but resolve it anyway |
+| Spawning without checking `perch ls` | A second workspace starts on work an existing (perhaps parked) one already holds |
 | Setting the pane title yourself, after spawning | Claude Code overwrites it within seconds — use `--title`, which also turns its renaming off |

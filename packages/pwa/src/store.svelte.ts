@@ -1,5 +1,6 @@
 import type { AgentMessage, BrowserSession, ClientMessage, CommandEntry, MachineStats, MediaResult, Workspace, WorkspaceStatus } from '@perch/contracts';
 import { imageMediaType, pdfMediaType, audioMediaType } from '@perch/contracts';
+import { SvelteSet } from 'svelte/reactivity';
 import type { ConnectionManager } from './core/connection-manager';
 import type { WorkspaceAggregator } from './core/workspace-aggregator';
 import type { SettingsStore, MachineConfig } from './core/settings-store';
@@ -223,6 +224,9 @@ export class PerchStore {
   // survives opening a workspace and coming back; deliberately not persisted, so a reload
   // starts collapsed.
   parkedExpanded = $state(false);
+  // The orchestrators whose children the home list shows (`machineId:id`), kept like
+  // `parkedExpanded`: across opening a workspace, not across a reload.
+  readonly expandedParents = new SvelteSet<string>();
   // Live agent-browser sessions per connection, from the agent's `browserSessions`
   // message. Keyed by the CONNECTION id (this PWA's machine config id), never the
   // agent's self-reported machine id — same routing rule as workspaces.
@@ -1059,6 +1063,10 @@ export class PerchStore {
 
   toggleParked(): void {
     this.parkedExpanded = !this.parkedExpanded;
+  }
+
+  toggleChildren(key: string): void {
+    if (!this.expandedParents.delete(key)) this.expandedParents.add(key);
   }
 
   setKeyboardAnchor(focus: (() => void) | null): void {

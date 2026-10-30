@@ -21,6 +21,9 @@ export interface ListWorkspacesDeps {
   // Optional for the same reason. Supplies each live Claude Code session's address, keyed by
   // the tmux session it runs in — which is the workspace id, so the join needs no lookup.
   claudeSessions?: ClaudeSessionsPort;
+  // Optional for the same reason. The sessions whose last main-loop tool call was SendMessage
+  // (the status store's mark); a child among them is waiting on its orchestrator.
+  messagedLast?: Pick<ReadonlySet<string>, 'has'>;
 }
 
 export async function listWorkspaces(deps: ListWorkspacesDeps): Promise<Workspace[]> {
@@ -39,6 +42,7 @@ export async function listWorkspaces(deps: ListWorkspacesDeps): Promise<Workspac
       .map(async (s) => {
         const github = (await deps.repoRemote?.getGithubRepo(s.startPath)) ?? undefined;
         const agentAddress = addresses[s.name];
+        const waiting = s.parent !== undefined && (deps.messagedLast?.has(s.name) ?? false);
         return {
           machineId: deps.machineId,
           id: s.name,
@@ -53,6 +57,8 @@ export async function listWorkspaces(deps: ListWorkspacesDeps): Promise<Workspac
           urgent: deps.status.getUrgent(s.name),
           ...(github ? { github } : {}),
           ...(agentAddress ? { agentAddress } : {}),
+          ...(s.parent ? { parentId: s.parent } : {}),
+          ...(waiting ? { waitingOn: 'parent' as const } : {}),
         };
       }),
   );
@@ -72,5 +78,6 @@ function toWorkspace(parked: ParkedWorkspace, machineId: string): Workspace {
     // the status store (whose entry for a dead session is pruned at startup anyway).
     status: 'parked',
     urgent: false,
+    ...(parked.parent ? { parentId: parked.parent } : {}),
   };
 }

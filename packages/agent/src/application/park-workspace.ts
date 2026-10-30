@@ -66,6 +66,7 @@ export async function parkWorkspace(
     createdAt: workspace.createdAt,
     parkedAt: deps.clock.now(),
     claudeSessionId,
+    ...(workspace.parentId ? { parent: workspace.parentId } : {}),
   });
   await deps.tmux.killSession(workspace.id);
   deps.status.set(workspace.id, 'parked');

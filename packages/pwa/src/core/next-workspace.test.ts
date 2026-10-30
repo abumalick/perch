@@ -48,4 +48,20 @@ describe('nextWorkspace', () => {
     const list = [ws('a', 'needs-feedback'), ws('b', 'idle')];
     expect(nextWorkspace(list, ws('gone', 'working'))?.id).toBe('a');
   });
+
+  it('walks parents then their children, so a child that needs you follows its working parent', () => {
+    const list = [
+      { ...ws('c', 'needs-feedback'), parentId: 'p' },
+      ws('n', 'needs-feedback'),
+      ws('p', 'working'),
+      ws('i', 'idle'),
+    ];
+    expect(nextWorkspace(list, list[2]!)?.id).toBe('c');
+    expect(nextWorkspace(list, list[0]!)?.id).toBe('n');
+  });
+
+  it('skips a child waiting on its orchestrator, which stays working', () => {
+    const list = [ws('p', 'needs-feedback'), { ...ws('c', 'working'), parentId: 'p', waitingOn: 'parent' as const }];
+    expect(nextWorkspace(list, list[0]!)).toBeNull();
+  });
 });

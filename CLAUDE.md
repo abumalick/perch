@@ -217,6 +217,20 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   with its last session, that last workspace exiting on its own comes back parked; close it.
   Nothing reopens on its own: starting every lost `claude` at once is a real memory cost.
 
+- **The `perch` CLI and the orchestrator → child link.** `deploy/install-cli.sh` links
+  `deploy/perch-cli.sh` to `~/.local/bin/perch` on each machine, so any session in any repo can
+  run `perch spawn [--child]`, `perch ls [--mine]` and `perch peek <id>`. These three read
+  tmux and the `~/.perch` stores directly (read-only, no agent.env needed) and skip the GitHub
+  lookup, so `ls` answers in a fraction of a second. **Orchestration is explicit:** a plain
+  `perch spawn` is an ordinary workspace; `--child` records the caller's **workspace id** (never
+  its Claude session name, which changes on rename) as the tmux option `@perch_parent`, read
+  into `Workspace.parentId`. The link is carried in `parked.json` and `live.json` and re-set by
+  unpark, so it survives park/unpark and a lost tmux server. A child whose turn ended right
+  after messaging its parent gets `waitingOn: 'parent'` (the durable `messagedLast` mark): its
+  status stays `working`, the PWA labels it "Needs orchestrator" and `perch ls` shows
+  `needs-orchestrator`. The PWA nests one level of children under a listed, unparked parent on
+  the same machine (`core/nest-workspaces.ts`), folded by default; a group ranks by its most
+  urgent member, and Next walks children of folded parents too.
 - **Closing a workspace reaps the pane's systemd scope — and acknowledges before it does.**
   tmux (built with systemd support) puts every pane it spawns in its own transient
   `tmux-spawn-<uuid>.scope`. `tmux kill-session` only SIGHUPs the pane's process **group**, so
@@ -986,7 +1000,7 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   `Stop` when an API error (usage limit, overload, dropped connection) ends the turn, maps to
   `needs-feedback`; and **`SessionStart`** with source `startup`/`resume`/`clear`/`fork` (a new
   `claude` process or conversation, which has none of the old one's background tasks) drops all
-  three in-memory marks and turns a `working` into `needs-feedback`, leaving any other status
+  three marks and turns a `working` into `needs-feedback`, leaving any other status
   alone (an unpark sets `idle` just before its resume fires it). Source `compact` fires
   mid-turn on auto-compaction and changes nothing. An Esc interrupt fires no hook at all, so it
   still leaves `working` behind.
@@ -1029,11 +1043,13 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   **A turn that ends right after a main-loop `SendMessage` defers the same way.** That is a
   session waiting on another Claude session's reply (a spawned child on its orchestrator, an
   orchestrator on its children; see the `perch-orchestrate` skill), not on the user. The fact
-  is a second in-memory marker (`messagedLast`), set by a main-loop `PostToolUse` of
+  is a second marker (`messagedLast`), set by a main-loop `PostToolUse` of
   `SendMessage`, cleared by any other main-loop `PostToolUse` and by `UserPromptSubmit` (the
   reply arrives as one). It must stay separate from the deferral `Set`, because tool calls keep
-  the deferral but change this. Accepted cost: a child whose last act was its final report stays
-  `working` until it is closed.
+  the deferral but change this. Unlike the other two marks it is **durable**, an entry field in
+  `status.json` (pruned with its entry), because it is what derives a child's
+  `waitingOn: 'parent'` ("Needs orchestrator"), which the PWA and `perch ls` both show. Accepted
+  cost: a child whose last act was its final report stays `working` until it is closed.
 - **`install-hooks` also installs a kill guard (`perch-guard.sh`, a `PreToolUse` hook on `Bash`
   for Claude Code and Codex).** A workspace session once ran `pkill -f "x"`, which matches
   nearly every command line: it took down the tmux server, the agent and every other session in

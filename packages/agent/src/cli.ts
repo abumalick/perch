@@ -1,6 +1,6 @@
 import { homedir, hostname } from 'node:os';
 import { readFile, writeFile, mkdir, copyFile, chmod } from 'node:fs/promises';
-import { dirname, join as joinPath } from 'node:path';
+import { dirname, join as joinPath, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, type AgentConfig } from './infrastructure/config';
 import { systemClock, RandomIdGenerator, systemPathResolver } from './infrastructure/system';
@@ -30,6 +30,14 @@ import { FilePairingStore } from './infrastructure/file-pairing-store';
 import { agentEnvFile, locateAgentEnv } from './infrastructure/agent-env-file';
 import { agentService } from './infrastructure/agent-service';
 import { relayJoinClient } from './infrastructure/relay-join-client';
+import { FileStatusStore } from './infrastructure/file-status-store';
+import { FileParkedStore } from './infrastructure/file-parked-store';
+import { FsFileWriter } from './infrastructure/fs-file-writer';
+import { fsResolveDirectory } from './infrastructure/fs-directory-checker';
+import { spawnWorkspace } from './application/spawn-workspace';
+import { formatWorkspaceTable } from './application/format-workspace-table';
+import type { TmuxPort } from './ports/tmux-port';
+import type { StatusStorePort } from './ports/status-store-port';
 
 function wire(config: AgentConfig) {
   const tmux = new TmuxAdapter();
@@ -41,8 +49,18 @@ function wire(config: AgentConfig) {
   return { tmux, recent, lister, hiddenFolders, repoRemote, claudeSessions };
 }
 
-export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string): Promise<string> {
+// What `ls`, `spawn` and `peek` take from the process, injectable so tests reach no tmux server.
+export interface CliIo {
+  tmux?: TmuxPort;
+  stdin?: () => Promise<string>;
+  cwd?: string;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo = {}): Promise<string> {
   if (argv[0] === 'connect' || argv[0] === 'pair') return relaySetup(argv[0], argv.slice(1), env, home);
+  if (argv[0] === 'ls' || argv[0] === 'spawn' || argv[0] === 'peek') return orchestration(argv[0], argv.slice(1), env, home, io);
   const config = loadConfig({ ...env, ...(await agentEnvValues(env)) }, home);
   const { tmux, recent, lister, hiddenFolders, repoRemote, claudeSessions } = wire(config);
   const [command, ...rest] = argv;
@@ -162,6 +180,132 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string):
     default:
       throw new Error(`unknown command: ${command ?? '(none)'}`);
   }
+}
+
+const LS_USAGE = 'usage: perch ls [--json] [--mine] [--parent <workspace id>]';
+const SPAWN_USAGE = 'usage: perch spawn [--title <title>] [--child] [--model <model>] <projectPath>   (brief on stdin)';
+const PEEK_USAGE = 'usage: perch peek <workspace id> [-n <lines>]';
+
+// `ls`, `spawn` and `peek` serve sessions in any repo, so none of them needs deploy/agent.env:
+// it only lends the machine id, and the store paths come from $HOME.
+async function orchestration(command: 'ls' | 'spawn' | 'peek', argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo): Promise<string> {
+  const values = await agentEnvValues(env).catch(() => ({}) as Record<string, string>);
+  const config = loadConfig({ PERCH_MACHINE_ID: hostname().split('.')[0], ...env, ...values }, home);
+  const tmux = io.tmux ?? new TmuxAdapter();
+  const claudeSessions = new FileClaudeSessionsStore(config.claudeSessionsDir);
+  const args = [...argv];
+  const flag = (name: string) => {
+    const at = args.indexOf(name);
+    if (at !== -1) args.splice(at, 1);
+    return at !== -1;
+  };
+  const list = async () => {
+    const hidden = await new FileHiddenFoldersStore(config.hiddenFoldersPath).list();
+    const status = readOnlyStatus(config.statusStorePath);
+    const workspaces = await listWorkspaces({
+      tmux,
+      machineId: config.machineId,
+      sessionPrefix: config.sessionPrefix,
+      status,
+      parked: new FileParkedStore(config.parkedStorePath),
+      claudeSessions,
+      messagedLast: { has: (id) => status.getMessagedLast(id) },
+    });
+    return workspaces.filter((w) => !isHiddenPath(w.projectPath, hidden));
+  };
+  const table = (workspaces: Awaited<ReturnType<typeof list>>) =>
+    formatWorkspaceTable(workspaces, { now: (io.now ?? Date.now)(), home });
+
+  switch (command) {
+    case 'ls': {
+      const json = flag('--json');
+      const mine = flag('--mine');
+      const parent = takeOption(args, '--parent', LS_USAGE);
+      if (args.length > 0) throw new Error(LS_USAGE);
+      const of = mine ? await callerWorkspace(env, tmux) : parent;
+      const workspaces = (await list()).filter((w) => of === undefined || w.parentId === of);
+      return json ? JSON.stringify(workspaces, null, 2) : table(workspaces);
+    }
+    case 'spawn': {
+      const child = flag('--child');
+      const title = takeOption(args, '--title', SPAWN_USAGE);
+      const model = takeOption(args, '--model', SPAWN_USAGE);
+      const [projectPath, ...extra] = args;
+      if (!projectPath || extra.length > 0 || projectPath.startsWith('--')) throw new Error(SPAWN_USAGE);
+      const cwd = io.cwd ?? process.cwd();
+      const resolveDirectory = fsResolveDirectory(cwd);
+      if (!(await resolveDirectory(projectPath))) throw new Error(`not a directory: ${resolvePath(cwd, projectPath)}`);
+      const parentId = child ? await callerWorkspace(env, tmux) : undefined;
+      const parent = parentId ? { id: parentId, name: (await claudeSessions.addressesByTmuxSession())[parentId] ?? parentId } : undefined;
+      const brief = await (io.stdin ?? readStdin)();
+      return spawnWorkspace(
+        {
+          tmux: withSpawnMethods(tmux),
+          files: new FsFileWriter(),
+          resolveDirectory,
+          ids: new RandomIdGenerator(),
+          sleep: io.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
+          spawnDir: joinPath(home, '.perch', 'spawn'),
+        },
+        { projectPath, brief, ...(model ? { model } : {}), ...(title ? { title } : {}), ...(parent ? { parent } : {}) },
+      );
+    }
+    case 'peek': {
+      const n = takeOption(args, '-n', PEEK_USAGE);
+      const lines = n === undefined ? 40 : Number(n);
+      const [id, ...extra] = args;
+      if (!id || extra.length > 0 || !Number.isInteger(lines) || lines < 1) throw new Error(PEEK_USAGE);
+      const workspace = (await list()).find((w) => w.id === id);
+      if (!workspace) throw new Error(`no workspace ${id} (see perch ls)`);
+      if (workspace.status === 'parked') {
+        return `${table([workspace])}\n\n(parked: no pane until it is opened)`;
+      }
+      if (!tmux.capturePane) throw new Error('this tmux adapter cannot capture a pane');
+      // History beyond N rows, since a full-screen UI leaves many of its rows blank.
+      const text = await tmux.capturePane(id, lines * 4);
+      const tail = text.split('\n').filter((line) => line.trim().length > 0).slice(-lines);
+      return [table([workspace]), '', ...tail].join('\n');
+    }
+  }
+}
+
+// The workspace the caller's own pane belongs to. Targeted at $TMUX_PANE: an untargeted
+// display-message answers for whichever session was most recently active.
+async function callerWorkspace(env: NodeJS.ProcessEnv, tmux: TmuxPort): Promise<string> {
+  const pane = env.TMUX_PANE;
+  if (!pane) throw new Error('not inside a Perch workspace: $TMUX_PANE is unset');
+  const session = tmux.sessionOfPane ? await tmux.sessionOfPane(pane) : null;
+  if (!session?.startsWith('perch-')) {
+    throw new Error(`not inside a Perch workspace: this pane's tmux session is ${session ?? 'unknown'}`);
+  }
+  return session;
+}
+
+function withSpawnMethods(tmux: TmuxPort) {
+  const { setPaneTitle } = tmux;
+  if (!setPaneTitle) throw new Error('this tmux adapter cannot set a pane title');
+  return {
+    createSession: tmux.createSession.bind(tmux),
+    hasSession: tmux.hasSession.bind(tmux),
+    setPaneTitle: setPaneTitle.bind(tmux),
+  };
+}
+
+// Read-only: nothing here ever calls set or prune, so the agent's file is never rewritten. A
+// file that cannot be read at all (a directory, no permission) reads as no statuses.
+function readOnlyStatus(path: string): Pick<StatusStorePort, 'get' | 'getChangedAt' | 'getUrgent' | 'getMessagedLast'> {
+  try {
+    return new FileStatusStore(path);
+  } catch {
+    return { get: () => undefined, getChangedAt: () => undefined, getUrgent: () => false, getMessagedLast: () => false };
+  }
+}
+
+async function readStdin(): Promise<string> {
+  if (process.stdin.isTTY) throw new Error('pass the brief on stdin, e.g. perch spawn <path> <<\'EOF\'');
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 const CONNECT_USAGE = 'usage: perch connect <relay URL> --key <join key> (or PERCH_JOIN_KEY) [--pwa <PWA origin>] [--agent-url <relay URL for this agent>]';

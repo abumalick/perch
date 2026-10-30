@@ -15,8 +15,8 @@ tools actually available in the session; do not assume Claude's `Agent`,
   or a scoped implementation. Use the exposed collaboration tools when available.
   Agents share files, so assign non-overlapping ownership or separate worktrees.
 - **Perch workspace:** a separate repo, a long-lived task, or a session the user
-  needs to steer independently. It has its own tmux pane and process. The shared
-  `$perch-spawn` helper currently launches **Claude Code**.
+  needs to steer independently. It has its own tmux pane and process.
+  `$perch-spawn` (`perch spawn`) launches **Claude Code**.
 
 Honor the user's requested context. If the necessary tools are unavailable,
 explain the limitation and continue the parts possible locally; do not invent a
@@ -46,13 +46,13 @@ and expected report locations so coordination can survive lost context.
 Codex's native collaboration tools do not address arbitrary Claude sessions.
 Without an explicitly available cross-session bridge:
 
-- Leave the launcher's `--parent` unset: its hook would prohibit user questions
+- Leave `perch spawn`'s `--child` unset: its hook would prohibit user questions
   and redirect the child to an unreachable Claude parent.
 - Include a concrete report path in the brief when the user wants supervision,
   e.g. a unique file under that project's gitignored `.tmp/`. Read that report
   and inspect the child's branch/worktree when it completes.
-- Read `~/.perch/status.json` and, when needed, a targeted
-  `tmux capture-pane -p -t <workspace-id> -S -80` to diagnose a stalled child.
+- Use `perch ls` (status, title, folder of every workspace) and, when needed,
+  `perch peek <workspace-id> -n 80` to diagnose a stalled child.
   These are observations, not reliable structured completion messages.
 - Tell the user which workspace needs attention, including its title, id and
   pending action. Do not submit answers or approve permission dialogs through
@@ -76,6 +76,7 @@ explicit id with `tmux kill-session -t <id>`; never kill the ambient server or u
 only its exact `tmux-spawn-<uuid>.scope` if needed; never stop the agent service's
 scope. Leave unrelated sessions alone.
 
-If context is lost, recover the recorded task/child mapping, inspect status and
+If context is lost, recover the recorded task/child mapping (`perch ls` lists
+every workspace with its title and folder), inspect status and
 reports, and re-establish any available subscriptions. Do not assume Claude's
 subscription lifetimes or restart semantics apply to Codex.

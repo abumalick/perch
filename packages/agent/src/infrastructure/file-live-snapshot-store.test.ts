@@ -69,4 +69,16 @@ describe('FileLiveSnapshotStore', () => {
     expect(await store.read()).toEqual({ serverId: '123:456', workspaces: [] });
     await store.remove('perch-missing');
   });
+
+  it('keeps a parent link, and drops one that is not a non-empty string', async () => {
+    const store = new FileLiveSnapshotStore(file);
+    const withParent = { ...snapshot, workspaces: [{ ...snapshot.workspaces[0]!, parent: 'perch-p' }] };
+    await store.write(withParent);
+    expect(await store.read()).toEqual(withParent);
+    writeFileSync(
+      file,
+      JSON.stringify({ ...snapshot, workspaces: [{ ...snapshot.workspaces[0]!, parent: 7 }, { ...snapshot.workspaces[0]!, parent: '' }] }),
+    );
+    expect((await store.read())?.workspaces).toEqual([snapshot.workspaces[0], snapshot.workspaces[0]]);
+  });
 });

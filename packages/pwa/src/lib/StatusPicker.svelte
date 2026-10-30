@@ -2,8 +2,11 @@
   import type { WorkspaceStatus } from '@perch/contracts';
   import { STATUS_LABELS, STATUS_ORDER } from './workspace-status-display';
 
-  let { status, onSelect }: { status: WorkspaceStatus; onSelect: (s: WorkspaceStatus) => void } =
-    $props();
+  let {
+    status,
+    label = STATUS_LABELS[status],
+    onSelect,
+  }: { status: WorkspaceStatus; label?: string; onSelect: (s: WorkspaceStatus) => void } = $props();
 
   let open = $state(false);
 
@@ -25,10 +28,10 @@
     data-status={status}
     aria-haspopup="listbox"
     aria-expanded={open}
-    aria-label="Status: {STATUS_LABELS[status]}"
+    aria-label="Status: {label}"
     onpointerdown={keepFocus}
     onclick={() => (open = !open)}
-  >{STATUS_LABELS[status]}</button>
+  >{label}</button>
 
   {#if open}
     <button type="button" class="backdrop" aria-label="Close status menu" onclick={() => (open = false)}></button>

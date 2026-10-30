@@ -28,6 +28,8 @@ export const workspaceSchema = z.object({
   // `.optional()` keeps a version-skewed rollout safe: an old agent omits it and the PWA
   // simply shows no badge. It must be declared here or zod strips it off the wire.
   agentAddress: z.string().optional(),
+  parentId: z.string().optional(),
+  waitingOn: z.literal('parent').optional(),
 });
 
 // Compile-time guarantee that the schema and the domain type stay in sync.

@@ -340,3 +340,48 @@ describe('listWorkspaces agent address', () => {
     expect(result.find((w) => w.id === 'perch-parked')).not.toHaveProperty('agentAddress');
   });
 });
+
+describe('listWorkspaces parent link', () => {
+  const tmux: TmuxPort = {
+    ...baseTmux,
+    listSessions: async () => [
+      { name: 'perch-child', startPath: '/w/foo', command: 'claude', createdAt: 1, parent: 'perch-p', title: '' },
+      { name: 'perch-solo', startPath: '/w/foo', command: 'claude', createdAt: 1, title: '' },
+    ],
+  };
+  const parkedChild = {
+    list: async () => [
+      {
+        id: 'perch-parked',
+        name: 'parked one',
+        projectPath: '/w/foo',
+        command: 'claude',
+        machineId: 'mini',
+        createdAt: 1,
+        parkedAt: 500,
+        parent: 'perch-p',
+      },
+    ],
+  };
+  const byId = (list: Awaited<ReturnType<typeof listWorkspaces>>, id: string) => list.find((w) => w.id === id);
+
+  it('stamps parentId on a live and a parked child, and on nothing else', async () => {
+    const result = await listWorkspaces({ ...baseDeps, tmux, parked: parkedChild });
+    expect(byId(result, 'perch-child')?.parentId).toBe('perch-p');
+    expect(byId(result, 'perch-parked')?.parentId).toBe('perch-p');
+    expect(byId(result, 'perch-solo')).not.toHaveProperty('parentId');
+  });
+
+  it('marks a live child that messaged last as waiting on its parent', async () => {
+    const result = await listWorkspaces({ ...baseDeps, tmux, messagedLast: new Set(['perch-child', 'perch-solo']) });
+    expect(byId(result, 'perch-child')?.waitingOn).toBe('parent');
+    // No parent to wait on: a top-level workspace that messaged a peer is just working.
+    expect(byId(result, 'perch-solo')).not.toHaveProperty('waitingOn');
+  });
+
+  it('does not mark a child that did not message last, nor a parked one', async () => {
+    const result = await listWorkspaces({ ...baseDeps, tmux, parked: parkedChild, messagedLast: new Set(['perch-parked']) });
+    expect(byId(result, 'perch-child')).not.toHaveProperty('waitingOn');
+    expect(byId(result, 'perch-parked')).not.toHaveProperty('waitingOn');
+  });
+});

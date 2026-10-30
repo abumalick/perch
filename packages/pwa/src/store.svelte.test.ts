@@ -2209,3 +2209,22 @@ describe('PerchStore dictation presets', () => {
     expect(storage.read('perch.openRouterApiKey')).toBe('sk-or-x');
   });
 });
+
+describe('PerchStore orchestrator folds', () => {
+  it('starts every orchestrator folded and toggles each one on its own', () => {
+    const { store } = build();
+    expect(store.expandedParents.has('mac:perch-o')).toBe(false);
+    store.toggleChildren('mac:perch-o');
+    expect(store.expandedParents.has('mac:perch-o')).toBe(true);
+    expect(store.expandedParents.has('mac:perch-p')).toBe(false);
+    store.toggleChildren('mac:perch-o');
+    expect(store.expandedParents.has('mac:perch-o')).toBe(false);
+  });
+
+  it('keeps the fold out of storage, like the parked group', () => {
+    const { store, storage } = build();
+    const write = vi.spyOn(storage, 'write');
+    store.toggleChildren('mac:perch-o');
+    expect(write).not.toHaveBeenCalled();
+  });
+});

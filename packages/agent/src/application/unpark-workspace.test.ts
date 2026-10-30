@@ -52,6 +52,13 @@ describe('unparkWorkspace', () => {
     });
   });
 
+  // Without this the child would come back with no `@perch_parent`, and lose its orchestrator.
+  it('recreates the session with its parent link', async () => {
+    const { deps } = makeDeps({ ...record, parent: 'perch-p' });
+    await unparkWorkspace(deps, 'perch-a');
+    expect(deps.tmux.createSession).toHaveBeenCalledWith(expect.objectContaining({ parent: 'perch-p' }));
+  });
+
   it('runs the original command verbatim when there is no session id', async () => {
     const { claudeSessionId: _drop, ...noSession } = record;
     const { deps } = makeDeps(noSession);

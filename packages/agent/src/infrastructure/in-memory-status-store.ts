@@ -7,6 +7,7 @@ interface Entry {
   // Manual pin flag, orthogonal to status. Absent/false means not urgent.
   urgent?: boolean;
   claudeSessionId?: string;
+  messagedLast?: boolean;
 }
 
 // Last-write-wins, in-memory. Both hook events and the PWA's setStatus message write here;
@@ -66,6 +67,19 @@ export class InMemoryStatusStore implements StatusStorePort {
     }
     const status = current?.status ?? 'idle';
     this.statuses.set(workspaceId, { changedAt: this.now(), ...current, status, claudeSessionId: sessionId });
+  }
+
+  getMessagedLast(workspaceId: string): boolean {
+    return this.statuses.get(workspaceId)?.messagedLast ?? false;
+  }
+
+  setMessagedLast(workspaceId: string, value: boolean): void {
+    if (this.getMessagedLast(workspaceId) === value) {
+      return;
+    }
+    const current = this.statuses.get(workspaceId);
+    const status = current?.status ?? 'idle';
+    this.statuses.set(workspaceId, { changedAt: this.now(), ...current, status, messagedLast: value });
   }
 
   onChange(listener: (workspaceId: string, status: WorkspaceStatus) => void): void {

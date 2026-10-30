@@ -40,6 +40,7 @@ export async function unparkWorkspace(
     name: record.id,
     cwd: record.projectPath,
     command: resumeCommand(record.command, record.claudeSessionId),
+    ...(record.parent ? { parent: record.parent } : {}),
   });
   await deps.parked.remove(record.id);
   // Back to a normal live workspace. The next hook event moves it to `working`.

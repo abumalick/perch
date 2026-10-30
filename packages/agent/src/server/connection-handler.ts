@@ -82,6 +82,8 @@ export interface ConnectionHandlerDeps {
   browserViewers: ViewerRegistry;
   forgetWorkspace: (id: string) => Workspace | undefined;
   broadcastClosed: (id: string) => void;
+  // WsServer's SendMessage mark, which listWorkspaces turns into `waitingOn`.
+  messagedLast?: Pick<ReadonlySet<string>, 'has'>;
   repoRemote?: RepoRemotePort;
   claudeSessions?: ClaudeSessionsPort;
   scopes?: ProcessScopePort;
@@ -227,6 +229,7 @@ export class ConnectionHandler {
             repoRemote,
             claudeSessions,
             parked: this.deps.parked,
+            messagedLast: this.deps.messagedLast,
           })
         ).filter((w) => !isHiddenPath(w.projectPath, hidden));
         this.conn.send({ type: 'workspaces', workspaces });
@@ -517,6 +520,7 @@ export class ConnectionHandler {
       machineId: config.machineId,
       sessionPrefix: config.sessionPrefix,
       status,
+      messagedLast: this.deps.messagedLast,
     });
     return [...config.projectRoots, ...workspaces.map((w) => w.projectPath)];
   }
@@ -546,6 +550,7 @@ export class ConnectionHandler {
       machineId: config.machineId,
       sessionPrefix: config.sessionPrefix,
       status,
+      messagedLast: this.deps.messagedLast,
     });
     return workspaces.find((w) => w.id === workspaceId);
   }

@@ -372,11 +372,30 @@ describe('listWorkspaces parent link', () => {
     expect(byId(result, 'perch-solo')).not.toHaveProperty('parentId');
   });
 
+  const allWorking = { ...noStatus, get: () => 'working' as const };
+
   it('marks a live child that messaged last as waiting on its parent', async () => {
-    const result = await listWorkspaces({ ...baseDeps, tmux, messagedLast: new Set(['perch-child', 'perch-solo']) });
+    const result = await listWorkspaces({
+      ...baseDeps,
+      tmux,
+      status: allWorking,
+      messagedLast: new Set(['perch-child', 'perch-solo']),
+    });
     expect(byId(result, 'perch-child')?.waitingOn).toBe('parent');
     // No parent to wait on: a top-level workspace that messaged a peer is just working.
     expect(byId(result, 'perch-solo')).not.toHaveProperty('waitingOn');
+  });
+
+  // The mark outlives the turn: a progress message followed by a permission prompt leaves it
+  // set while the child waits on the user, who must not be told the orchestrator is the one.
+  it('does not mark a child whose status is anything but working', async () => {
+    const result = await listWorkspaces({
+      ...baseDeps,
+      tmux,
+      status: { ...noStatus, get: () => 'needs-feedback' as const },
+      messagedLast: new Set(['perch-child']),
+    });
+    expect(byId(result, 'perch-child')).not.toHaveProperty('waitingOn');
   });
 
   it('does not mark a child that did not message last, nor a parked one', async () => {

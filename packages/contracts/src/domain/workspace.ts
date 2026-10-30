@@ -33,8 +33,8 @@ export interface Workspace {
   // never changes, unlike the Claude session name other sessions message it by.
   parentId?: string;
   // Set when this child's turn ended right after it messaged its orchestrator: the PWA labels
-  // it "Needs orchestrator" while its status stays `working`. Derived from an in-memory mark,
-  // so it is absent again after an agent restart until the next hook event.
+  // it "Needs orchestrator" while its status stays `working`. Derived from the durable
+  // `messagedLast` mark in status.json, and only while the status is `working`.
   waitingOn?: 'parent';
 }
 

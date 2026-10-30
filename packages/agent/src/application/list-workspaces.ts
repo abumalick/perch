@@ -42,7 +42,10 @@ export async function listWorkspaces(deps: ListWorkspacesDeps): Promise<Workspac
       .map(async (s) => {
         const github = (await deps.repoRemote?.getGithubRepo(s.startPath)) ?? undefined;
         const agentAddress = addresses[s.name];
-        const waiting = s.parent !== undefined && (deps.messagedLast?.has(s.name) ?? false);
+        const status = deps.status.get(s.name) ?? 'idle';
+        // The mark outlives the turn (a permission prompt after a progress message), so it
+        // counts only while the child is otherwise just `working`.
+        const waiting = s.parent !== undefined && status === 'working' && (deps.messagedLast?.has(s.name) ?? false);
         return {
           machineId: deps.machineId,
           id: s.name,
@@ -53,7 +56,7 @@ export async function listWorkspaces(deps: ListWorkspacesDeps): Promise<Workspac
           // The time the workspace entered its current status, so the PWA can order each
           // status group oldest-first. Falls back to creation time when never set.
           lastActivityAt: deps.status.getChangedAt(s.name) ?? s.createdAt,
-          status: deps.status.get(s.name) ?? 'idle',
+          status,
           urgent: deps.status.getUrgent(s.name),
           ...(github ? { github } : {}),
           ...(agentAddress ? { agentAddress } : {}),

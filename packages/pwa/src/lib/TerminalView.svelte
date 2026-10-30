@@ -353,6 +353,7 @@
     {/if}
     {#if statusInline && store.active}
       <StatusPicker status={store.active.status} onSelect={(s) => store.setWorkspaceStatus(s)} />
+      <button type="button" class="icon" aria-label="Next workspace" title={store.nextWorkspace ? `Next: ${store.nextWorkspace.name}` : 'Nothing else needs you'} disabled={!store.nextWorkspace} onclick={() => store.openNext()}>⏭</button>
     {/if}
     {#if wide}
       <button type="button" class="icon" aria-label="Close" onclick={() => store.closeActive()}>✕</button>
@@ -379,6 +380,9 @@
     bind:open={menuOpen}
     {wide}
     showStatus={!statusInline}
+    showNext={!statusInline}
+    hasNext={store.nextWorkspace !== null}
+    onNext={() => store.openNext()}
     fontSize={store.terminalFontSize}
     canZoomIn={store.terminalFontSize < TERMINAL_FONT_MAX}
     canZoomOut={store.terminalFontSize > TERMINAL_FONT_MIN}
@@ -470,6 +474,7 @@
     touch-action: manipulation;
   }
   header button.icon:active { background: var(--surface-press); }
+  header button.icon:disabled { opacity: 0.4; }
   .title { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
   .project-line { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
   .project { min-width: 0; color: var(--text-dim); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

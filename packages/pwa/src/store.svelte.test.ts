@@ -241,6 +241,28 @@ describe('PerchStore', () => {
     expect(store.workspaces.map((w) => w.id)).toEqual(['perch-a']);
   });
 
+  it('opens the next workspace that may need you, skipping folders the list hides', () => {
+    const { store, sockets } = build([mac]);
+    store.start();
+    sockets['wss://mac']!.open();
+    sockets['wss://mac']!.deliver({ type: 'authResult', ok: true });
+    const w = (id: string, projectPath: string, status: string) =>
+      ({ machineId: 'mac', id, name: id, projectPath, command: 'claude', createdAt: 0, lastActivityAt: 0, status });
+    sockets['wss://mac']!.deliver({
+      type: 'workspaces',
+      workspaces: [w('a', '/a', 'needs-feedback'), w('hidden', '/h', 'needs-feedback'), w('b', '/a', 'idle'), w('busy', '/a', 'working')],
+    });
+    store.setFolderFilterMode('hide');
+    store.setFolderHidden(['/h']);
+    expect(store.nextWorkspace).toBeNull();
+    store.open(store.workspaces.find((ws) => ws.id === 'a')!);
+    store.openNext();
+    expect(store.active?.id).toBe('b');
+    expect(store.view).toBe('terminal');
+    store.openNext();
+    expect(store.active?.id).toBe('a');
+  });
+
   it('navigates and routes terminal output to the sink', () => {
     const { store, sockets } = build([mac]);
     store.start();

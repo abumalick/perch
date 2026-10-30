@@ -12,7 +12,8 @@ import { audioFiles } from './core/audio-nav';
 import { readSharedFile, consumeSharedFile, type CacheLike } from './core/shared-file';
 import { checkUploadSize } from './core/upload-limit';
 import { joinBrowserSessions } from './core/browser-sessions';
-import type { FilterMode } from './core/project-folders';
+import { filterWorkspaces, type FilterMode } from './core/project-folders';
+import { nextWorkspace } from './core/next-workspace';
 import { BrowserStream, type BrowserStreamDeps } from './core/browser-stream';
 import { SessionChannels } from './core/session-channels';
 import { flushConnectionLog } from './core/connection-log-flush';
@@ -586,6 +587,21 @@ export class PerchStore {
     this.terminalState = 'live';
     this.autoFocus = focus;
     this.view = 'terminal';
+  }
+
+  // The workspaces the home list shows, in its order: the folder filter applied.
+  get visibleWorkspaces(): Workspace[] {
+    const selected = new Set(this.folderFilterMode === 'hide' ? this.folderHidden : this.folderFilter);
+    return filterWorkspaces(this.workspaces, this.machines, selected, this.folderFilterMode);
+  }
+
+  get nextWorkspace(): Workspace | null {
+    return this.active ? nextWorkspace(this.visibleWorkspaces, this.active) : null;
+  }
+
+  openNext(): void {
+    const next = this.nextWorkspace;
+    if (next) this.open(next);
   }
 
   // Read an OS-shared file out of the Cache API (stashed by the share-target SW helper) and

@@ -8,6 +8,8 @@
     open = $bindable(),
     wide,
     showStatus,
+    showNext,
+    hasNext,
     fontSize,
     canZoomIn,
     canZoomOut,
@@ -26,11 +28,14 @@
     onStartBrowser,
     onSetStatus,
     onSetUrgent,
+    onNext,
     onClose,
   }: {
     open: boolean;
     wide: boolean;
     showStatus: boolean;
+    showNext: boolean;
+    hasNext: boolean;
     fontSize: number;
     canZoomIn: boolean;
     canZoomOut: boolean;
@@ -49,6 +54,7 @@
     onStartBrowser: () => void;
     onSetStatus: (s: WorkspaceStatus) => void;
     onSetUrgent: (urgent: boolean) => void;
+    onNext: () => void;
     onClose: () => void;
   } = $props();
 
@@ -72,6 +78,12 @@
 {#if open}
   <button type="button" class="scrim" aria-label="Dismiss menu" onclick={() => (open = false)}></button>
   <div class="panel" role="dialog" aria-modal="true" aria-label="Workspace actions">
+    {#if showNext}
+      <button type="button" class="row" disabled={!hasNext} onclick={() => navigate(onNext)}>
+        <span class="icon" aria-hidden="true">⏭</span> Next workspace
+      </button>
+    {/if}
+
     <button type="button" class="row" onpointerdown={keepFocus} onclick={onRefresh}>
       <span class="icon" aria-hidden="true">🔄</span> Refresh
     </button>
@@ -198,6 +210,7 @@
   }
   button.row:active,
   a.row:active { background: var(--surface-press); }
+  button.row:disabled { opacity: 0.4; }
   .row.danger { color: var(--danger); }
   /* The urgent toggle: a muted outline star that lights up (filled + attention color)
      when the workspace is pinned. */

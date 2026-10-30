@@ -8,6 +8,8 @@ function props(overrides: Record<string, unknown> = {}) {
     open: true,
     wide: false,
     showStatus: true,
+    showNext: true,
+    hasNext: true,
     fontSize: 16,
     canZoomIn: true,
     canZoomOut: true,
@@ -25,6 +27,7 @@ function props(overrides: Record<string, unknown> = {}) {
     onStartBrowser: vi.fn(),
     onSetStatus: vi.fn(),
     onSetUrgent: vi.fn(),
+    onNext: vi.fn(),
     onClose: vi.fn(),
     ...overrides,
   };
@@ -149,6 +152,22 @@ describe('WorkspaceMenu', () => {
     await fireEvent.click(screen.getByRole('button', { name: /status: idle/i }));
     await fireEvent.click(screen.getByRole('option', { name: /blocked/i }));
     expect(p.onSetStatus).toHaveBeenCalledWith('blocked');
+  });
+
+  it('opens the next workspace from the drawer and closes it', async () => {
+    const onNext = vi.fn();
+    render(WorkspaceMenu, { props: props({ onNext }) as never });
+    await fireEvent.click(screen.getByRole('button', { name: /next workspace/i }));
+    expect(onNext).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('disables Next when nothing else needs you, and drops it when the header carries it', () => {
+    const { unmount } = render(WorkspaceMenu, { props: props({ hasNext: false }) as never });
+    expect((screen.getByRole('button', { name: /next workspace/i }) as HTMLButtonElement).disabled).toBe(true);
+    unmount();
+    render(WorkspaceMenu, { props: props({ showNext: false }) as never });
+    expect(screen.queryByRole('button', { name: /next workspace/i })).toBeNull();
   });
 
   it('leaves the status out of the drawer when the header carries it', () => {

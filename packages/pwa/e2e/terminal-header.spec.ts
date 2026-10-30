@@ -50,3 +50,32 @@ for (const { width, inHeader } of [
     await expect(drawer.getByRole('button', { name: /status:/i })).toHaveCount(inHeader ? 0 : 1);
   });
 }
+
+// "Next" walks the sessions that may need the user without going back to the list: in the
+// header from 601px, in the drawer on a phone. demo needs you, other is idle; it cycles.
+for (const { width, inHeader } of [
+  { width: 601, inHeader: true },
+  { width: 390, inHeader: false },
+]) {
+  test(`at ${width}px Next opens the next workspace from the ${inHeader ? 'header' : 'drawer'}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await seedMachine(page, agent);
+    await page.goto('/');
+
+    await page.locator('button.row', { hasText: 'demo' }).first().click();
+    await expect(page.getByTestId('header-name')).toHaveText('demo');
+
+    const next = async () => {
+      if (inHeader) await page.locator('.terminal-screen header').getByRole('button', { name: 'Next workspace' }).click();
+      else {
+        await page.getByRole('button', { name: 'Menu' }).click();
+        await page.getByRole('dialog', { name: 'Workspace actions' }).getByRole('button', { name: 'Next workspace' }).click();
+      }
+    };
+    await next();
+    await expect(page.getByTestId('header-name')).toHaveText('other');
+    await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY perch-other' })).toBeVisible();
+    await next();
+    await expect(page.getByTestId('header-name')).toHaveText('demo');
+  });
+}

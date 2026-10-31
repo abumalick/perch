@@ -14,6 +14,7 @@
     canZoomIn,
     canZoomOut,
     status,
+    statusLabel,
     urgent,
     github,
     browserSessions,
@@ -40,6 +41,7 @@
     canZoomIn: boolean;
     canZoomOut: boolean;
     status: WorkspaceStatus;
+    statusLabel?: string;
     urgent: boolean;
     github?: { owner: string; repo: string; ownerType?: 'user' | 'org' };
     browserSessions: string[];
@@ -141,7 +143,7 @@
 
       {#if showStatus}
         <div class="picker-wrap">
-          <StatusPicker {status} onSelect={onSetStatus} />
+          <StatusPicker {status} label={statusLabel} onSelect={onSetStatus} />
         </div>
       {/if}
 

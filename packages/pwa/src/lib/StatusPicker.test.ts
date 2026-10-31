@@ -33,4 +33,12 @@ describe('StatusPicker', () => {
     expect(onSelect).toHaveBeenCalledWith('parked');
     expect(screen.queryByRole('listbox')).toBeNull();
   });
+
+  it('shows a given label on the pill while the options keep naming statuses', async () => {
+    render(StatusPicker, { props: { status: 'working', label: 'Needs orchestrator', onSelect: vi.fn() } });
+    const pill = screen.getByRole('button', { name: /status: needs orchestrator/i });
+    expect(pill.textContent).toBe('Needs orchestrator');
+    await fireEvent.click(pill);
+    expect(screen.getByRole('option', { name: /working/i })).toHaveAttribute('aria-selected', 'true');
+  });
 });

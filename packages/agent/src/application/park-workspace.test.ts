@@ -62,6 +62,12 @@ describe('parkWorkspace', () => {
     ]);
   });
 
+  it('keeps the parent link on the parked record', async () => {
+    const { added, deps } = makeDeps();
+    await parkWorkspace(deps, { ...workspace, parentId: 'perch-p' });
+    expect(added[0]?.parent).toBe('perch-p');
+  });
+
   it('writes the record before killing tmux, and sets the status last', async () => {
     // Ordering is load-bearing: tmux cannot answer about a killed session, and status.set
     // fires onChange -> broadcastWorkspace, which rebuilds via listWorkspaces and must

@@ -92,4 +92,16 @@ describe('InMemoryStatusStore', () => {
     store.setClaudeSessionId('w1', 'abc-123');
     expect(listener).not.toHaveBeenCalled();
   });
+
+  it('stores the SendMessage mark, false by default, without notifying', () => {
+    const store = new InMemoryStatusStore();
+    const events: string[] = [];
+    store.onChange((id) => events.push(id));
+    expect(store.getMessagedLast('perch-a')).toBe(false);
+    store.setMessagedLast('perch-a', true);
+    expect(store.getMessagedLast('perch-a')).toBe(true);
+    store.setMessagedLast('perch-a', false);
+    expect(store.getMessagedLast('perch-a')).toBe(false);
+    expect(events).toEqual([]);
+  });
 });

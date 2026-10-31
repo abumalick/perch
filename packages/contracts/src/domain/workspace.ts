@@ -28,6 +28,14 @@ export interface Workspace {
   // optional so a version-skewed rollout degrades gracefully. Machine-scoped: an address is
   // only reachable from a session on the same machine.
   agentAddress?: string;
+  // The workspace id of the orchestrator that spawned this one as its child (`perch spawn
+  // --child`), on the same machine. Absent for an ordinary workspace. Stable: a workspace id
+  // never changes, unlike the Claude session name other sessions message it by.
+  parentId?: string;
+  // Set when this child's turn ended right after it messaged its orchestrator: the PWA labels
+  // it "Needs orchestrator" while its status stays `working`. Derived from the durable
+  // `messagedLast` mark in status.json, and only while the status is `working`.
+  waitingOn?: 'parent';
 }
 
 export interface Machine {

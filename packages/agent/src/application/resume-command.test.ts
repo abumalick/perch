@@ -12,7 +12,7 @@ describe('resumeCommand', () => {
     );
   });
 
-  // spawn.sh stores a child's name and its orchestrator hook as plain flags; unparking must
+  // perch spawn stores a child's name and its orchestrator hook as plain flags; unparking must
   // keep both, or the resumed child asks the user again.
   it("keeps a spawned child's --name and --settings on both arms", () => {
     const base =

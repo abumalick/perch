@@ -84,6 +84,25 @@ describe('trackLiveWorkspaces', () => {
     expect(h.snapshot()).toEqual({ serverId: 'srv-1', workspaces: [live('perch-a')] });
   });
 
+  it('records the parent link of a child workspace', async () => {
+    const h = harness({
+      serverId: 'srv-1',
+      sessions: [{ ...session('perch-a'), parent: 'perch-p' }],
+      sessionIds: { 'perch-a': 'sess-perch-a' },
+    });
+    await trackLiveWorkspaces(h.deps);
+    expect(h.snapshot()?.workspaces).toEqual([live('perch-a', { parent: 'perch-p' })]);
+  });
+
+  it('keeps the parent link when a workspace lost with its server is parked', async () => {
+    const h = harness({
+      serverId: 'srv-2',
+      snapshot: { serverId: 'srv-1', workspaces: [live('perch-a', { parent: 'perch-p' })] },
+    });
+    await trackLiveWorkspaces(h.deps);
+    expect(h.parked).toEqual([{ ...live('perch-a', { parent: 'perch-p' }), parkedAt: 5000 }]);
+  });
+
   it('keeps an idle Codex task title in the durable snapshot', async () => {
     const h = harness({
       serverId: 'srv-1',

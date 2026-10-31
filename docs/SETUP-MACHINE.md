@@ -173,6 +173,8 @@ systemctl --user daemon-reload && systemctl --user enable --now perch-agent
 
 pnpm perch install-hooks                                         # status hooks, see below
 mkdir -p ~/.claude/skills && ln -sfn "$(pwd)/.claude/skills/perch-spawn" ~/.claude/skills/perch-spawn
+ln -sfn "$(pwd)/.claude/skills/perch-orchestrate" ~/.claude/skills/perch-orchestrate
+deploy/install-cli.sh                                            # `perch` on PATH (the skills use it)
 ```
 
 Check: `curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8787/hooks` prints

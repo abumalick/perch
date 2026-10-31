@@ -212,4 +212,28 @@ describe('FileStatusStore', () => {
     writeFileSync(file, JSON.stringify({ 'perch-b': 'postponed' }), 'utf8');
     expect(new FileStatusStore(file).get('perch-b')).toBe('parked');
   });
+
+  it('keeps the SendMessage mark across instances, without onChange, and prunes it with its entry', () => {
+    const store = new FileStatusStore(file);
+    const events: string[] = [];
+    store.onChange((id) => events.push(id));
+    expect(store.getMessagedLast('perch-a')).toBe(false);
+    store.set('perch-a', 'working');
+    events.length = 0;
+    store.setMessagedLast('perch-a', true);
+    expect(new FileStatusStore(file).getMessagedLast('perch-a')).toBe(true);
+    expect(new FileStatusStore(file).get('perch-a')).toBe('working');
+    expect(events).toEqual([]);
+    store.setMessagedLast('perch-a', false);
+    expect(new FileStatusStore(file).getMessagedLast('perch-a')).toBe(false);
+    store.setMessagedLast('perch-a', true);
+    store.prune([]);
+    expect(new FileStatusStore(file).getMessagedLast('perch-a')).toBe(false);
+  });
+
+  it('reads anything but true as no SendMessage mark', async () => {
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, JSON.stringify({ 'perch-a': { status: 'working', messagedLast: 'yes' } }));
+    expect(new FileStatusStore(file).getMessagedLast('perch-a')).toBe(false);
+  });
 });

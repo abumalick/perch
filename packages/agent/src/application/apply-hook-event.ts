@@ -72,9 +72,16 @@ function logEntry(
 
 type HookEntryState = { status?: WorkspaceStatus } & HookMarks;
 
+// What applyHookEvent needs of a mark: a Set, or a view over a store.
+export interface MarkSet {
+  has(id: string): boolean;
+  add(id: string): unknown;
+  delete(id: string): unknown;
+}
+
 interface Marks {
   deferred: Set<string>;
-  messagedLast: Set<string>;
+  messagedLast: MarkSet;
   questionPending: Set<string>;
 }
 
@@ -89,9 +96,10 @@ function state(marks: Marks, status: WorkspaceStatus | undefined, id: string): H
 
 // `deferred` holds the sessions parked on background work or on a peer session's reply, so the
 // idle notification that follows their Stop can be told apart from a genuine one.
-// `messagedLast` holds the sessions whose last main-loop tool call was SendMessage. Both are
-// deliberately in-memory: losing them on restart costs at most one extra "Needs you", never a
-// missed one. `questionPending` holds the Codex sessions with a question waiting on the user.
+// `deferred` is deliberately in-memory: losing it on restart costs at most one extra "Needs
+// you", never a missed one. `messagedLast` holds the sessions whose last main-loop tool call was
+// SendMessage; WsServer backs it with the status store, since it also drives a child's
+// `waitingOn` that `perch ls` reads. `questionPending` holds the Codex sessions with a question waiting on the user.
 // `log` records every event and its decision; a failed write never affects the decision.
 export function applyHookEvent(
   deps: {

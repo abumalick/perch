@@ -65,5 +65,16 @@ function parseEntry(value: unknown): ParkedWorkspace | undefined {
     return undefined;
   }
   const claudeSessionId = str('claudeSessionId');
-  return { id, name, projectPath, command, machineId, createdAt, parkedAt, ...(claudeSessionId ? { claudeSessionId } : {}) };
+  const parent = str('parent');
+  return {
+    id,
+    name,
+    projectPath,
+    command,
+    machineId,
+    createdAt,
+    parkedAt,
+    ...(claudeSessionId ? { claudeSessionId } : {}),
+    ...(parent ? { parent } : {}),
+  };
 }

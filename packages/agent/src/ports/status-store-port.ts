@@ -14,5 +14,9 @@ export interface StatusStorePort {
   // attention-status event.
   getClaudeSessionId(workspaceId: string): string | undefined;
   setClaudeSessionId(workspaceId: string, sessionId: string): void;
+  // Whether the session's last main-loop tool call was SendMessage (see applyHookEvent).
+  // False for an unknown id; setting it never fires onChange.
+  getMessagedLast(workspaceId: string): boolean;
+  setMessagedLast(workspaceId: string, value: boolean): void;
   onChange(listener: (workspaceId: string, status: WorkspaceStatus) => void): void;
 }

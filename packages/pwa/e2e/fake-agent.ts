@@ -144,6 +144,8 @@ type FakeWorkspace = {
   agentAddress?: string;
   urgent?: boolean;
   github?: { owner: string; repo: string; ownerType?: 'user' | 'org' };
+  parentId?: string;
+  waitingOn?: 'parent';
 };
 
 // The default two-workspace set most specs rely on. Pass `workspacesOverride` to exercise a

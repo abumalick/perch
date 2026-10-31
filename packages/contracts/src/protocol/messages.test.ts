@@ -363,4 +363,13 @@ describe('workspaceSchema', () => {
   it('rejects a non-string agent address', () => {
     expect(() => workspaceSchema.parse({ ...sampleWorkspace, agentAddress: 42 })).toThrow();
   });
+
+  it('parses a child workspace waiting on its orchestrator', () => {
+    const child = { ...sampleWorkspace, parentId: 'perch-a1b2c3', waitingOn: 'parent' as const };
+    expect(workspaceSchema.parse(child)).toEqual(child);
+  });
+
+  it('rejects an unknown waitingOn value', () => {
+    expect(() => workspaceSchema.parse({ ...sampleWorkspace, waitingOn: 'user' })).toThrow();
+  });
 });

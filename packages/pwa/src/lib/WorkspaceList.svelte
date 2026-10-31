@@ -10,7 +10,8 @@
   import { isConnectable } from '../core/settings-store';
   import { deriveProjectFolders, filterWorkspaces, pruneStaleFilter } from '../core/project-folders';
   import { motionDuration, prefersReducedMotion, REORDER_MS, ENTER_LEAVE_MS } from './motion';
-  import { STATUS_LABELS } from './workspace-status-display';
+  import { statusLabel } from './workspace-status-display';
+  import { nestWorkspaces } from '../core/nest-workspaces';
 
   let { store, buildLabel = BUILD_LABEL }: { store: PerchStore; buildLabel?: string } =
     $props();
@@ -65,7 +66,9 @@
   const visibleWorkspaces = $derived(
     filterWorkspaces(store.workspaces, store.machines, selected, store.folderFilterMode),
   );
-  const activeWorkspaces = $derived(visibleWorkspaces.filter((ws) => ws.status !== 'parked'));
+  const activeGroups = $derived(
+    nestWorkspaces(visibleWorkspaces).filter((g) => g.workspace.status !== 'parked'),
+  );
   const parkedWorkspaces = $derived(visibleWorkspaces.filter((ws) => ws.status === 'parked'));
   // Agent-browser sessions attached to no workspace (e.g. a home-level per-site login
   // like `github`), listed per machine at the bottom of the home list.
@@ -80,6 +83,10 @@
       block: 'start',
       behavior: prefersReducedMotion() ? 'auto' : 'smooth',
     });
+  const rowKey = (ws: Workspace) => ws.machineId + ':' + ws.id;
+  const expanded = (ws: Workspace) => store.expandedParents.has(rowKey(ws));
+  const childCount = (n: number) => `${n} child workspace${n === 1 ? '' : 's'}`;
+
   const toggleFolder = (key: string) => {
     const next = new Set(selected);
     if (next.has(key)) next.delete(key);
@@ -121,7 +128,7 @@
         {#if ws.agentAddress}
           <span class="agent-address" data-testid="agent-address" title="Address other Claude sessions message this one by">{ws.agentAddress}</span>
         {/if}
-        <span class="badge" data-status={ws.status}>{STATUS_LABELS[ws.status]}</span>
+        <span class="badge" data-status={ws.status}>{statusLabel(ws)}</span>
         <span class="chev" aria-hidden="true">›</span>
       </span>
       <span class="name-line">
@@ -224,13 +231,40 @@
     </div>
   {/if}
   <ul>
-    {#each activeWorkspaces as ws (ws.machineId + ':' + ws.id)}
+    {#each activeGroups as { workspace: ws, children } (rowKey(ws))}
       <li
         animate:flip={{ duration: motionDuration(REORDER_MS) }}
         in:slide={{ duration: ready ? motionDuration(ENTER_LEAVE_MS) : 0 }}
         out:slide={{ duration: motionDuration(ENTER_LEAVE_MS) }}
       >
-        {@render workspaceRow(ws)}
+        {#if children.length > 0}
+          <!-- The toggle sits beside the row, not inside it, so a tap on it never opens the
+               orchestrator. Children arrive in list order, so the first is the most urgent. -->
+          <div class="parent">
+            {@render workspaceRow(ws)}
+            <button
+              type="button"
+              class="fold-toggle"
+              aria-expanded={expanded(ws)}
+              aria-label="{expanded(ws) ? 'Hide' : 'Show'} {childCount(children.length)}"
+              onclick={() => store.toggleChildren(rowKey(ws))}
+            >
+              <span class="fold-dot" data-status={children[0]!.status} aria-hidden="true">●</span>
+              <span>⧉ {children.length}</span>
+            </button>
+          </div>
+          {#if expanded(ws)}
+            <ul class="children" transition:slide={{ duration: motionDuration(ENTER_LEAVE_MS) }}>
+              {#each children as child (rowKey(child))}
+                <li animate:flip={{ duration: motionDuration(REORDER_MS) }}>
+                  {@render workspaceRow(child)}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        {:else}
+          {@render workspaceRow(ws)}
+        {/if}
       </li>
     {/each}
   </ul>
@@ -486,6 +520,36 @@
   .parked-toggle .chev { transition: transform 150ms ease; }
   .parked-toggle[aria-expanded='true'] .chev { transform: rotate(90deg); }
   ul.parked { margin-top: 0.5rem; }
+
+  /* An orchestrator's row with its fold toggle beside it; its children indent under it. */
+  .parent { display: flex; align-items: stretch; gap: 0.4rem; }
+  .parent > .row { flex: 1 1 0; min-width: 0; }
+  .fold-toggle {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 44px;
+    padding: 0 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    font-weight: 600;
+    touch-action: manipulation;
+  }
+  .fold-toggle:active { background: var(--surface-press); }
+  .fold-toggle[aria-expanded='true'] { border-color: var(--accent); }
+  .fold-dot { font-size: 0.7rem; line-height: 1; color: var(--text-dim); }
+  .fold-dot[data-status='needs-feedback'] { color: var(--attention); }
+  .fold-dot[data-status='needs-hands'] { color: var(--hands); }
+  .fold-dot[data-status='finished'] { color: var(--ok); }
+  .fold-dot[data-status='working'] { color: var(--accent); }
+  .fold-dot[data-status='review'] { color: var(--warn); }
+  .fold-dot[data-status='blocked'] { color: var(--danger); }
+  .fold-dot[data-status='idle'] { color: var(--idle); }
+  ul.children { margin: 0.5rem 0 0 1.25rem; }
 
   /* Unattached browser sessions: a quiet bucket under the workspaces. */
   .browser-sessions { margin-top: 1.25rem; }

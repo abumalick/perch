@@ -22,6 +22,7 @@ const FORMAT = [
   '#{session_path}',
   '#{session_created}',
   '#{@perch_command}',
+  '#{@perch_parent}',
   '#{pane_title}',
 ].join(SEP);
 
@@ -52,18 +53,42 @@ export function isMissingSession(err: unknown): boolean {
 function parseLine(line: string): TmuxSessionInfo | null {
   const parts = line.split(SEP);
   if (parts.length < 3) return null;
-  const [name, startPath, created, command] = parts;
+  const [name, startPath, created, command, parent] = parts;
   if (!name || !startPath || !created) return null;
   return {
     name,
     startPath,
     command: command ?? '',
     createdAt: Number(created) * 1000,
-    title: parts.slice(4).join(SEP),
+    ...(parent ? { parent } : {}),
+    title: parts.slice(5).join(SEP),
   };
 }
 
+export interface TmuxAdapterOptions {
+  // An explicit server socket (`-S`) for every call; tests use one so they never reach the
+  // ambient server, which `$TMUX` would otherwise select.
+  socket?: string;
+  // A config file for a server this adapter starts (`-f`); a test server must not load the
+  // user's ~/.tmux.conf, whose plugins (resurrect, continuum) act on the user's sessions.
+  config?: string;
+  // The environment child processes get, through childEnv. Defaults to process.env.
+  env?: NodeJS.ProcessEnv;
+}
+
 export class TmuxAdapter implements TmuxPort {
+  private readonly tmux: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+
+  constructor(options: TmuxAdapterOptions = {}) {
+    const prefix = [
+      ...(options.socket ? ['-S', options.socket] : []),
+      ...(options.config ? ['-f', options.config] : []),
+    ];
+    this.tmux = prefix.length === 0 && !options.env
+      ? tmux
+      : (args) => exec('tmux', [...prefix, ...args], { env: childEnv(options.env) });
+  }
+
   // tmux's default terminal-features for xterm* lacks `hyperlinks`, so it strips OSC 8
   // links before streaming them to the agent's `attach-session` client. Append the
   // feature (server-global, persists for the tmux server's life). The show-check both
@@ -72,9 +97,9 @@ export class TmuxAdapter implements TmuxPort {
   // rather than latching once and never recovering.
   async ensureHyperlinks(): Promise<void> {
     try {
-      const { stdout } = await tmux(['show', '-g', 'terminal-features']);
+      const { stdout } = await this.tmux(['show', '-g', 'terminal-features']);
       if (!stdout.includes('hyperlinks')) {
-        await tmux(['set', '-as', 'terminal-features', '*:hyperlinks']);
+        await this.tmux(['set', '-as', 'terminal-features', '*:hyperlinks']);
       }
     } catch (err) {
       if (isNoServer(err)) return; // no server yet — a later attach retries
@@ -85,7 +110,7 @@ export class TmuxAdapter implements TmuxPort {
   async listSessions(prefix: string): Promise<TmuxSessionInfo[]> {
     let stdout: string;
     try {
-      const res = await tmux(['list-sessions', '-F', FORMAT]);
+      const res = await this.tmux(['list-sessions', '-F', FORMAT]);
       stdout = res.stdout;
     } catch (err) {
       if (isNoServer(err)) return [];
@@ -98,16 +123,17 @@ export class TmuxAdapter implements TmuxPort {
       .filter((s): s is TmuxSessionInfo => s !== null && s.name.startsWith(prefix));
   }
 
-  async createSession(input: { name: string; cwd: string; command: string }): Promise<void> {
-    await tmux(['new-session', '-d', '-s', input.name, '-c', input.cwd, input.command]);
-    await tmux(['set-option', '-t', input.name, '@perch_command', input.command]);
+  async createSession(input: { name: string; cwd: string; command: string; parent?: string; storedCommand?: string }): Promise<void> {
+    await this.tmux(['new-session', '-d', '-s', input.name, '-c', input.cwd, input.command]);
+    await this.tmux(['set-option', '-t', input.name, '@perch_command', input.storedCommand ?? input.command]);
+    if (input.parent) await this.tmux(['set-option', '-t', input.name, '@perch_parent', input.parent]);
   }
 
   async killSession(name: string): Promise<void> {
     // Idempotent: when the inner process exits, tmux destroys the session on its own, so a
     // later close finds nothing to kill. Treat an already-absent session as success.
     try {
-      await tmux(['kill-session', '-t', name]);
+      await this.tmux(['kill-session', '-t', name]);
     } catch (err) {
       if (isMissingSession(err)) return;
       throw err;
@@ -117,7 +143,7 @@ export class TmuxAdapter implements TmuxPort {
   async panePid(name: string): Promise<number | null> {
     let stdout: string;
     try {
-      const res = await tmux(['list-panes', '-t', name, '-F', '#{pane_pid}']);
+      const res = await this.tmux(['list-panes', '-t', name, '-F', '#{pane_pid}']);
       stdout = res.stdout;
     } catch (err) {
       if (isMissingSession(err)) return null;
@@ -131,7 +157,7 @@ export class TmuxAdapter implements TmuxPort {
     try {
       // display-message, not list-sessions: a server kept alive with no session left still
       // answers it, so the last workspace exiting does not read as the server going away.
-      const { stdout } = await tmux(['display-message', '-p', '#{pid}:#{start_time}']);
+      const { stdout } = await this.tmux(['display-message', '-p', '#{pid}:#{start_time}']);
       return stdout.trim() || null;
     } catch (err) {
       if (isNoServer(err)) return null;
@@ -141,10 +167,29 @@ export class TmuxAdapter implements TmuxPort {
 
   async hasSession(name: string): Promise<boolean> {
     try {
-      await tmux(['has-session', '-t', name]);
+      await this.tmux(['has-session', '-t', name]);
       return true;
     } catch {
       return false;
+    }
+  }
+
+  async setPaneTitle(name: string, title: string): Promise<void> {
+    await this.tmux(['select-pane', '-t', name, '-T', title]);
+  }
+
+  async capturePane(name: string, historyLines: number): Promise<string> {
+    const { stdout } = await this.tmux(['capture-pane', '-p', '-J', '-t', name, '-S', `-${historyLines}`]);
+    return stdout;
+  }
+
+  async sessionOfPane(paneId: string): Promise<string | null> {
+    try {
+      // Targeted: an untargeted display-message answers for the most recently active session.
+      const { stdout } = await this.tmux(['display-message', '-p', '-t', paneId, '#S']);
+      return stdout.trim() || null;
+    } catch {
+      return null;
     }
   }
 }

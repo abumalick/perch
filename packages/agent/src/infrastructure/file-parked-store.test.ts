@@ -82,4 +82,12 @@ describe('FileParkedStore', () => {
     await store.add(noSession);
     expect((await store.get('perch-a'))?.claudeSessionId).toBeUndefined();
   });
+
+  it('keeps a parent link, and drops one that is not a non-empty string', async () => {
+    const store = new FileParkedStore(file);
+    await store.add({ ...entry('perch-a'), parent: 'perch-p' });
+    expect((await store.get('perch-a'))?.parent).toBe('perch-p');
+    writeFileSync(file, JSON.stringify([{ ...entry('perch-b'), parent: 7 }, { ...entry('perch-c'), parent: '' }]), 'utf8');
+    expect(await new FileParkedStore(file).list()).toEqual([entry('perch-b'), entry('perch-c')]);
+  });
 });

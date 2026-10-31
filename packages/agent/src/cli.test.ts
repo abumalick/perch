@@ -1,13 +1,16 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { accountId, deviceFingerprint, generateDeviceKeys, parsePairingLink } from '@perch/secure-channel';
 import { FileDeviceStore } from './infrastructure/file-device-store';
 import { enrolDevice, enrolmentMode } from './application/device-roster';
-import { run } from './cli';
+import type { Workspace } from '@perch/contracts';
+import type { TmuxPort, TmuxSessionInfo } from './ports/tmux-port';
+import { run, type CliIo } from './cli';
 
 const exec = promisify(execFile);
 const sessions: string[] = [];
@@ -286,5 +289,164 @@ describe('perch pair / connect (arguments and agent.env)', () => {
     await expect(run(['connect', 'wss://relay.example'], env, home)).rejects.toThrow(/usage/);
     await expect(run(['connect', 'wss://relay.example', '--key', 'nope'], env, home)).rejects.toThrow(/join key/);
     await expect(run(['connect', 'wss://relay.example'], { ...env, PERCH_JOIN_KEY: 'nope' }, home)).rejects.toThrow(/join key/);
+  });
+});
+
+// `ls`, `spawn` and `peek` run against a fake tmux: these tests never reach a tmux server.
+describe('perch ls / spawn / peek (fake tmux)', () => {
+  const NOW = 1_800_000_000_000;
+  const live: TmuxSessionInfo[] = [
+    { name: 'perch-aaaaaa', startPath: '/w/foo', command: 'claude', createdAt: NOW - 3_600_000, title: '✳ Fix login' },
+    { name: 'perch-bbbbbb', startPath: '/w/bar', command: 'claude', createdAt: NOW - 60_000, parent: 'perch-aaaaaa', title: '✳ Child' },
+    { name: 'perch-hhhhhh', startPath: '/w/secret/x', command: 'claude', createdAt: NOW, title: '✳ Hidden' },
+  ];
+
+  function fakeTmux(pane: Record<string, string> = {}) {
+    const created: Array<{ name: string; cwd: string; command: string; parent?: string; storedCommand?: string }> = [];
+    const tmux: TmuxPort = {
+      listSessions: async (prefix) => live.filter((s) => s.name.startsWith(prefix)),
+      createSession: async (input) => {
+        created.push(input);
+      },
+      killSession: async () => {
+        throw new Error('ls/spawn/peek must never kill');
+      },
+      hasSession: async () => true,
+      setPaneTitle: async () => {},
+      capturePane: async () => 'old\n\nline 1\n   \nline 2\nline 3\n\n\n',
+      sessionOfPane: async (id) => pane[id] ?? null,
+    };
+    return { tmux, created };
+  }
+
+  async function machine() {
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '.tmp');
+    await mkdir(root, { recursive: true });
+    const home = await mkdtemp(join(root, 'cli-ls-'));
+    tmpDirs.push(home);
+    await mkdir(join(home, '.perch'));
+    await writeFile(join(home, '.perch', 'hidden-folders.json'), '["secret"]');
+    // No agent.env at all: these commands must work from any repo's session.
+    const env = { PERCH_AGENT_ENV: join(home, 'no-such-agent.env') };
+    return { home, env };
+  }
+
+  const io = (tmux: TmuxPort, extra: Partial<CliIo> = {}): CliIo => ({ tmux, now: () => NOW, sleep: async () => {}, ...extra });
+
+  it('lists live and parked workspaces with their stored status, without an agent.env', async () => {
+    const { home, env } = await machine();
+    await writeFile(join(home, '.perch', 'status.json'), JSON.stringify({ 'perch-bbbbbb': { status: 'needs-feedback', changedAt: NOW - 120_000, urgent: true } }));
+    await writeFile(
+      join(home, '.perch', 'parked.json'),
+      JSON.stringify([{ id: 'perch-pppppp', name: 'Parked one', projectPath: '/w/foo', command: 'claude', machineId: 'm', createdAt: 1, parkedAt: NOW - 86_400_000 }]),
+    );
+    const out = await run(['ls'], env, home, io(fakeTmux().tmux));
+    const lines = out.split('\n');
+    expect(lines[0]).toMatch(/^ID +NAME +STATUS +AGE +PARENT +TITLE +FOLDER$/);
+    expect(out).toMatch(/perch-aaaaaa +- +idle +1h +- +Fix login +\/w\/foo/);
+    expect(out).toMatch(/perch-bbbbbb +- +needs-feedback \(urgent\) +2m +perch-aaaaaa +Child/);
+    expect(out).toMatch(/perch-pppppp +- +parked +1d/);
+    expect(out).not.toContain('perch-hhhhhh');
+    const json = JSON.parse(await run(['ls', '--json'], env, home, io(fakeTmux().tmux))) as Workspace[];
+    expect(json.map((w) => w.id)).toEqual(['perch-aaaaaa', 'perch-bbbbbb', 'perch-pppppp']);
+    expect(json[0]!.machineId).toBe(hostname().split('.')[0]);
+    expect(json[1]!.parentId).toBe('perch-aaaaaa');
+  });
+
+  it('shows a child whose last act was SendMessage as waiting on its orchestrator', async () => {
+    const { home, env } = await machine();
+    await writeFile(join(home, '.perch', 'status.json'), JSON.stringify({ 'perch-bbbbbb': { status: 'working', changedAt: NOW, messagedLast: true } }));
+    const json = JSON.parse(await run(['ls', '--json'], env, home, io(fakeTmux().tmux))) as Workspace[];
+    expect(json.find((w) => w.id === 'perch-bbbbbb')?.waitingOn).toBe('parent');
+    expect(await run(['ls'], env, home, io(fakeTmux().tmux))).toMatch(/perch-bbbbbb +- +needs-orchestrator /);
+  });
+
+  it('never writes the status file it reads', async () => {
+    const { home, env } = await machine();
+    const status = JSON.stringify({ 'perch-gone00': { status: 'working', changedAt: 1 } });
+    await writeFile(join(home, '.perch', 'status.json'), status);
+    await run(['ls'], env, home, io(fakeTmux().tmux));
+    expect(await readFile(join(home, '.perch', 'status.json'), 'utf8')).toBe(status);
+  });
+
+  it('still lists when status.json or parked.json is corrupt, missing, or not a file', async () => {
+    const { home, env } = await machine();
+    await writeFile(join(home, '.perch', 'status.json'), '{not json');
+    await writeFile(join(home, '.perch', 'parked.json'), '[{"x"');
+    expect(await run(['ls'], env, home, io(fakeTmux().tmux))).toContain('perch-aaaaaa');
+    await rm(join(home, '.perch', 'status.json'));
+    await rm(join(home, '.perch', 'parked.json'));
+    expect(await run(['ls'], env, home, io(fakeTmux().tmux))).toContain('perch-aaaaaa');
+    await mkdir(join(home, '.perch', 'status.json'));
+    await mkdir(join(home, '.perch', 'parked.json'));
+    expect(await run(['ls'], env, home, io(fakeTmux().tmux))).toContain('perch-aaaaaa');
+  });
+
+  it('filters by parent, and --mine by the workspace the caller runs in', async () => {
+    const { home, env } = await machine();
+    const { tmux } = fakeTmux({ '%7': 'perch-aaaaaa' });
+    const ids = (out: string) => (JSON.parse(out) as Workspace[]).map((w) => w.id);
+    expect(ids(await run(['ls', '--json', '--parent', 'perch-aaaaaa'], env, home, io(tmux)))).toEqual(['perch-bbbbbb']);
+    expect(ids(await run(['ls', '--json', '--mine'], { ...env, TMUX_PANE: '%7' }, home, io(tmux)))).toEqual(['perch-bbbbbb']);
+    await expect(run(['ls', '--mine'], env, home, io(tmux))).rejects.toThrow(/TMUX_PANE/);
+    await expect(run(['ls', '--mine'], { ...env, TMUX_PANE: '%8' }, home, io(tmux))).rejects.toThrow(/not inside a Perch workspace/);
+    await expect(run(['ls', '--parent'], env, home, io(tmux))).rejects.toThrow(/usage: perch ls/);
+  });
+
+  it('spawns from the caller cwd with the brief from stdin, and prints the id', async () => {
+    const { home, env } = await machine();
+    await mkdir(join(home, 'proj'));
+    const { tmux, created } = fakeTmux();
+    const id = await run(['spawn', '--title', 'T', 'proj'], env, home, io(tmux, { cwd: home, stdin: async () => 'Do it.\n' }));
+    expect(id).toMatch(/^perch-[0-9a-f]{6}$/);
+    expect(created[0]!.cwd).toBe(await realpath(join(home, 'proj')));
+    expect(created[0]!.storedCommand).toBe(`claude --model 'opus[1m]' --name ${id}`);
+    expect(await readFile(join(home, '.perch', 'spawn', `${id}.md`), 'utf8')).toBe('Do it.\n');
+  });
+
+  it('spawns a child of the caller, naming the parent by its current messaging name', async () => {
+    const { home, env } = await machine();
+    await mkdir(join(home, '.claude', 'sessions'), { recursive: true });
+    await writeFile(join(home, '.claude', 'sessions', '1.json'), JSON.stringify({ name: 'orch-name', tmux: 'perch-aaaaaa:@1.%7' }));
+    const { tmux, created } = fakeTmux({ '%7': 'perch-aaaaaa' });
+    const id = await run(['spawn', '--child', '--model', 'sonnet[1m]', home], { ...env, TMUX_PANE: '%7' }, home, io(tmux, { stdin: async () => 'b' }));
+    expect(created[0]!.parent).toBe('perch-aaaaaa');
+    expect(created[0]!.storedCommand).toContain("--model 'sonnet[1m]'");
+    const brief = await readFile(join(home, '.perch', 'spawn', `${id}.md`), 'utf8');
+    expect(brief).toContain('(to: "orch-name")');
+    expect(brief).toContain('look for workspace perch-aaaaaa');
+  });
+
+  it('refuses a child outside a Perch pane, and a spawn without a path', async () => {
+    const { home, env } = await machine();
+    const { tmux, created } = fakeTmux({ '%9': 'main' });
+    const stdin = async () => 'b';
+    await expect(run(['spawn', '--child', home], env, home, io(tmux, { stdin }))).rejects.toThrow(/TMUX_PANE/);
+    await expect(run(['spawn', '--child', home], { ...env, TMUX_PANE: '%9' }, home, io(tmux, { stdin }))).rejects.toThrow(/session is main/);
+    await expect(run(['spawn'], env, home, io(tmux, { stdin }))).rejects.toThrow(/usage: perch spawn/);
+    await expect(run(['spawn', join(home, 'nope')], env, home, io(tmux, { stdin }))).rejects.toThrow(/not a directory/);
+    expect(created).toEqual([]);
+  });
+
+  it('peeks at a status line and the last non-blank lines of the pane', async () => {
+    const { home, env } = await machine();
+    const out = await run(['peek', 'perch-aaaaaa', '-n', '2'], env, home, io(fakeTmux().tmux));
+    const lines = out.split('\n');
+    expect(lines[0]).toMatch(/^ID /);
+    expect(lines[1]).toMatch(/^perch-aaaaaa +- +idle/);
+    expect(lines.slice(2)).toEqual(['', 'line 2', 'line 3']);
+    expect((await run(['peek', 'perch-aaaaaa'], env, home, io(fakeTmux().tmux))).split('\n').slice(3)).toEqual(['old', 'line 1', 'line 2', 'line 3']);
+    await expect(run(['peek', 'perch-zzzzzz'], env, home, io(fakeTmux().tmux))).rejects.toThrow(/no workspace perch-zzzzzz/);
+    await expect(run(['peek'], env, home, io(fakeTmux().tmux))).rejects.toThrow(/usage: perch peek/);
+    await expect(run(['peek', 'perch-aaaaaa', '-n', 'x'], env, home, io(fakeTmux().tmux))).rejects.toThrow(/usage: perch peek/);
+  });
+
+  it('says a parked workspace has no pane to peek at', async () => {
+    const { home, env } = await machine();
+    await writeFile(
+      join(home, '.perch', 'parked.json'),
+      JSON.stringify([{ id: 'perch-pppppp', name: 'P', projectPath: '/w/foo', command: 'claude', machineId: 'm', createdAt: 1, parkedAt: NOW }]),
+    );
+    expect(await run(['peek', 'perch-pppppp'], env, home, io(fakeTmux().tmux))).toContain('parked: no pane until it is opened');
   });
 });

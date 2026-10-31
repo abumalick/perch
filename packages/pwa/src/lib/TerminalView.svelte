@@ -10,6 +10,7 @@
   import { displayProjectPath } from '../core/resolve-path';
   import KeyboardBar from './KeyboardBar.svelte';
   import StatusPicker from './StatusPicker.svelte';
+  import { statusLabel } from './workspace-status-display';
   import BrowserPicker from './BrowserPicker.svelte';
   import WorkspaceMenu from './WorkspaceMenu.svelte';
   import SharedFileConfirm from './SharedFileConfirm.svelte';
@@ -352,7 +353,7 @@
       {/if}
     {/if}
     {#if statusInline && store.active}
-      <StatusPicker status={store.active.status} onSelect={(s) => store.setWorkspaceStatus(s)} />
+      <StatusPicker status={store.active.status} label={statusLabel(store.active)} onSelect={(s) => store.setWorkspaceStatus(s)} />
       <button type="button" class="icon" aria-label="Next workspace" title={store.nextWorkspace ? `Next: ${store.nextWorkspace.name}` : 'Nothing else needs you'} disabled={!store.nextWorkspace} onclick={() => store.openNext()}>⏭</button>
     {/if}
     {#if wide}
@@ -387,6 +388,7 @@
     canZoomIn={store.terminalFontSize < TERMINAL_FONT_MAX}
     canZoomOut={store.terminalFontSize > TERMINAL_FONT_MIN}
     status={store.active?.status ?? 'idle'}
+    statusLabel={store.active ? statusLabel(store.active) : undefined}
     urgent={store.active?.urgent ?? false}
     github={store.active?.github}
     browserSessions={browserSessions}

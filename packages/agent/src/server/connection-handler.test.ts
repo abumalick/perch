@@ -171,6 +171,8 @@ function baseDeps() {
       setUrgent: () => undefined,
       getClaudeSessionId: () => undefined,
       setClaudeSessionId: () => undefined,
+      getMessagedLast: () => false,
+      setMessagedLast: () => undefined,
       onChange: () => undefined,
     } as StatusStorePort,
     writer: {
@@ -417,6 +419,8 @@ describe('ConnectionHandler control routing', () => {
       setUrgent: () => undefined,
       getClaudeSessionId: () => undefined,
       setClaudeSessionId: () => undefined,
+      getMessagedLast: () => false,
+      setMessagedLast: () => undefined,
       onChange: () => undefined,
     };
     new ConnectionHandler(f.conn, deps);
@@ -439,6 +443,8 @@ describe('ConnectionHandler control routing', () => {
       },
       getClaudeSessionId: () => undefined,
       setClaudeSessionId: () => undefined,
+      getMessagedLast: () => false,
+      setMessagedLast: () => undefined,
       onChange: () => undefined,
     };
     new ConnectionHandler(f.conn, deps);

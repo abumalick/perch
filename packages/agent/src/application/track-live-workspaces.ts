@@ -83,6 +83,7 @@ export async function trackLiveWorkspaces(deps: TrackLiveWorkspacesDeps): Promis
           machineId: deps.machineId,
           createdAt: s.createdAt,
           ...(claudeSessionId ? { claudeSessionId } : {}),
+          ...(s.parent ? { parent: s.parent } : {}),
         };
       }),
   });

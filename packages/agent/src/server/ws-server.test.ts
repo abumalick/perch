@@ -1470,6 +1470,101 @@ describe('WsServer hooks route', () => {
   });
 });
 
+// `waitingOn` is derived from the in-memory SendMessage mark, which changes without the status
+// changing (a child is `working` before and after it messages its orchestrator), so the status
+// store's onChange cannot be what tells the phone.
+describe('WsServer waiting-on-parent push', () => {
+  const sockets: WebSocket[] = [];
+  afterEach(() => {
+    for (const socket of sockets.splice(0)) socket.close();
+  });
+
+  it('pushes the workspace when the SendMessage mark flips while the status stays working', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-waiting-'));
+    dirs.push(home);
+    const tmux: TmuxPort = {
+      listSessions: async () => [
+        { name: 'perch-child', startPath: tmpdir(), command: 'claude', createdAt: 1000, parent: 'perch-p', title: '' },
+      ],
+      createSession: async () => undefined,
+      killSession: async () => undefined,
+      hasSession: async () => true,
+    };
+    const status = new InMemoryStatusStore();
+    status.set('perch-child', 'working');
+    server = new WsServer({ ...makeServerDeps(testConfig(home), noClientLog), tmux, status });
+    await server.start();
+    const port = server.address().port;
+
+    const socket = new WebSocket(await clientUrl());
+    sockets.push(socket);
+    await new Promise((r) => socket.once('open', r));
+    socket.send(JSON.stringify({ type: 'auth', token: 'secret' }));
+    await nextMessage(socket);
+    const updates: Array<Extract<AgentMessage, { type: 'workspaceUpdated' }>['workspace']> = [];
+    socket.on('message', (raw) => {
+      const msg = JSON.parse(raw.toString()) as AgentMessage;
+      if (msg.type === 'workspaceUpdated') updates.push(msg.workspace);
+    });
+    const post = (tool: string) =>
+      fetch(`http://127.0.0.1:${port}/hooks`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${HOOK_TOKEN}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionName: 'perch-child', event: 'PostToolUse', claude: { tool_name: tool } }),
+      });
+    const until = async (n: number) => {
+      const deadline = Date.now() + 3000;
+      while (updates.length < n) {
+        if (Date.now() > deadline) throw new Error(`expected ${n} updates, got ${updates.length}`);
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    };
+
+    await post('SendMessage');
+    await until(1);
+    expect(status.getMessagedLast('perch-child')).toBe(true);
+    expect(updates[0]).toMatchObject({ id: 'perch-child', status: 'working', parentId: 'perch-p', waitingOn: 'parent' });
+
+    await post('Bash');
+    await until(2);
+    expect(status.getMessagedLast('perch-child')).toBe(false);
+    expect(updates[1]).toMatchObject({ id: 'perch-child', status: 'working', parentId: 'perch-p' });
+    expect(updates[1]).not.toHaveProperty('waitingOn');
+
+    // A tool call that leaves the mark and the status as they were pushes nothing.
+    await post('Read');
+    await new Promise((r) => setTimeout(r, 100));
+    expect(updates).toHaveLength(2);
+  });
+
+  // The mark lives in the status store, so a restarted agent still knows the child is waiting.
+  it('lists a child as waiting from a mark the status store already held', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-waiting-'));
+    dirs.push(home);
+    const tmux: TmuxPort = {
+      listSessions: async () => [
+        { name: 'perch-child', startPath: tmpdir(), command: 'claude', createdAt: 1000, parent: 'perch-p', title: '' },
+      ],
+      createSession: async () => undefined,
+      killSession: async () => undefined,
+      hasSession: async () => true,
+    };
+    const status = new InMemoryStatusStore();
+    status.set('perch-child', 'working');
+    status.setMessagedLast('perch-child', true);
+    server = new WsServer({ ...makeServerDeps(testConfig(home), noClientLog), tmux, status });
+    await server.start();
+    const socket = new WebSocket(await clientUrl());
+    sockets.push(socket);
+    await new Promise((r) => socket.once('open', r));
+    socket.send(JSON.stringify({ type: 'auth', token: 'secret' }));
+    await nextMessage(socket);
+    socket.send(JSON.stringify({ type: 'list' }));
+    const list = await nextMessage(socket);
+    expect(list).toMatchObject({ type: 'workspaces', workspaces: [{ id: 'perch-child', waitingOn: 'parent' }] });
+  });
+});
+
 describe('WsServer browser-session polling', () => {
   it('pushes browserSessions when the live set changes, and only then', async () => {
     const home = await mkdtemp(join(tmpdir(), 'perch-bpoll-'));

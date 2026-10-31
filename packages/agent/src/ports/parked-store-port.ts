@@ -15,6 +15,8 @@ export interface ParkedWorkspace {
   // ever carried one (a brand-new session, or a non-Claude command like zsh/codex) — such
   // a workspace reopens fresh rather than resumed.
   claudeSessionId?: string;
+  // The orchestrator workspace this one was spawned for, restored as `@perch_parent` on unpark.
+  parent?: string;
 }
 
 export interface ParkedStorePort {

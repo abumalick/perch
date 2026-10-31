@@ -115,8 +115,13 @@ export class WsServer {
   // that follows their Stop can be told apart from a genuine one. In-memory on purpose — see
   // applyHookEvent.
   private readonly deferred = new Set<string>();
-  // Sessions whose last main-loop tool call was SendMessage — see applyHookEvent.
-  private readonly messagedLast = new Set<string>();
+  // Sessions whose last main-loop tool call was SendMessage — see applyHookEvent. Kept in the
+  // status store rather than here, so it survives a restart and `perch ls` can read it.
+  private readonly messagedLast = {
+    has: (id: string) => this.deps.status.getMessagedLast(id),
+    add: (id: string) => this.deps.status.setMessagedLast(id, true),
+    delete: (id: string) => this.deps.status.setMessagedLast(id, false),
+  };
   // Codex sessions with a question waiting on the user — see applyHookEvent.
   private readonly questionPending = new Set<string>();
 
@@ -228,6 +233,7 @@ export class WsServer {
       browserViewers: this.browserViewers,
       forgetWorkspace: (id: string) => this.forgetWorkspace(id),
       broadcastClosed: (id: string) => this.broadcastClosed(id),
+      messagedLast: this.messagedLast,
     });
     this.handlers.add(handler);
     conn.onClose(() => {
@@ -274,6 +280,8 @@ export class WsServer {
           res.writeHead(400).end();
           return;
         }
+        const statusBefore = this.deps.status.get(sessionName);
+        const messagedBefore = this.messagedLast.has(sessionName);
         applyHookEvent(
           {
             store: this.deps.status,
@@ -284,6 +292,14 @@ export class WsServer {
           },
           { sessionName, event, claude, agent: typeof agent === 'string' ? agent : undefined },
         );
+        // The mark drives `waitingOn`, and it flips with the status unchanged, so onChange
+        // (which already pushed any status change) said nothing.
+        if (
+          this.messagedLast.has(sessionName) !== messagedBefore &&
+          this.deps.status.get(sessionName) === statusBefore
+        ) {
+          void this.broadcastWorkspace(sessionName).catch(() => undefined);
+        }
         res.writeHead(204).end();
       } catch {
         res.writeHead(400).end();
@@ -327,6 +343,7 @@ export class WsServer {
         repoRemote: this.deps.repoRemote,
         claudeSessions: this.deps.claudeSessions,
         parked: this.deps.parked,
+        messagedLast: this.messagedLast,
       });
     } catch {
       return;
@@ -401,6 +418,7 @@ export class WsServer {
       repoRemote: this.deps.repoRemote,
       claudeSessions: this.deps.claudeSessions,
       parked: this.deps.parked,
+      messagedLast: this.messagedLast,
     });
     const workspace = workspaces.find((w) => w.id === workspaceId);
     if (!workspace) {

@@ -7,8 +7,8 @@ description: Use when this session coordinates work it delegates, to Perch works
 
 Children are either Perch workspaces (separate Claude sessions in their own tmux panes) or
 in-session subagents. You talk to workspaces with Claude Code's cross-session messaging
-(`SendMessage`, `ListAgents`), not by reading their screens. Polling `tmux capture-pane` is
-the fallback, not the method.
+(`SendMessage`, `ListAgents`) and follow them with the `perch` CLI (`perch ls --mine`,
+`perch peek`), not by reading their screens.
 
 ## Workspace or subagent
 
@@ -29,14 +29,16 @@ When the user names one, use that one.
 ## Your name
 
 The first line of `ListAgents` says "This session is X". X is what children address. If you
-were spawned by `perch-spawn`, X is your workspace id.
+were spawned by `perch spawn`, X starts as your workspace id. You need not pass it: `--child`
+records your workspace id and tells the child your current name.
 
 ## Spawning a workspace
 
-1. Spawn each child through `perch-spawn` with `--parent X`, and show the batch table first,
-   as that skill says.
+1. Spawn each child through `perch-spawn` with `perch spawn --child`, and show the batch
+   table first, as that skill says.
 2. Subscribe to it: `SendMessage` with `to: <child id>`, `notify_when_idle: true`. The child
-   id is what `spawn.sh` printed, because the session is named after it.
+   id is what `perch spawn` printed, because the session is named after it; if it renames
+   itself, `perch ls --mine` shows the current name (NAME column).
 
 ## While they work
 
@@ -54,9 +56,13 @@ were spawned by `perch-spawn`, X is your workspace id.
   prompt. So subscribe when a child starts working (at spawn, and after you send it an
   answer that sets it going again), and never to a child idle and waiting on you; that
   notice fires at once and means nothing. A notice with no message from that child: look at
-  its pane (`tmux capture-pane -p -t <id> -S -40`), and nudge it or tell the user.
+  it (`perch peek <id>`), and nudge it or tell the user.
+- **`perch ls --mine` shows every child and its state.** `needs-orchestrator` means the child
+  ended its turn right after messaging you: a question or its final report is waiting.
+  `needs-feedback` means it stopped for the user (a permission prompt, an error).
 - **Ending your turn right after a `SendMessage` keeps your tile at `working`**, which is
-  correct while you wait on children. Your tile shows "Needs you" only when a turn ends
+  correct while you wait on children (a child's tile in the same case reads "Needs
+  orchestrator"). Your tile shows "Needs you" only when a turn ends
   without one, or when you call `AskUserQuestion`; use that only when you really need the
   user.
 - **So never end on a `SendMessage` when you are done.** Your final report to the user must
@@ -71,11 +77,12 @@ A subagent review of a workspace's branch is a cheap way to check. Do not relay 
 
 ## When state is lost
 
-Subscriptions and queued messages live in memory and expire after 12 h. After your own
-restart, a park, or a long wait:
-- read `~/.perch/status.json` for each child's attention status (`ListAgents`' busy/idle
-  cannot tell a blocked child from a working one);
-- read one `tmux capture-pane -p -t <id> -S -80` per child that looks stuck;
+Subscriptions and queued messages live in memory and expire after 12 h. The parent link does
+not: it survives park/unpark and the tmux server's loss. After your own restart, a park, or a
+long wait:
+- `perch ls --mine` recovers your children, their current names and their states
+  (`ListAgents`' busy/idle cannot tell a blocked child from a working one);
+- `perch peek <id>` (or `-n 80`) each child that looks stuck;
 - subscribe again to the ones still working.
 
 ## Closing
@@ -88,6 +95,7 @@ explicit name at a time, never `kill-server` or `-a`. For a process-heavy child,
 ## Limits
 
 - Local only: children on another machine cannot be spawned or messaged this way.
-- A child whose orchestrator dies stays `working` on the phone until it is closed by hand.
-- A child spawned without `--parent` can still block on `AskUserQuestion`; you cannot
+- A child whose orchestrator dies waits on it ("Needs orchestrator" or `working` on the phone)
+  until it is closed by hand.
+- A child spawned without `--child` can still block on `AskUserQuestion`; you cannot
   answer it by message.

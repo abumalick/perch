@@ -13,6 +13,7 @@ let lastTerminalOptions: Record<string, unknown> | null = null;
 let resetCount = 0;
 let selectionText = '';
 let bufferRows: string[] = [];
+let oscHandlers: Record<number, (data: string) => boolean> = {};
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
@@ -29,6 +30,7 @@ vi.mock('@xterm/xterm', () => ({
     onData(cb: (d: string) => void) { dataCb = cb; }
     attachCustomKeyEventHandler(cb: (e: KeyboardEvent) => boolean) { keyHandler = cb; }
     onResize() {}
+    parser = { registerOscHandler: (id: number, cb: (data: string) => boolean) => { oscHandlers[id] = cb; } };
     dispose() {}
     reset() { resetCount += 1; }
     focus() { focusCount += 1; }
@@ -122,6 +124,7 @@ describe('TerminalView', () => {
     resetCount = 0;
     selectionText = '';
     bufferRows = [];
+    oscHandlers = {};
     loadedAddons.length = 0;
     pasted.length = 0;
     webLinksHandler = undefined;
@@ -417,6 +420,64 @@ describe('TerminalView', () => {
 
     expect(writeText).toHaveBeenCalledWith('grabbed text');
     await screen.findByText('Copied');
+  });
+
+  it('copies text a program sends with OSC 52 straight away when the browser allows it', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(TerminalView, { props: { store: fakeStore() as never } });
+
+    expect(oscHandlers[52]?.(`c;${btoa('from /copy')}`)).toBe(true);
+
+    await screen.findByText('Copied');
+    expect(writeText).toHaveBeenCalledWith('from /copy');
+    expect(screen.queryByTestId('copy-offer')).toBeNull();
+  });
+
+  it('offers a tap to copy when the browser refuses a write without a gesture', async () => {
+    const refused = new DOMException('no gesture', 'NotAllowedError');
+    const writeText = vi.fn().mockRejectedValueOnce(refused).mockRejectedValueOnce(refused);
+    writeText.mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(TerminalView, { props: { store: fakeStore() as never } });
+
+    oscHandlers[52]!(`c;${btoa('first')}`);
+    oscHandlers[52]!(`c;${btoa('latest copy')}`);
+
+    const offer = await screen.findByTestId('copy-offer');
+    expect(offer.textContent).toContain('latest copy');
+    expect(offer.textContent).not.toContain('first');
+    await fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    expect(writeText).toHaveBeenLastCalledWith('latest copy');
+    await screen.findByText('Copied');
+    expect(screen.queryByTestId('copy-offer')).toBeNull();
+  });
+
+  it('does not let an older refused copy replace a newer one that succeeded', async () => {
+    const writeText = vi.fn().mockRejectedValueOnce(new DOMException('no gesture', 'NotAllowedError'));
+    writeText.mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(TerminalView, { props: { store: fakeStore() as never } });
+
+    oscHandlers[52]!(`c;${btoa('older')}`);
+    oscHandlers[52]!(`c;${btoa('newer')}`);
+
+    await screen.findByText('Copied');
+    await Promise.resolve();
+    expect(screen.queryByTestId('copy-offer')).toBeNull();
+  });
+
+  it('dismisses the copy offer without copying', async () => {
+    const writeText = vi.fn().mockRejectedValue(new DOMException('no gesture', 'NotAllowedError'));
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(TerminalView, { props: { store: fakeStore() as never } });
+
+    oscHandlers[52]!(`c;${btoa('secret')}`);
+    await screen.findByTestId('copy-offer');
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+
+    expect(screen.queryByTestId('copy-offer')).toBeNull();
+    expect(writeText).toHaveBeenCalledTimes(1);
   });
 
   it('does not copy on a touch pointer-up (desktop-only behaviour)', async () => {

@@ -14,6 +14,7 @@
   import BrowserPicker from './BrowserPicker.svelte';
   import WorkspaceMenu from './WorkspaceMenu.svelte';
   import SharedFileConfirm from './SharedFileConfirm.svelte';
+  import CopyOffer from './CopyOffer.svelte';
   import { trackStatusInline, trackViewport, trackWide } from './viewport';
   import { attachTerminalScroll, type TerminalScroll } from './terminal-scroll';
   import { attachCopyOnSelect, type CopyOnSelect } from './copy-on-select';
@@ -23,6 +24,7 @@
     type ModifierState,
   } from '../core/keyboard-modifiers';
   import { pasteFromClipboard } from '../core/clipboard-paste';
+  import { parseOsc52 } from '../core/osc52';
   import { fileToUpload } from '../core/shared-file';
   import { attachAndroidInput, isAndroid, type AndroidInput } from './android-input';
   import { dedentCopied, snapshotBuffer, type TerminalSnapshot } from '../core/terminal-snapshot';
@@ -67,14 +69,28 @@
     if (copiedTimer) clearTimeout(copiedTimer);
     copiedTimer = setTimeout(() => (copied = false), 1000);
   };
-  const writeClipboard = async (text: string) => {
-    if (!text) return;
+  const writeClipboard = async (text: string): Promise<boolean> => {
+    if (!text || !navigator.clipboard) return false;
     try {
-      await navigator.clipboard?.writeText(text);
+      await navigator.clipboard.writeText(text);
       showCopied();
+      return true;
     } catch {
-      // clipboard write denied/unavailable — nothing copied, no error surfaced
+      return false;
     }
+  };
+
+  // A program in the workspace set the clipboard (OSC 52, e.g. Claude Code's /copy). WebKit
+  // refuses a write that no tap started, so a refused one waits for the user to tap Copy.
+  let copyOffer = $state<string | null>(null);
+  let copySeq = 0;
+  const copyFromProgram = async (text: string) => {
+    const seq = ++copySeq;
+    copyOffer = null;
+    if (!(await writeClipboard(text)) && seq === copySeq) copyOffer = text;
+  };
+  const acceptCopyOffer = async () => {
+    if (copyOffer !== null && (await writeClipboard(copyOffer))) copyOffer = null;
   };
 
   // Buttons must not steal focus from the terminal, or the soft keyboard closes.
@@ -237,6 +253,11 @@
     t.loadAddon(new WebLinksAddon((_event, uri) => openLink(uri)));
     t.open(container);
     f.fit();
+    t.parser.registerOscHandler(52, (data) => {
+      const text = parseOsc52(data);
+      if (text) void copyFromProgram(text);
+      return true;
+    });
     store.onOutput = (data) => t.write(data);
     store.onInjectedInput = () => androidInput?.resetContext();
     // Sticky Ctrl/Alt transform for a single typed character (keyboard bar modifiers).
@@ -362,6 +383,9 @@
     <button type="button" class="icon" aria-label="Menu" aria-haspopup="dialog" aria-expanded={menuOpen} onpointerdown={keepFocus} onclick={() => (menuOpen = !menuOpen)}>☰</button>
   </header>
   <SharedFileConfirm {store} />
+  {#if copyOffer !== null}
+    <CopyOffer text={copyOffer} onCopy={acceptCopyOffer} onDismiss={() => (copyOffer = null)} />
+  {/if}
   <div class="term" class:android={androidDevice} class:selecting={selectMode} bind:this={container}>
     {#if snapshot}
       <div

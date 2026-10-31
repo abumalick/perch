@@ -904,6 +904,14 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   (Claude wraps at exactly `cols`, measured on real panes), the next row has a continuation
   indent and opens no item; a full row whose token runs on rejoins with no space. A rare wrong
   join in command output is the accepted cost; it affects only what is copied.
+- **A program can set the phone's clipboard (OSC 52), but never read it.** Claude Code's
+  `/copy` inside tmux runs `tmux load-buffer -w`, and tmux (`set-clipboard on`, our pty is
+  `xterm-256color`, which matches `xterm*:clipboard`) forwards it to the PWA as OSC 52; vim,
+  shells and anything else that emits OSC 52 take the same path. `core/osc52.ts` decodes it as
+  UTF-8 and **ignores a `?` read request**: answering it would let any workspace program read
+  the phone's clipboard. WebKit refuses `writeText` without a user tap, so a refused write shows
+  `CopyOffer` (tap Copy, or dismiss); only the latest copy is kept, and an older refused write
+  that settles late cannot replace a newer one (`copySeq`). No agent or protocol change.
 - **Browser-view typing reads the hidden input's text, and every key event carries `text`.**
   Two causes made soft-keyboard typing in the browser view do nothing. The PWA forwarded only
   the hidden input's `keydown`, and an Android keyboard's is `Unidentified` (229) with the text

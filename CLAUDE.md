@@ -170,7 +170,9 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   afterward) and falls back to a fresh tmux lookup if the workspace was closed within its
   first title-poll tick. The log write is best-effort (a failure must never fail the close
   or crash the poll's fire-and-forget interval). No PWA/UI, no protocol change; read the file
-  by hand on the box. Two edge cases are accepted by design (a narrow duplicate-log race, and log writes failing silently).
+  by hand on the box. Log writes failing silently is accepted by design. A poll landing between the close's
+  forget and its async tmux kill no longer logs a duplicate `exited`: `WsServer.closing` keeps it
+  from taking the workspace back until tmux stops listing it.
 - **Parking a workspace — stop the session, keep the conversation.** Setting a workspace's
   status to `parked` (renamed from `postponed`) kills its tmux session to free the `claude`
   process, and snapshots what's needed to revive it — id, name, path, command, and the

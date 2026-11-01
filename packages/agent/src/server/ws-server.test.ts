@@ -1537,6 +1537,49 @@ describe('WsServer waiting-on-parent push', () => {
     expect(updates).toHaveLength(2);
   });
 
+  // An explicit close forgets the workspace before its tmux kill completes. A poll that still
+  // lists the session in that gap must not take it back, or the workspace is logged a second
+  // time as `exited` (and pushed closed again) once the kill lands.
+  it('does not take back a workspace that is being closed while tmux still lists it', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-closing-'));
+    dirs.push(home);
+    let alive = true;
+    const tmux: TmuxPort = {
+      listSessions: async () =>
+        alive ? [{ name: 'perch-x', startPath: tmpdir(), command: 'claude', createdAt: 1000, title: '' }] : [],
+      createSession: async () => undefined,
+      killSession: async () => undefined,
+      hasSession: async () => alive,
+    };
+    const logged: string[] = [];
+    server = new WsServer({
+      ...makeServerDeps(testConfig(home), noClientLog),
+      tmux,
+      workspaceLog: { append: async (e) => void logged.push(`${e.id}:${e.reason}`) },
+      titlePollMs: 20,
+    });
+    await server.start();
+    const socket = new WebSocket(await clientUrl());
+    sockets.push(socket);
+    await new Promise((r) => socket.once('open', r));
+    socket.send(JSON.stringify({ type: 'auth', token: 'secret' }));
+    await nextMessage(socket);
+    const closed: string[] = [];
+    socket.on('message', (raw) => {
+      const msg = JSON.parse(raw.toString()) as AgentMessage;
+      if (msg.type === 'closed') closed.push(msg.workspaceId);
+    });
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(server.forgetWorkspace('perch-x')).toMatchObject({ id: 'perch-x' });
+    await new Promise((r) => setTimeout(r, 100));
+    alive = false;
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(logged).toEqual([]);
+    expect(closed).toEqual([]);
+  });
+
   // The mark lives in the status store, so a restarted agent still knows the child is waiting.
   it('lists a child as waiting from a mark the status store already held', async () => {
     const home = await mkdtemp(join(tmpdir(), 'perch-waiting-'));

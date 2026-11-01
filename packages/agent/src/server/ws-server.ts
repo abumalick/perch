@@ -111,6 +111,9 @@ export class WsServer {
   private titlePoll: ReturnType<typeof setInterval> | null = null;
   private statsPoll: ReturnType<typeof setInterval> | null = null;
   private readonly lastWorkspaces = new Map<string, Workspace>();
+  // Workspaces an explicit close has forgotten while tmux may still list them (the kill is async);
+  // pollTitles must not take them back. Dropped once tmux no longer lists them.
+  private readonly closing = new Set<string>();
   private lastBrowserNames = new Set<string>();
   // Sessions parked on background work or on a peer session's reply, so the idle notification
   // that follows their Stop can be told apart from a genuine one. In-memory on purpose — see
@@ -136,15 +139,13 @@ export class WsServer {
   // Removes and returns the last-known snapshot for a workspace id, if the poll has ever
   // observed it. Used by ConnectionHandler on an explicit close, both to build the log
   // entry (the session is about to be killed and tmux won't be able to answer afterward)
-  // and to keep the disappearance poll from separately logging it as `exited` — in the
-  // common case. Known limitation, accepted
-  // by design: closeWorkspace's tmux kill is async, so a poll tick landing in that gap
-  // can still observe the session as present and re-add it to this map; the poll then
-  // logs a second, duplicate `exited` entry once the kill actually completes. Harmless
-  // (one extra line in an append-only diagnostic file), just not airtight.
+  // and to keep the disappearance poll from separately logging it as `exited`. The tmux kill
+  // is async, so a poll tick in that gap still lists the session: `closing` keeps the poll
+  // from taking it back, which would log a duplicate `exited` once the kill lands.
   forgetWorkspace(id: string): Workspace | undefined {
     const workspace = this.lastWorkspaces.get(id);
     this.lastWorkspaces.delete(id);
+    this.closing.add(id);
     // A closed workspace must not come back parked if the tmux server dies before the next tick.
     void this.deps.liveSnapshot?.remove(id).catch(() => undefined);
     return workspace;
@@ -382,8 +383,12 @@ export class WsServer {
     }
     const hidden = await this.deps.hiddenFolders.list();
     const present = new Set<string>();
+    const listed = new Set(workspaces.map((w) => w.id));
+    for (const id of this.closing) {
+      if (!listed.has(id)) this.closing.delete(id);
+    }
     for (const workspace of workspaces) {
-      if (isHiddenPath(workspace.projectPath, hidden)) continue;
+      if (isHiddenPath(workspace.projectPath, hidden) || this.closing.has(workspace.id)) continue;
       present.add(workspace.id);
       const previous = this.lastWorkspaces.get(workspace.id);
       this.lastWorkspaces.set(workspace.id, workspace);

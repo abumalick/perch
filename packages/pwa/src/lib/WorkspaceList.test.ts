@@ -621,3 +621,32 @@ describe('WorkspaceList orchestrator nesting', () => {
     expect(screen.getByText('child-asks')).toBeInTheDocument();
   });
 });
+
+// `lastActivityAt` moves only when the status changes, so the row reads it as time in status.
+describe('WorkspaceList status age', () => {
+  beforeEach(() => vi.useFakeTimers({ now: 10 * 3_600_000 }));
+  afterEach(() => vi.useRealTimers());
+
+  it('shows how long each workspace has held its status', () => {
+    render(WorkspaceList, {
+      props: { store: fakeStore([{ ...ws, lastActivityAt: 7 * 3_600_000 }]) as never },
+    });
+    expect(screen.getByTestId('status-age')).toHaveTextContent('for 3h');
+  });
+
+  it('ticks forward on its own clock', async () => {
+    render(WorkspaceList, {
+      props: { store: fakeStore([{ ...ws, lastActivityAt: 10 * 3_600_000 - 30_000 }]) as never },
+    });
+    expect(screen.getByTestId('status-age')).toHaveTextContent('for <1m');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(screen.getByTestId('status-age')).toHaveTextContent('for 1m');
+  });
+
+  it('shows the age on parked rows too', () => {
+    const store = fakeStore([{ ...ws, status: 'parked', lastActivityAt: 8 * 3_600_000 }]);
+    store.parkedExpanded = true;
+    render(WorkspaceList, { props: { store: store as never } });
+    expect(screen.getByTestId('status-age')).toHaveTextContent('for 2h');
+  });
+});

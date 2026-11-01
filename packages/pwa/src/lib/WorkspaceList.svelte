@@ -12,6 +12,9 @@
   import { motionDuration, prefersReducedMotion, REORDER_MS, ENTER_LEAVE_MS } from './motion';
   import { statusLabel } from './workspace-status-display';
   import { nestWorkspaces } from '../core/nest-workspaces';
+  import { statusAge } from '../core/status-age';
+
+  const AGE_TICK_MS = 30_000;
 
   let { store, buildLabel = BUILD_LABEL }: { store: PerchStore; buildLabel?: string } =
     $props();
@@ -23,6 +26,20 @@
   let ready = $state(false);
   $effect(() => {
     ready = true;
+  });
+
+  // One clock for every row's status age. Background timers are throttled, so a return to
+  // the foreground refreshes it at once rather than showing ages from before the app slept.
+  let now = $state(Date.now());
+  $effect(() => {
+    const tick = () => (now = Date.now());
+    const timer = setInterval(tick, AGE_TICK_MS);
+    const onVisible = () => document.visibilityState === 'visible' && tick();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   });
 
   // Only worth disambiguating which machine a session lives on when more than one
@@ -129,6 +146,7 @@
           <span class="agent-address" data-testid="agent-address" title="Address other Claude sessions message this one by">{ws.agentAddress}</span>
         {/if}
         <span class="badge" data-status={ws.status}>{statusLabel(ws)}</span>
+        <span class="age" data-testid="status-age" title="Time in this status">for {statusAge(ws.lastActivityAt, now)}</span>
         <span class="chev" aria-hidden="true">›</span>
       </span>
       <span class="name-line">
@@ -496,6 +514,7 @@
     border-radius: 999px;
   }
 
+  .age { flex: 0 0 auto; font-size: 0.78rem; color: var(--text-dim); white-space: nowrap; }
   .chev { flex: 0 0 auto; color: var(--text-dim); font-size: 1.3rem; line-height: 1; }
 
   .parked-toggle {

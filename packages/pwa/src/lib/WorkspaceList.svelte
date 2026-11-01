@@ -146,7 +146,6 @@
           <span class="agent-address" data-testid="agent-address" title="Address other Claude sessions message this one by">{ws.agentAddress}</span>
         {/if}
         <span class="badge" data-status={ws.status}>{statusLabel(ws)}</span>
-        <span class="age" data-testid="status-age" title="Time in this status">for {statusAge(ws.lastActivityAt, now)}</span>
         <span class="chev" aria-hidden="true">›</span>
       </span>
       <span class="name-line">
@@ -154,6 +153,7 @@
           <span class="urgent-star" aria-label="Urgent" title="Urgent">★</span>
         {/if}
         <span class="name">{ws.name}</span>
+        <span class="age" data-testid="status-age" title="Time in this status">for {statusAge(ws.lastActivityAt, now)}</span>
       </span>
     </span>
   </button>
@@ -514,7 +514,8 @@
     border-radius: 999px;
   }
 
-  .age { flex: 0 0 auto; font-size: 0.78rem; color: var(--text-dim); white-space: nowrap; }
+  /* On the name line, not the path line: that one already holds the path, pills and badge. */
+  .age { flex: 0 0 auto; margin-left: auto; font-size: 0.78rem; color: var(--text-dim); white-space: nowrap; }
   .chev { flex: 0 0 auto; color: var(--text-dim); font-size: 1.3rem; line-height: 1; }
 
   .parked-toggle {

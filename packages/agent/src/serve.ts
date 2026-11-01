@@ -123,7 +123,7 @@ async function main(): Promise<void> {
     repoRemote: new GitRepoRemote(),
     claudeSessions: new FileClaudeSessionsStore(config.claudeSessionsDir),
     scopes: new SystemdScopeReaper(),
-    systemStats: new ProcSystemStats(),
+    ...(config.stats === false ? {} : { systemStats: new ProcSystemStats() }),
   });
   await server.start();
   process.stdout.write(`perch agent: hooks on 127.0.0.1:${server.address().port}\n`);

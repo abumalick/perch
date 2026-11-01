@@ -33,6 +33,9 @@ export interface AgentConfig {
   pairingPath: string;
   // Where phones open the PWA; the origin of the pairing links `perch pair` prints.
   pwaOrigin?: string;
+  // false when PERCH_STATS turns the machine load strip off, e.g. for a second Linux user on a
+  // machine whose load another agent already reports.
+  stats?: false;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv, home: string): AgentConfig {
@@ -80,6 +83,7 @@ export function loadConfig(env: NodeJS.ProcessEnv, home: string): AgentConfig {
     pairingPath: join(home, '.perch', 'pairing.json'),
     ...(env.PERCH_PWA_ORIGIN ? { pwaOrigin: env.PERCH_PWA_ORIGIN } : {}),
     ...(env.PERCH_DEFAULT_PATH ? { defaultPath: env.PERCH_DEFAULT_PATH } : {}),
+    ...(['off', '0', 'false'].includes(env.PERCH_STATS?.trim().toLowerCase() ?? '') ? { stats: false as const } : {}),
   };
 }
 

@@ -32,6 +32,14 @@ describe('loadConfig', () => {
     });
   });
 
+  it('sends the machine load unless PERCH_STATS turns it off', () => {
+    expect(loadConfig(base, '/home/u').stats).toBeUndefined();
+    for (const off of ['off', '0', 'false', ' OFF ']) {
+      expect(loadConfig({ ...base, PERCH_STATS: off }, '/home/u').stats).toBe(false);
+    }
+    expect(loadConfig({ ...base, PERCH_STATS: 'on' }, '/home/u').stats).toBeUndefined();
+  });
+
   it('has no relay unless PERCH_RELAY_URLS is set; the old PERCH_RELAY_URL is not read', () => {
     expect(loadConfig(base, '/home/u').relayUrls).toEqual([]);
     expect(loadConfig({ ...base, PERCH_RELAY_URLS: ' , ' }, '/home/u').relayUrls).toEqual([]);

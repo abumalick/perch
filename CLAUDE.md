@@ -305,7 +305,9 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   `ProcSystemStats` is Linux-only by construction: elsewhere `read()` returns null, no
   `stats` is sent, and the strip does not render. All the headroom reads are best-effort — a
   kernel that exposes none of them still yields a reading, and the fields are optional on the
-  wire so a version-skewed agent degrades to the old strip. Requires an agent restart per machine.
+  wire so a version-skewed agent degrades to the old strip. `PERCH_STATS=off` in `agent.env`
+  takes the collector away the same way (`serve.ts`), for a second Linux user on a box whose load
+  another agent already shows. Requires an agent restart per machine.
 - **Reconnect must replace the connect chain, never stack a second one.** `MachineConnection`'s
   backoff retry is a fire-and-forget timer with no cancel handle, and `reconnect()` clears the
   `closedByUser` kill-switch. Before the fix, tapping Reconnect (or the app auto-firing

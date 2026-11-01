@@ -7,6 +7,7 @@
   import StatusDot from './StatusDot.svelte';
   import { inputLog, type InputLogRecord } from '../core/terminal-input-log';
   import { isRelayMachine } from '../core/settings-store';
+  import { relayHost } from '../core/relay-host';
   import PairMachine from './PairMachine.svelte';
   import MachineDetail from './MachineDetail.svelte';
   import DictationPresets from './DictationPresets.svelte';
@@ -118,6 +119,7 @@
                 <span class="dot" aria-hidden="true"><StatusDot status={shown} /></span>
                 <span class="text">
                   <span class="name">{machine.name}</span>
+                  <span class="sub" data-testid="relay-host">{relayHost(machine.url)}</span>
                   {#if err}
                     <span class="sub diag" data-testid="diagnostic">{describeConnectionError(err)}</span>
                   {:else}

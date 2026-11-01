@@ -1,4 +1,4 @@
-From ee0f280faaba324395bbb3f5405fbe59d7d32392 Mon Sep 17 00:00:00 2001
+From 5f2a5e3284a555bb3751f931a2719e781ef5c0d5 Mon Sep 17 00:00:00 2001
 From: abumalick <8377185+abumalick@users.noreply.github.com>
 Date: Sun, 1 Nov 2026 21:46:54 +0300
 Subject: [PATCH] Add support for the OSC 7501 program status protocol.
@@ -11,14 +11,14 @@ announced by a pane-program-changed hook. Child records (with an id) are
 ignored. As the protocol asks, working and blocked are dropped when the
 program exits or a new OSC 133 prompt starts, and RIS clears the record.
 ---
- format.c        |  54 +++++++++++++++++++++
- input.c         | 125 ++++++++++++++++++++++++++++++++++++++++++++++++
+ format.c        |  54 ++++++++++++++++++++
+ input.c         | 127 ++++++++++++++++++++++++++++++++++++++++++++++++
  options-table.c |   3 ++
  server-fn.c     |   1 +
  tmux.1          |  10 ++++
- tmux.h          |   8 ++++
- window.c        |  51 ++++++++++++++++++++
- 7 files changed, 252 insertions(+)
+ tmux.h          |   8 +++
+ window.c        |  51 +++++++++++++++++++
+ 7 files changed, 254 insertions(+)
 
 diff --git a/format.c b/format.c
 index 193d8ce8..5d8ab215 100644
@@ -93,7 +93,7 @@ index 193d8ce8..5d8ab215 100644
  	  format_cb_pane_right
  	},
 diff --git a/input.c b/input.c
-index 19fac60b..8eb0250e 100644
+index 19fac60b..3db1ee02 100644
 --- a/input.c
 +++ b/input.c
 @@ -178,6 +178,8 @@ static void	input_osc_110(struct input_ctx *, const char *);
@@ -125,7 +125,7 @@ index 19fac60b..8eb0250e 100644
  	default:
  		log_debug("%s: unknown '%u'", __func__, option);
  		break;
-@@ -3391,6 +3399,121 @@ input_fire_command_event(struct window_pane *wp, const char *name)
+@@ -3391,6 +3399,123 @@ input_fire_command_event(struct window_pane *wp, const char *name)
  	events_fire(name, ep);
  }
  
@@ -160,6 +160,8 @@ index 19fac60b..8eb0250e 100644
 +{
 +	size_t	len = strlen(value);
 +
++	if (len == 0 || strchr(value, ',') != NULL)
++		return (0);
 +	while (*list != '\0') {
 +		if (strncmp(list, value, len) == 0 &&
 +		    (list[len] == ',' || list[len] == '\0'))
@@ -247,7 +249,7 @@ index 19fac60b..8eb0250e 100644
  /* Handle the OSC 133 sequence. */
  static void
  input_osc_133(struct input_ctx *ictx, const char *p)
-@@ -3416,6 +3539,8 @@ input_osc_133(struct input_ctx *ictx, const char *p)
+@@ -3416,6 +3541,8 @@ input_osc_133(struct input_ctx *ictx, const char *p)
  		if (wp != NULL) {
  			wp->last_prompt_time = time(NULL);
  			events_fire_pane("pane-shell-prompt", wp);

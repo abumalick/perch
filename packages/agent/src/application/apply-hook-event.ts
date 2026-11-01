@@ -85,6 +85,9 @@ interface Marks {
   questionPending: Set<string>;
 }
 
+// The sessions whose needs-feedback an OSC 7501 turn end set (applyProgramStatus); optional, as
+// only WsServer reads OSC.
+
 function state(marks: Marks, status: WorkspaceStatus | undefined, id: string): HookEntryState {
   return {
     ...(status ? { status } : {}),
@@ -101,10 +104,12 @@ function state(marks: Marks, status: WorkspaceStatus | undefined, id: string): H
 // SendMessage; WsServer backs it with the status store, since it also drives a child's
 // `waitingOn` that `perch ls` reads. `questionPending` holds the Codex sessions with a question waiting on the user.
 // `log` records every event and its decision; a failed write never affects the decision.
+// `oscTurnEnded` holds the sessions whose needs-feedback an OSC 7501 turn end set (applyProgramStatus).
 export function applyHookEvent(
   deps: {
     store: Pick<StatusStorePort, 'get' | 'set' | 'setClaudeSessionId'>;
     log?: HookEventLogPort;
+    oscTurnEnded?: Set<string>;
   } & Marks,
   // `agent` names the CLI that ran the hook; absent means Claude Code. `claude` is that CLI's payload.
   input: { sessionName: string; event: string; claude?: unknown; agent?: string },
@@ -125,6 +130,7 @@ export function applyHookEvent(
     messagedLast: before.messagedLast,
     questionPending: before.questionPending,
     currentStatus,
+    endedByOsc: deps.oscTurnEnded?.has(input.sessionName),
   });
 
   if (decision.deferral === 'set') {
@@ -146,6 +152,7 @@ export function applyHookEvent(
 
   if (decision.status) {
     deps.store.set(input.sessionName, decision.status);
+    deps.oscTurnEnded?.delete(input.sessionName);
   }
   if (deps.log) {
     const after = state(deps, decision.status ?? currentStatus, input.sessionName);

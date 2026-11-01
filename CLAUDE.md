@@ -1023,9 +1023,11 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   user set; the change time is in the key, since a whole turn fits between two polls); **a turn
   end yields to the deferral and `messagedLast`** (OSC says `done` while a background shell runs
   and while a child waits on its orchestrator); `idle` moves only a `working` session, to
-  `needs-feedback` (Codex says `idle` at a turn end); **a deferring `Stop` sets `working`
-  explicitly**, because OSC's `done` lands before the Stop hook's curl and a poll in that gap
-  would leave `needs-feedback` while the shell runs. A titled `perch spawn` locks the pane title
+  `needs-feedback` (Codex says `idle` at a turn end); **a deferring `Stop` sets `working` only
+  over a needs-feedback that an OSC turn end set** (the in-memory `oscTurnEnded` mark): OSC's
+  `done` lands before the Stop hook's curl, so a poll in that gap would leave `needs-feedback`
+  while the shell runs, but a needs-feedback from a permission prompt or an OSC `blocked` (a
+  background subagent asking) must stand, or the prompt waits behind "working". A titled `perch spawn` locks the pane title
   with `allow-set-title off` (3.5+) rather than `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`, which also
   silences Claude's OSC 7501; the env switch remains on an older tmux. The agent's tests never
   need the patched binary: `tmux-adapter.osc.test.ts` runs only with `PERCH_TMUX_OSC` set.

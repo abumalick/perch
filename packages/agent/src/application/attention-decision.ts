@@ -115,15 +115,21 @@ export function attentionDecision(input: {
   messagedLast?: boolean;
   questionPending?: boolean;
   currentStatus?: WorkspaceStatus;
+  // Whether the current needs-feedback was set by an OSC 7501 turn end (applyProgramStatus).
+  endedByOsc?: boolean;
 }): AttentionDecision {
   const endsQuestion = input.questionPending ? ({ question: 'clear' } as const) : {};
+  // OSC 7501 reports `done` the moment a turn ends, before this Stop's curl lands, so a poll in
+  // that gap may already have said needs-feedback; a deferring Stop takes back only that one,
+  // never a needs-feedback a permission prompt raised meanwhile.
+  const holdWorking = input.endedByOsc ? 'working' : null;
   switch (input.event) {
     case 'Stop':
       if (hasRunningBackgroundTask(input.claude)) {
-        return { reason: 'stop-background', status: 'working', deferral: 'set', ...endsQuestion };
+        return { reason: 'stop-background', status: holdWorking, deferral: 'set', ...endsQuestion };
       }
       return input.messagedLast
-        ? { reason: 'stop-messaged', status: 'working', deferral: 'set', ...endsQuestion }
+        ? { reason: 'stop-messaged', status: holdWorking, deferral: 'set', ...endsQuestion }
         : { reason: 'stop', status: 'needs-feedback', deferral: 'clear', ...endsQuestion };
     // Fired instead of Stop when an API error ends the turn.
     case 'StopFailure':

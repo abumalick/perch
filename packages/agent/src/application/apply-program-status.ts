@@ -17,6 +17,9 @@ export interface ApplyProgramStatusDeps {
   questionPending: Set<string>;
   // The last record seen per workspace (state and change time), so only a change is applied.
   seen: Map<string, string>;
+  // The sessions this rule moved to needs-feedback at a turn end, so the Stop hook landing just
+  // after can tell that one from a needs-feedback a permission prompt raised (attentionDecision).
+  oscTurnEnded: Set<string>;
   log?: HookEventLogPort;
 }
 
@@ -52,8 +55,11 @@ export function applyProgramStatus(deps: ApplyProgramStatusDeps, panes: ProgramS
       messagedLast: before.messagedLast,
     });
     if (decision.deferral === 'clear') deps.deferred.delete(name);
+    const turnEnd = decision.reason === 'osc-done' || decision.reason === 'osc-idle';
+    if (decision.status && !turnEnd) deps.oscTurnEnded.delete(name);
     if (decision.status && decision.status !== currentStatus) {
       deps.store.set(name, decision.status);
+      if (turnEnd) deps.oscTurnEnded.add(name);
       changed.push(name);
     }
     deps.log

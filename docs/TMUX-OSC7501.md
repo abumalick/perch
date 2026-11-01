@@ -46,6 +46,9 @@ already makes, and every 2 s tick (connected phone or not) applies a **change** 
 - **The hooks stay.** They alone give the Claude session id (parking), `messagedLast` ("Needs
   orchestrator") and the background-task deferral. OSC says `done` while a background shell still
   runs and while a child waits on its orchestrator, so a turn end never overrides those marks.
+  OSC's `done` also lands before the Stop hook does: when it already set needs-feedback, a Stop
+  that defers takes that back to `working`. It takes back nothing else, so a permission prompt
+  (or OSC `blocked`) raised while a background subagent runs still reads "Needs you".
 - `finished` and `parked` are the user's; OSC never moves a workspace off them.
 - The first sighting of a pane only records its state: a record has no heartbeat, so after an
   agent restart it may be hours old. A stuck `working` from before is therefore not healed until
@@ -63,11 +66,14 @@ would not overwrite the title; that switch also turns off Claude's OSC 7501. Whe
 Linux needs `libevent-dev libncurses-dev libsystemd-dev bison autoconf automake pkg-config`.
 
 ```sh
-deploy/tmux-osc7501/build.sh          # 3.8 + patch → ~/.local/opt/tmux-osc
+deploy/tmux-osc7501/build.sh          # 3.8 + patch → /opt/tmux-osc (sudo for the install only)
 deploy/tmux-osc7501/build.sh check    # smoke test on a private socket
 ```
 
-`--prefix DIR` installs elsewhere; `--master` builds the pinned master commit with the upstream
+The default prefix is root-owned on purpose. The cutover makes `/usr/bin/tmux` a link to it, and
+every account on the machine runs that binary: a build under a home directory other users cannot
+enter (mode 750 or 700) would fail for all of them with "permission denied". `--prefix DIR`
+installs elsewhere (for a scratch build); `--master` builds the pinned master commit with the upstream
 patch. The build never touches the `tmux` on `PATH`, and `check` runs its own server on a private
 `-S` socket without `$TMUX` or any config. `check` verifies the probe order, every state rule
 above, and (on Linux) the `tmux-spawn-*.scope`.
@@ -77,7 +83,7 @@ then the same two commands. The script puts Homebrew's bison first (macOS's is t
 `pkg-config` at the Homebrew libraries and adds `--enable-utf8proc`; there is no systemd.
 
 The patched agent test runs only when `PERCH_TMUX_OSC` names the binary:
-`PERCH_TMUX_OSC=~/.local/opt/tmux-osc/bin/tmux pnpm --filter @perch/agent exec vitest run src/infrastructure/tmux-adapter.osc.test.ts`.
+`PERCH_TMUX_OSC=/opt/tmux-osc/bin/tmux pnpm --filter @perch/agent exec vitest run src/infrastructure/tmux-adapter.osc.test.ts`.
 
 ## Cutover
 
@@ -93,8 +99,7 @@ running 3.4 server (same client protocol; checked on a private socket), and the 
 read empty until the server is replaced. The restart is the step that costs the workspaces.
 
 Untested under 3.8: tmux-resurrect and tmux-continuum (the config parses, step 3, but no plugin
-ran). And the Linux swap makes `/usr/bin/tmux` a link into `$HOME`: fine with a user that
-lingers, but every `tmux` breaks if the home directory is ever unavailable.
+ran).
 
 ### Linux (systemd `tmux-server` unit)
 
@@ -102,16 +107,18 @@ lingers, but every `tmux` breaks if the home directory is ever unavailable.
    hooks with the old tmux, so this can go out on its own.
 2. Build and check: `deploy/tmux-osc7501/build.sh && deploy/tmux-osc7501/build.sh check`.
 3. Check the tmux config parses under the new version (`-n` executes nothing):
-   `env -u TMUX ~/.local/opt/tmux-osc/bin/tmux -S ~/.cache/tmux-parse -f /dev/null start-server \; source-file -n ~/.config/tmux/tmux.conf`, then
-   `env -u TMUX ~/.local/opt/tmux-osc/bin/tmux -S ~/.cache/tmux-parse kill-server`.
+   `env -u TMUX /opt/tmux-osc/bin/tmux -S ~/.cache/tmux-parse -f /dev/null start-server \; source-file -n ~/.config/tmux/tmux.conf`, then
+   `env -u TMUX /opt/tmux-osc/bin/tmux -S ~/.cache/tmux-parse kill-server`.
 4. Save the layout (tmux-resurrect), from a pane: `~/.config/tmux/plugins/tmux-resurrect/scripts/save.sh`.
 5. Put the new binary where the packaged one was. `PATH` order differs between the systemd user
    manager (`/usr/local/bin` first) and login shells (often `/usr/bin` first), so no extra
    directory wins in both; a diversion moves Debian's `/usr/bin/tmux` aside (apt upgrades then
    keep it there) and frees its path:
-   `sudo dpkg-divert --local --rename --divert /usr/bin/tmux.distrib --add /usr/bin/tmux && sudo ln -s ~/.local/opt/tmux-osc/bin/tmux /usr/bin/tmux`.
+   `sudo dpkg-divert --local --rename --divert /usr/bin/tmux.distrib --add /usr/bin/tmux && sudo ln -s /opt/tmux-osc/bin/tmux /usr/bin/tmux`.
    Check that `tmux -V`, `zsh -lc 'tmux -V'` and `env -i PATH=/usr/bin tmux -V` all name the
-   new version. Nothing is disrupted yet: the running server is still the old one.
+   new version, and that another account can run it too (`sudo -u <other user> tmux -V`; every
+   account on the machine now runs this binary, and their own servers are still the old one
+   until they restart them). Nothing is disrupted yet: the running server is still the old one.
 6. Replace the server, when losing the live workspaces is fine. The unit refuses a manual stop, so kill it:
    `systemctl --user kill tmux-server`. `Restart=always` starts the new binary two seconds later,
    and its script restores the saved layout as bare shells.
@@ -124,14 +131,14 @@ lingers, but every `tmux` breaks if the home directory is ever unavailable.
 
 **Rollback:** `sudo rm /usr/bin/tmux && sudo dpkg-divert --rename --remove /usr/bin/tmux`, then
 `systemctl --user kill tmux-server` and `systemctl --user restart perch-agent`. It costs the live
-workspaces again.
+workspaces again. `/opt/tmux-osc` can stay; `sudo rm -rf /opt/tmux-osc` once nothing links to it.
 
 ### macOS (launchd agent, no tmux unit)
 
 1. Deploy the agent (pull, `launchctl kickstart -k gui/$(id -u)/com.perch.agent`).
 2. Build and check as above (Homebrew dependencies first).
 3. Put the new binary in Homebrew's place, keeping Homebrew's tmux installed for a rollback:
-   `brew unlink tmux && ln -s ~/.local/opt/tmux-osc/bin/tmux "$(brew --prefix)/bin/tmux"`.
+   `brew unlink tmux && ln -s /opt/tmux-osc/bin/tmux "$(brew --prefix)/bin/tmux"`.
    Swapping first means nothing (the agent, a phone's create) can start another old server.
 4. Replace the server: `tmux kill-server`, then
    `launchctl kickstart -k gui/$(id -u)/com.perch.agent`. The next session created starts the

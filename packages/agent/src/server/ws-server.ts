@@ -125,6 +125,9 @@ export class WsServer {
   };
   // Codex sessions with a question waiting on the user — see applyHookEvent.
   private readonly questionPending = new Set<string>();
+  // Sessions whose needs-feedback an OSC 7501 turn end set — see applyProgramStatus. In-memory:
+  // losing it costs one race won by needs-feedback, never a hidden prompt.
+  private readonly oscTurnEnded = new Set<string>();
   // The last OSC 7501 record seen per pane, so only a change is applied (applyProgramStatus).
   private readonly programSeen = new Map<string, string>();
 
@@ -292,6 +295,7 @@ export class WsServer {
             deferred: this.deferred,
             messagedLast: this.messagedLast,
             questionPending: this.questionPending,
+            oscTurnEnded: this.oscTurnEnded,
             log: this.deps.hookEventLog,
           },
           { sessionName, event, claude, agent: typeof agent === 'string' ? agent : undefined },
@@ -328,6 +332,7 @@ export class WsServer {
         messagedLast: this.messagedLast,
         questionPending: this.questionPending,
         seen: this.programSeen,
+        oscTurnEnded: this.oscTurnEnded,
         log: this.deps.hookEventLog,
       },
       sessions,

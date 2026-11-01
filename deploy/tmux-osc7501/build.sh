@@ -4,9 +4,12 @@
 #   deploy/tmux-osc7501/build.sh [--master] [--prefix DIR]   build and install
 #   deploy/tmux-osc7501/build.sh check [--prefix DIR]        smoke-test an installed build
 #
-# It never touches the tmux on PATH or a running server: it installs into the prefix only
-# (default ~/.local/opt/tmux-osc), and `check` runs its own server on a private `-L` socket,
-# started without $TMUX and without any config. Switching a machine over is a separate, manual
+# It never touches the tmux on PATH or a running server: it installs into the prefix only, and
+# `check` runs its own server on a private `-S` socket, started without $TMUX and without any
+# config. The default prefix, /opt/tmux-osc, is root-owned and readable by every account: the
+# cutover points /usr/bin/tmux at it, and a build under a home directory other users cannot
+# enter would break tmux for them. The build runs as you; only `make install` uses sudo, when
+# the prefix is not writable. Switching a machine over is a separate, manual
 # step: docs/TMUX-OSC7501.md.
 #
 # The default build is the 3.8 release with the backported patch; --master builds the pinned
@@ -14,7 +17,7 @@
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-PREFIX=$HOME/.local/opt/tmux-osc
+PREFIX=/opt/tmux-osc
 SRC=${XDG_CACHE_HOME:-$HOME/.cache}/tmux-osc7501/src
 REPO=https://github.com/tmux/tmux.git
 REF=3.8
@@ -70,7 +73,11 @@ build() {
     sh autogen.sh >/dev/null
     ./configure "${configure_args[@]}" >/dev/null
     make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)" >/dev/null
-    make install >/dev/null
+    if [ -w "$PREFIX" ] || { [ ! -e "$PREFIX" ] && [ -w "$(dirname "$PREFIX")" ]; }; then
+      make install >/dev/null
+    else
+      sudo make install >/dev/null
+    fi
   )
   echo "installed $("$PREFIX/bin/tmux" -V) (+OSC 7501) in $PREFIX"
 }
@@ -97,7 +104,9 @@ check() {
   expect '\033]7501;state=working:app=claude-code\033\\' 'working||claude-code'
   expect '\033]7501;state=done:id=child\033\\' 'working||claude-code'
   expect '\033]7501;state=bogus\033\\' 'working||claude-code'
+  expect '\033]7501;state=working,done\033\\' 'working||claude-code'
   expect '\033]7501;state=blocked:kind=question\007' 'blocked|question|'
+  expect '\033]7501;state=blocked:kind=permission,question\033\\' 'blocked||'
   expect '\033]133;A\007' '||'
   expect '\033]7501;state=done\033\\' 'done||'
   expect '\033]133;A\007' 'done||'

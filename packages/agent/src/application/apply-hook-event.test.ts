@@ -43,15 +43,15 @@ describe('applyHookEvent', () => {
     expect(f.sets).toEqual([]);
   });
 
-  it('keeps the session working and marks it deferred when a background task is running', () => {
+  it('writes nothing and marks the session deferred when a background task is running', () => {
     const f = fakeStore();
     const deferred = new Set<string>();
     const result = applyHookEvent(
       { store: f.store, deferred, messagedLast: new Set(), questionPending: new Set<string>() },
       { sessionName: 'perch-aa', event: 'Stop', claude: runningTask },
     );
-    expect(result).toEqual({ workspaceId: 'perch-aa', status: 'working' });
-    expect(f.sets).toEqual([['perch-aa', 'working']]);
+    expect(result).toBeNull();
+    expect(f.sets).toEqual([]);
     expect(deferred.has('perch-aa')).toBe(true);
   });
 
@@ -132,28 +132,9 @@ describe('applyHookEvent', () => {
     const f = fakeStore();
     const deps = { store: f.store, deferred: new Set<string>(), messagedLast: new Set<string>(), questionPending: new Set<string>() };
     applyHookEvent(deps, { sessionName: 'perch-aa', event: 'PostToolUse', claude: { tool_name: 'SendMessage' } });
-    expect(applyHookEvent(deps, { sessionName: 'perch-aa', event: 'Stop', claude: {} })).toEqual({
-      workspaceId: 'perch-aa',
-      status: 'working',
-    });
+    expect(applyHookEvent(deps, { sessionName: 'perch-aa', event: 'Stop', claude: {} })).toBeNull();
     expect(applyHookEvent(deps, { sessionName: 'perch-aa', event: 'Notification', claude: idlePrompt })).toBeNull();
-    expect(f.sets).toEqual([
-      ['perch-aa', 'working'],
-      ['perch-aa', 'working'],
-    ]);
-  });
-
-  // OSC 7501 says `done` the moment the turn ends, before the Stop hook's curl lands; a poll in
-  // that gap sets needs-feedback, and the Stop must take it back while the shell still runs.
-  it('puts a session back to working when its Stop lands after an OSC turn end', () => {
-    const f = fakeStore({ 'perch-aa': 'needs-feedback' });
-    const deferred = new Set<string>();
-    applyHookEvent(
-      { store: f.store, deferred, messagedLast: new Set(), questionPending: new Set<string>() },
-      { sessionName: 'perch-aa', event: 'Stop', claude: runningTask },
-    );
-    expect(f.store.get('perch-aa')).toBe('working');
-    expect(deferred.has('perch-aa')).toBe(true);
+    expect(f.sets).toEqual([['perch-aa', 'working']]);
   });
 
   it('a reply then a normal turn end needs feedback again', () => {

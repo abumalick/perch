@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applyProgramStatus } from './apply-program-status';
+import { applyHookEvent } from './apply-hook-event';
 import type { WorkspaceStatus } from '@perch/contracts';
 import type { HookEventEntry } from '../ports/hook-event-log-port';
 
@@ -19,6 +20,7 @@ function setup(initial: Record<string, WorkspaceStatus> = {}) {
     messagedLast: new Set<string>(),
     questionPending: new Set<string>(),
     seen: new Map<string, string>(),
+    oscTurnEnded: new Set<string>(),
     log: { append: async (e: HookEventEntry) => void entries.push(e) },
   };
   return { deps, sets, entries };
@@ -113,5 +115,67 @@ describe('applyProgramStatus', () => {
     const { deps } = setup({ 'perch-aa': 'working' });
     applyProgramStatus(deps, [pane('perch-aa', 'working', 1)]);
     expect(applyProgramStatus(deps, [pane('perch-aa', 'blocked', 2)])).toEqual(['perch-aa']);
+  });
+});
+
+// The hook and OSC sources share their marks, as WsServer wires them.
+describe('OSC 7501 and the Stop hook together', () => {
+  const runningShell = { background_tasks: [{ id: 'b1', type: 'shell', status: 'running' }] };
+  const runningSubagent = { background_tasks: [{ id: 'a1', type: 'subagent', status: 'running' }] };
+
+  function both(initial: WorkspaceStatus) {
+    const { deps } = setup({ 'perch-aa': initial });
+    const hook = (event: string, claude?: unknown) =>
+      applyHookEvent({ ...deps, store: { ...deps.store, setClaudeSessionId: () => undefined } }, {
+        sessionName: 'perch-aa',
+        event,
+        claude,
+      });
+    const osc = (state: string, changedAt: number) => applyProgramStatus(deps, [pane('perch-aa', state, changedAt)]);
+    return { deps, hook, osc, status: () => deps.store.get('perch-aa') };
+  }
+
+  it('keeps a background shell working when OSC says done before the Stop lands', () => {
+    const { deps, hook, osc, status } = both('working');
+    osc('working', 1);
+    osc('done', 2);
+    expect(status()).toBe('needs-feedback');
+    hook('Stop', runningShell);
+    expect(status()).toBe('working');
+    expect(deps.deferred.has('perch-aa')).toBe(true);
+    expect(deps.oscTurnEnded.has('perch-aa')).toBe(false);
+  });
+
+  it('keeps a background shell working when the Stop lands first', () => {
+    const { hook, osc, status } = both('working');
+    osc('working', 1);
+    hook('Stop', runningShell);
+    osc('done', 2);
+    expect(status()).toBe('working');
+  });
+
+  // A background subagent's permission prompt: the user is asked, so the main turn's Stop,
+  // which lists that subagent as running, must not hide it behind "working".
+  it('leaves a permission prompt at needs-feedback through a deferring Stop', () => {
+    const { hook, status } = both('working');
+    hook('Notification', { notification_type: 'permission_prompt' });
+    hook('Stop', runningSubagent);
+    expect(status()).toBe('needs-feedback');
+  });
+
+  it('leaves an OSC blocked at needs-feedback through a deferring Stop', () => {
+    const { hook, osc, status } = both('working');
+    osc('working', 1);
+    osc('blocked', 2);
+    hook('Stop', runningSubagent);
+    expect(status()).toBe('needs-feedback');
+  });
+
+  it('forgets an OSC turn end once a hook sets the status itself', () => {
+    const { deps, hook, osc } = both('working');
+    osc('working', 1);
+    osc('done', 2);
+    hook('UserPromptSubmit');
+    expect(deps.oscTurnEnded.has('perch-aa')).toBe(false);
   });
 });

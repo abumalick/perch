@@ -527,10 +527,10 @@ describe('WsServer (E2E, real tmux)', () => {
     socket.send(JSON.stringify({ type: 'auth', token: 'secret' }));
     await nextMessage(socket); // authResult
 
-    const broadcast: string[] = [];
+    let broadcast = false;
     socket.on('message', (raw) => {
       const msg = JSON.parse(raw.toString()) as AgentMessage;
-      if (msg.type === 'workspaceUpdated') broadcast.push(msg.workspace.status);
+      if (msg.type === 'workspaceUpdated') broadcast = true;
     });
 
     const res = await fetch(`http://127.0.0.1:${port}/hooks`, {
@@ -545,7 +545,7 @@ describe('WsServer (E2E, real tmux)', () => {
     expect(res.status).toBe(204);
 
     await new Promise((r) => setTimeout(r, 300));
-    expect(broadcast).not.toContain('needs-feedback');
+    expect(broadcast).toBe(false);
 
     await new Promise<void>((resolve) => {
       socket.on('close', () => resolve());

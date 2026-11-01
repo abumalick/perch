@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findWorkspaceIds, resolveWorkspaceId } from './workspace-id-links';
+import { findWorkspaceIds, linkTarget } from './workspace-id-links';
 
 const cells = (text: string) => [...text].map((chars) => ({ chars, width: 1 }));
 
@@ -43,23 +43,32 @@ describe('findWorkspaceIds', () => {
   });
 });
 
-describe('resolveWorkspaceId', () => {
-  const ws = (machineId: string, id: string) => ({ machineId, id });
+describe('linkTarget', () => {
+  const ws = (machineId: string, id: string, status = 'idle') => ({ machineId, id, status });
 
   it('returns the listed workspace with that id', () => {
-    expect(resolveWorkspaceId([ws('mac', 'perch-aaaaaa')], 'perch-aaaaaa', null)).toEqual(ws('mac', 'perch-aaaaaa'));
+    expect(linkTarget([ws('mac', 'perch-aaaaaa')], 'perch-aaaaaa', null)).toEqual(ws('mac', 'perch-aaaaaa'));
   });
 
   it('returns null for an unknown id', () => {
-    expect(resolveWorkspaceId([ws('mac', 'perch-aaaaaa')], 'perch-bbbbbb', 'mac')).toBeNull();
+    expect(linkTarget([ws('mac', 'perch-aaaaaa')], 'perch-bbbbbb', 'mac')).toBeNull();
   });
 
   it('prefers the given machine when the id is listed on several', () => {
     const list = [ws('mac', 'perch-aaaaaa'), ws('linux', 'perch-aaaaaa')];
-    expect(resolveWorkspaceId(list, 'perch-aaaaaa', 'linux')).toEqual(ws('linux', 'perch-aaaaaa'));
+    expect(linkTarget(list, 'perch-aaaaaa', 'linux')).toEqual(ws('linux', 'perch-aaaaaa'));
+  });
+
+  it('leaves a parked workspace out', () => {
+    expect(linkTarget([ws('mac', 'perch-aaaaaa', 'parked')], 'perch-aaaaaa', 'mac')).toBeNull();
+  });
+
+  it('skips a parked copy for a live one on another machine', () => {
+    const list = [ws('mac', 'perch-aaaaaa', 'parked'), ws('linux', 'perch-aaaaaa')];
+    expect(linkTarget(list, 'perch-aaaaaa', 'mac')).toEqual(ws('linux', 'perch-aaaaaa'));
   });
 
   it('falls back to another machine', () => {
-    expect(resolveWorkspaceId([ws('linux', 'perch-aaaaaa')], 'perch-aaaaaa', 'mac')).toEqual(ws('linux', 'perch-aaaaaa'));
+    expect(linkTarget([ws('linux', 'perch-aaaaaa')], 'perch-aaaaaa', 'mac')).toEqual(ws('linux', 'perch-aaaaaa'));
   });
 });

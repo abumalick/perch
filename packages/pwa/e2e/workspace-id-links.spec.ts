@@ -6,7 +6,7 @@ failOnCspViolation(test);
 
 let agent: FakeAgent;
 
-const at = (id: string, name: string, lastActivityAt: number) => ({
+const at = (id: string, name: string, lastActivityAt: number, status = 'idle') => ({
   machineId: 'agent-machine-id',
   id,
   name,
@@ -14,7 +14,7 @@ const at = (id: string, name: string, lastActivityAt: number) => ({
   command: 'claude',
   createdAt: 1,
   lastActivityAt,
-  status: 'idle',
+  status,
 });
 
 test.beforeAll(async () => {
@@ -22,6 +22,7 @@ test.beforeAll(async () => {
   agent = await startFakeAgent([
     at('perch-a1b2c3', 'source', now - 5 * 60_000),
     at('perch-d4e5f6', 'target', now - 3 * 3_600_000 - 60_000),
+    at('perch-e7e7e7', 'resting', now, 'parked'),
   ]);
 });
 test.afterAll(async () => {
@@ -44,9 +45,12 @@ test.describe('touch (iOS)', () => {
     await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY perch-a1b2c3' })).toBeVisible();
 
     // Coloured, so each id gets its own span to tap.
-    agent.sendOutput('perch-a1b2c3', 'unknown \x1b[32mperch-999999\x1b[0m\r\nspawned \x1b[32mperch-d4e5f6\x1b[0m\r\n');
+    agent.sendOutput('perch-a1b2c3', 'unknown \x1b[32mperch-999999\x1b[0m\r\nparked \x1b[32mperch-e7e7e7\x1b[0m\r\nspawned \x1b[32mperch-d4e5f6\x1b[0m\r\n');
     const unknown = page.locator('.xterm-rows').getByText('perch-999999', { exact: true });
     await unknown.tap();
+    await expect(page.getByTestId('header-name')).toHaveText('source');
+    // Opening a parked workspace would unpark it and start Claude: not on a stray tap.
+    await page.locator('.xterm-rows').getByText('perch-e7e7e7', { exact: true }).tap();
     await expect(page.getByTestId('header-name')).toHaveText('source');
 
     await page.locator('.xterm-rows').getByText('perch-d4e5f6', { exact: true }).tap();

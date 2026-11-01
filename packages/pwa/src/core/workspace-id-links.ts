@@ -31,12 +31,14 @@ export function findWorkspaceIds(cells: readonly TerminalCell[]): WorkspaceIdMat
   }));
 }
 
-// Ids are only unique per machine; the caller's machine wins a tie.
-export function resolveWorkspaceId<W extends { machineId: string; id: string }>(
+// The workspace a tapped id opens. Ids are only unique per machine, so the caller's machine wins
+// a tie. A parked one is left out: opening it unparks it and starts Claude, too much for a tap
+// that can land by accident on `perch ls` output.
+export function linkTarget<W extends { machineId: string; id: string; status: string }>(
   workspaces: readonly W[],
   id: string,
   preferMachineId: string | null,
 ): W | null {
-  const matches = workspaces.filter((w) => w.id === id);
+  const matches = workspaces.filter((w) => w.id === id && w.status !== 'parked');
   return matches.find((w) => w.machineId === preferMachineId) ?? matches[0] ?? null;
 }

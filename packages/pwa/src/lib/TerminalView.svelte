@@ -5,7 +5,7 @@
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import { isIOSWebKit, openTerminalLink } from './terminal-link';
   import { workspaceIdLinkProvider } from './workspace-id-link-provider';
-  import { resolveWorkspaceId } from '../core/workspace-id-links';
+  import { linkTarget } from '../core/workspace-id-links';
   import '@xterm/xterm/css/xterm.css';
   import type { PerchStore } from '../store.svelte';
   import { TERMINAL_FONT_MIN, TERMINAL_FONT_MAX, isConnectable } from '../core/settings-store';
@@ -256,7 +256,7 @@
     t.registerLinkProvider(
       workspaceIdLinkProvider(
         t,
-        (id) => resolveWorkspaceId(store.workspaces, id, store.active?.machineId ?? null),
+        (id) => linkTarget(store.workspaces, id, store.active?.machineId ?? null),
         (ws) => {
           if (ws.id !== store.active?.id) store.open(ws);
         },

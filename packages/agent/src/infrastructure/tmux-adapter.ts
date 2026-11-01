@@ -15,7 +15,8 @@ export const tmux = (args: string[]) => exec('tmux', args, { env: childEnv() });
 // non-ASCII byte in format output to `_`. A tab separator silently collapsed, so every
 // line parsed as a single field and listSessions returned nothing. `|:|` survives that
 // rewrite and is vanishingly unlikely to occur in a session name, path, or command.
-// pane_title is last so it can contain the separator harmlessly (it's the remainder).
+// pane_title is last so it can contain the separator harmlessly (it's the remainder). The
+// pane_program_* fields come from a tmux patched for OSC 7501; a stock tmux expands them to ''.
 const SEP = '|:|';
 const FORMAT = [
   '#{session_name}',
@@ -23,6 +24,8 @@ const FORMAT = [
   '#{session_created}',
   '#{@perch_command}',
   '#{@perch_parent}',
+  '#{pane_program_state}',
+  '#{pane_program_time}',
   '#{pane_title}',
 ].join(SEP);
 
@@ -53,7 +56,7 @@ export function isMissingSession(err: unknown): boolean {
 function parseLine(line: string): TmuxSessionInfo | null {
   const parts = line.split(SEP);
   if (parts.length < 3) return null;
-  const [name, startPath, created, command, parent] = parts;
+  const [name, startPath, created, command, parent, programState, programTime] = parts;
   if (!name || !startPath || !created) return null;
   return {
     name,
@@ -61,7 +64,8 @@ function parseLine(line: string): TmuxSessionInfo | null {
     command: command ?? '',
     createdAt: Number(created) * 1000,
     ...(parent ? { parent } : {}),
-    title: parts.slice(5).join(SEP),
+    ...(programState ? { program: { state: programState, changedAt: Number(programTime) * 1000 } } : {}),
+    title: parts.slice(7).join(SEP),
   };
 }
 
@@ -74,6 +78,8 @@ export interface TmuxAdapterOptions {
   config?: string;
   // The environment child processes get, through childEnv. Defaults to process.env.
   env?: NodeJS.ProcessEnv;
+  // The tmux executable; `tmux` on PATH by default. Tests point it at a patched build.
+  binary?: string;
 }
 
 export class TmuxAdapter implements TmuxPort {
@@ -84,9 +90,10 @@ export class TmuxAdapter implements TmuxPort {
       ...(options.socket ? ['-S', options.socket] : []),
       ...(options.config ? ['-f', options.config] : []),
     ];
-    this.tmux = prefix.length === 0 && !options.env
+    const binary = options.binary ?? 'tmux';
+    this.tmux = prefix.length === 0 && !options.env && !options.binary
       ? tmux
-      : (args) => exec('tmux', [...prefix, ...args], { env: childEnv(options.env) });
+      : (args) => exec(binary, [...prefix, ...args], { env: childEnv(options.env) });
   }
 
   // tmux's default terminal-features for xterm* lacks `hyperlinks`, so it strips OSC 8
@@ -176,6 +183,21 @@ export class TmuxAdapter implements TmuxPort {
 
   async setPaneTitle(name: string, title: string): Promise<void> {
     await this.tmux(['select-pane', '-t', name, '-T', title]);
+  }
+
+  // `allow-set-title` exists from tmux 3.5; an older server answers "invalid option". No server
+  // at all reads as unsupported too, which only keeps the env switch.
+  async supportsTitleLock(): Promise<boolean> {
+    try {
+      await this.tmux(['show-options', '-gwv', 'allow-set-title']);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async lockPaneTitle(name: string): Promise<void> {
+    await this.tmux(['set-option', '-p', '-t', name, 'allow-set-title', 'off']);
   }
 
   async capturePane(name: string, historyLines: number): Promise<string> {

@@ -37,6 +37,7 @@ import type { Workspace } from '@perch/contracts';
 import { ConnectionHandler } from './connection-handler';
 import { ViewerRegistry } from './viewer-registry';
 import { applyHookEvent } from '../application/apply-hook-event';
+import { applyProgramStatus } from '../application/apply-program-status';
 import type { HookEventLogPort } from '../ports/hook-event-log-port';
 import { listWorkspaces } from '../application/list-workspaces';
 import { isHiddenPath } from '../application/is-hidden-path';
@@ -110,6 +111,9 @@ export class WsServer {
   private titlePoll: ReturnType<typeof setInterval> | null = null;
   private statsPoll: ReturnType<typeof setInterval> | null = null;
   private readonly lastWorkspaces = new Map<string, Workspace>();
+  // Workspaces an explicit close has forgotten while tmux may still list them (the kill is async);
+  // pollTitles must not take them back. Dropped once tmux no longer lists them.
+  private readonly closing = new Set<string>();
   private lastBrowserNames = new Set<string>();
   // Sessions parked on background work or on a peer session's reply, so the idle notification
   // that follows their Stop can be told apart from a genuine one. In-memory on purpose — see
@@ -124,21 +128,24 @@ export class WsServer {
   };
   // Codex sessions with a question waiting on the user — see applyHookEvent.
   private readonly questionPending = new Set<string>();
+  // Sessions whose needs-feedback an OSC 7501 turn end set — see applyProgramStatus. In-memory:
+  // losing it costs one race won by needs-feedback, never a hidden prompt.
+  private readonly oscTurnEnded = new Set<string>();
+  // The last OSC 7501 record seen per pane, so only a change is applied (applyProgramStatus).
+  private readonly programSeen = new Map<string, string>();
 
   constructor(private readonly deps: WsServerDeps) {}
 
   // Removes and returns the last-known snapshot for a workspace id, if the poll has ever
   // observed it. Used by ConnectionHandler on an explicit close, both to build the log
   // entry (the session is about to be killed and tmux won't be able to answer afterward)
-  // and to keep the disappearance poll from separately logging it as `exited` — in the
-  // common case. Known limitation, accepted
-  // by design: closeWorkspace's tmux kill is async, so a poll tick landing in that gap
-  // can still observe the session as present and re-add it to this map; the poll then
-  // logs a second, duplicate `exited` entry once the kill actually completes. Harmless
-  // (one extra line in an append-only diagnostic file), just not airtight.
+  // and to keep the disappearance poll from separately logging it as `exited`. The tmux kill
+  // is async, so a poll tick in that gap still lists the session: `closing` keeps the poll
+  // from taking it back, which would log a duplicate `exited` once the kill lands.
   forgetWorkspace(id: string): Workspace | undefined {
     const workspace = this.lastWorkspaces.get(id);
     this.lastWorkspaces.delete(id);
+    this.closing.add(id);
     // A closed workspace must not come back parked if the tmux server dies before the next tick.
     void this.deps.liveSnapshot?.remove(id).catch(() => undefined);
     return workspace;
@@ -182,6 +189,7 @@ export class WsServer {
       // Tracked first, so a workspace lost with its tmux server is already parked when the
       // title poll looks for it, rather than logged and pushed as closed.
       void this.trackLive().then(() => this.pollTitles());
+      void this.pollProgramStatus();
       void this.pollBrowserSessions();
     }, this.deps.titlePollMs ?? DEFAULT_TITLE_POLL_MS);
     this.titlePoll.unref?.();
@@ -288,6 +296,7 @@ export class WsServer {
             deferred: this.deferred,
             messagedLast: this.messagedLast,
             questionPending: this.questionPending,
+            oscTurnEnded: this.oscTurnEnded,
             log: this.deps.hookEventLog,
           },
           { sessionName, event, claude, agent: typeof agent === 'string' ? agent : undefined },
@@ -305,6 +314,30 @@ export class WsServer {
         res.writeHead(400).end();
       }
     });
+  }
+
+  // The second status source beside the hooks, from a tmux patched to keep each pane's OSC 7501
+  // status; a stock tmux reports none and this changes nothing. Runs whether or not a client is
+  // connected: a stale `working` matters most when nobody is watching. Best-effort, like the tick.
+  private async pollProgramStatus(): Promise<void> {
+    let sessions;
+    try {
+      sessions = await this.deps.tmux.listSessions(this.deps.config.sessionPrefix);
+    } catch {
+      return;
+    }
+    applyProgramStatus(
+      {
+        store: this.deps.status,
+        deferred: this.deferred,
+        messagedLast: this.messagedLast,
+        questionPending: this.questionPending,
+        seen: this.programSeen,
+        oscTurnEnded: this.oscTurnEnded,
+        log: this.deps.hookEventLog,
+      },
+      sessions,
+    );
   }
 
   // Runs whether or not a client is connected: the snapshot must be current when the server dies.
@@ -350,8 +383,12 @@ export class WsServer {
     }
     const hidden = await this.deps.hiddenFolders.list();
     const present = new Set<string>();
+    const listed = new Set(workspaces.map((w) => w.id));
+    for (const id of this.closing) {
+      if (!listed.has(id)) this.closing.delete(id);
+    }
     for (const workspace of workspaces) {
-      if (isHiddenPath(workspace.projectPath, hidden)) continue;
+      if (isHiddenPath(workspace.projectPath, hidden) || this.closing.has(workspace.id)) continue;
       present.add(workspace.id);
       const previous = this.lastWorkspaces.get(workspace.id);
       this.lastWorkspaces.set(workspace.id, workspace);

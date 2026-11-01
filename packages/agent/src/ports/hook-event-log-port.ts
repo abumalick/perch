@@ -20,7 +20,9 @@ export interface HookEventEntry {
   // Stop and StopFailure only, trimmed: what the deferral rule read, and the API error.
   backgroundTasks?: unknown[];
   error?: string;
-  // The rule that decided (`AttentionReason`).
+  // `OSC7501` events only: the pane's new program status.
+  programState?: string;
+  // The rule that decided (`AttentionReason` or `ProgramStatusReason`).
   reason: string;
   before: { status?: WorkspaceStatus } & HookMarks;
   after: { status?: WorkspaceStatus } & HookMarks;

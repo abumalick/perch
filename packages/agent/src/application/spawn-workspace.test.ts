@@ -100,6 +100,29 @@ describe('spawnWorkspace', () => {
       expect(tmux.setPaneTitle).not.toHaveBeenCalled();
       expect(created(tmux).command).not.toContain('CLAUDE_CODE_DISABLE_TERMINAL_TITLE');
     });
+
+    // The env switch also silences Claude's OSC 7501 status, so where tmux can refuse the
+    // title itself (allow-set-title, tmux 3.5+) the pane is locked instead, before the title.
+    it('locks the pane title instead when tmux can, so Claude still reports its status', async () => {
+      const order: string[] = [];
+      const lockPaneTitle = vi.fn(async (_name: string) => void order.push('lock'));
+      const { deps, tmux } = makeDeps();
+      tmux.setPaneTitle.mockImplementation(async () => void order.push('title'));
+      deps.tmux = { ...tmux, supportsTitleLock: async () => true, lockPaneTitle };
+      await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', title: 'story 9' });
+      expect(created(tmux).command).not.toContain('CLAUDE_CODE_DISABLE_TERMINAL_TITLE');
+      expect(lockPaneTitle).toHaveBeenCalledWith('perch-a1b2c3');
+      expect(order).toEqual(['lock', 'title']);
+    });
+
+    it('keeps the env switch where tmux cannot lock the title', async () => {
+      const lockPaneTitle = vi.fn(async (_name: string) => {});
+      const { deps, tmux } = makeDeps();
+      deps.tmux = { ...tmux, supportsTitleLock: async () => false, lockPaneTitle };
+      await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', title: 'story 9' });
+      expect(created(tmux).command.startsWith('CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude ')).toBe(true);
+      expect(lockPaneTitle).not.toHaveBeenCalled();
+    });
   });
 
   describe('a child', () => {

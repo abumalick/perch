@@ -3,7 +3,8 @@ import type { FileWriterPort } from '../ports/file-writer-port';
 import type { IdGenerator } from '../ports/id-generator';
 
 export interface SpawnWorkspaceDeps {
-  tmux: Pick<TmuxPort, 'createSession' | 'hasSession'> & Required<Pick<TmuxPort, 'setPaneTitle'>>;
+  tmux: Pick<TmuxPort, 'createSession' | 'hasSession' | 'supportsTitleLock' | 'lockPaneTitle'> &
+    Required<Pick<TmuxPort, 'setPaneTitle'>>;
   files: FileWriterPort;
   // The directory's absolute, symlink-free path, or null when it is not a directory.
   resolveDirectory: (path: string) => Promise<string | null>;
@@ -67,14 +68,17 @@ export async function spawnWorkspace(deps: SpawnWorkspaceDeps, input: SpawnWorks
     base = `${base} --settings ${settingsPath}`;
   }
 
-  // Without a title, Claude Code names the workspace itself through the pane title. With one,
-  // CLAUDE_CODE_DISABLE_TERMINAL_TITLE stops it overwriting ours a second later (an env prefix,
-  // as tmux's `-e` wants tmux 3.2), and the title carries the status glyph because
-  // deriveWorkspaceName trusts only a pane title that has one.
-  const launch = `${title ? 'CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 ' : ''}${base} "$(cat '${briefPath}')"`;
+  // Without a title, Claude Code names the workspace itself through the pane title. With one, it
+  // must not overwrite ours a second later, and the title carries the status glyph because
+  // deriveWorkspaceName trusts only a pane title that has one. Where tmux can lock the pane's
+  // title (3.5+) it does; elsewhere CLAUDE_CODE_DISABLE_TERMINAL_TITLE does it (an env prefix,
+  // as tmux's `-e` wants tmux 3.2), which also turns off Claude's OSC 7501 status reports.
+  const lockTitle = Boolean(title && deps.tmux.lockPaneTitle && (await deps.tmux.supportsTitleLock?.()));
+  const launch = `${title && !lockTitle ? 'CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 ' : ''}${base} "$(cat '${briefPath}')"`;
   // The stored command omits the brief: unpark builds `<base> --resume <sid> || exec <base>`
   // from it, and the brief would be re-submitted into the conversation on every unpark.
   await deps.tmux.createSession({ name: id, cwd, command: launch, storedCommand: base, ...(parent ? { parent: parent.id } : {}) });
+  if (lockTitle) await deps.tmux.lockPaneTitle!(id);
   if (title) await deps.tmux.setPaneTitle(id, `✳ ${title}`);
 
   // A command string the login shell rejects kills the pane at once, and tmux then destroys the

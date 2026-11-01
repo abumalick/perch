@@ -170,7 +170,9 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   afterward) and falls back to a fresh tmux lookup if the workspace was closed within its
   first title-poll tick. The log write is best-effort (a failure must never fail the close
   or crash the poll's fire-and-forget interval). No PWA/UI, no protocol change; read the file
-  by hand on the box. Two edge cases are accepted by design (a narrow duplicate-log race, and log writes failing silently).
+  by hand on the box. Log writes failing silently is accepted by design. A poll landing between the close's
+  forget and its async tmux kill no longer logs a duplicate `exited`: `WsServer.closing` keeps it
+  from taking the workspace back until tmux stops listing it.
 - **Parking a workspace — stop the session, keep the conversation.** Setting a workspace's
   status to `parked` (renamed from `postponed`) kills its tmux session to free the `claude`
   process, and snapshots what's needed to revive it — id, name, path, command, and the
@@ -1011,7 +1013,26 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   three marks and turns a `working` into `needs-feedback`, leaving any other status
   alone (an unpark sets `idle` just before its resume fires it). Source `compact` fires
   mid-turn on auto-compaction and changes nothing. An Esc interrupt fires no hook at all, so it
-  still leaves `working` behind.
+  still leaves `working` behind unless tmux reports OSC 7501 (next item).
+- **A tmux patched for OSC 7501 is a second status source; the hooks stay.** Claude Code and
+  Codex report their status with OSC 7501 (Program Status Protocol); stock tmux drops it and never
+  answers the probe Claude waits for. `deploy/tmux-osc7501/` patches tmux to answer the probe and
+  keep each pane's record as `#{pane_program_state}`/`#{pane_program_time}`, which the agent reads
+  in `listSessions` on every tick, phone connected or not (`applyProgramStatus`). Rules in
+  `program-status-decision.ts`; build, rules and cutover in `docs/TMUX-OSC7501.md`. Things not to
+  "simplify": **only a change is applied, and a first sighting only records** (no heartbeat: an
+  hours-old `done` must not overwrite `status.json` after an agent restart, nor a `finished` the
+  user set; the change time is in the key, since a whole turn fits between two polls); **a turn
+  end yields to the deferral and `messagedLast`** (OSC says `done` while a background shell runs
+  and while a child waits on its orchestrator); `idle` moves only a `working` session, to
+  `needs-feedback` (Codex says `idle` at a turn end); **a deferring `Stop` sets `working` only
+  over a needs-feedback that an OSC turn end set** (the in-memory `oscTurnEnded` mark): OSC's
+  `done` lands before the Stop hook's curl, so a poll in that gap would leave `needs-feedback`
+  while the shell runs, but a needs-feedback from a permission prompt or an OSC `blocked` (a
+  background subagent asking) must stand, or the prompt waits behind "working". A titled `perch spawn` locks the pane title
+  with `allow-set-title off` (3.5+) rather than `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`, which also
+  silences Claude's OSC 7501; the env switch remains on an older tmux. The agent's tests never
+  need the patched binary: `tmux-adapter.osc.test.ts` runs only with `PERCH_TMUX_OSC` set.
 - **Every hook event is logged with the rule that decided it.** `applyHookEvent` appends one
   JSON line per event to a gitignored `~/.perch/hook-events.jsonl` (`FileHookEventLog`, moved to
   `.1` past 50 MB): workspace, event, session id, tool, notification type, source, whether a

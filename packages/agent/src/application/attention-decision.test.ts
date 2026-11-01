@@ -278,6 +278,25 @@ describe('attentionDecision', () => {
       ).toEqual({ status: null, deferral: 'set' });
     });
 
+    // OSC 7501 says `done` before the Stop hook lands; only a needs-feedback that OSC set at
+    // that turn end is taken back, never one a permission prompt raised.
+    it('takes back a needs-feedback set by an OSC turn end when the Stop defers', () => {
+      expect(attentionDecision({ event: 'Stop', claude: runningShell, wasDeferred: false, endedByOsc: true })).toEqual({
+        status: 'working',
+        deferral: 'set',
+      });
+      expect(
+        attentionDecision({ event: 'Stop', claude: {}, wasDeferred: false, messagedLast: true, endedByOsc: true }),
+      ).toEqual({ status: 'working', deferral: 'set' });
+    });
+
+    it('never sets working on a Stop that does not defer, even after an OSC turn end', () => {
+      expect(attentionDecision({ event: 'Stop', claude: {}, wasDeferred: false, endedByOsc: true })).toEqual({
+        status: 'needs-feedback',
+        deferral: 'clear',
+      });
+    });
+
     it('a tool call after SendMessage ends the wait', () => {
       expect(
         attentionDecision({ event: 'PostToolUse', claude: { tool_name: 'Write' }, wasDeferred: false }).messagedLast,

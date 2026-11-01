@@ -1537,6 +1537,49 @@ describe('WsServer waiting-on-parent push', () => {
     expect(updates).toHaveLength(2);
   });
 
+  // An explicit close forgets the workspace before its tmux kill completes. A poll that still
+  // lists the session in that gap must not take it back, or the workspace is logged a second
+  // time as `exited` (and pushed closed again) once the kill lands.
+  it('does not take back a workspace that is being closed while tmux still lists it', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-closing-'));
+    dirs.push(home);
+    let alive = true;
+    const tmux: TmuxPort = {
+      listSessions: async () =>
+        alive ? [{ name: 'perch-x', startPath: tmpdir(), command: 'claude', createdAt: 1000, title: '' }] : [],
+      createSession: async () => undefined,
+      killSession: async () => undefined,
+      hasSession: async () => alive,
+    };
+    const logged: string[] = [];
+    server = new WsServer({
+      ...makeServerDeps(testConfig(home), noClientLog),
+      tmux,
+      workspaceLog: { append: async (e) => void logged.push(`${e.id}:${e.reason}`) },
+      titlePollMs: 20,
+    });
+    await server.start();
+    const socket = new WebSocket(await clientUrl());
+    sockets.push(socket);
+    await new Promise((r) => socket.once('open', r));
+    socket.send(JSON.stringify({ type: 'auth', token: 'secret' }));
+    await nextMessage(socket);
+    const closed: string[] = [];
+    socket.on('message', (raw) => {
+      const msg = JSON.parse(raw.toString()) as AgentMessage;
+      if (msg.type === 'closed') closed.push(msg.workspaceId);
+    });
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(server.forgetWorkspace('perch-x')).toMatchObject({ id: 'perch-x' });
+    await new Promise((r) => setTimeout(r, 100));
+    alive = false;
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(logged).toEqual([]);
+    expect(closed).toEqual([]);
+  });
+
   // The mark lives in the status store, so a restarted agent still knows the child is waiting.
   it('lists a child as waiting from a mark the status store already held', async () => {
     const home = await mkdtemp(join(tmpdir(), 'perch-waiting-'));
@@ -1939,6 +1982,29 @@ describe('WsServer lost-workspace tracking', () => {
 
     expect(await parked.get('perch-a')).toMatchObject({ name: 'Portal work', claudeSessionId: 'sess-a' });
     expect(status.get('perch-a')).toBe('parked');
+  });
+
+  // An Esc interrupt fires no hook; a tmux patched for OSC 7501 still sees the turn end.
+  it('ends a stale working status from the pane program status, with no client connected', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-osc-'));
+    dirs.push(home);
+    const config = testConfig(home);
+    let program = { state: 'working', changedAt: 1000 };
+    const tmux: TmuxPort = {
+      listSessions: async () => [{ ...session('perch-a'), program }],
+      createSession: async () => undefined,
+      killSession: async () => undefined,
+      hasSession: async () => true,
+    };
+    const status = new InMemoryStatusStore();
+    status.set('perch-a', 'working');
+    server = new WsServer({ ...makeServerDeps(config, noClientLog), tmux, status, titlePollMs: 30 });
+    await server.start();
+
+    await new Promise((r) => setTimeout(r, 100));
+    expect(status.get('perch-a')).toBe('working');
+    program = { state: 'idle', changedAt: 2000 };
+    await until(async () => status.get('perch-a') === 'needs-feedback');
   });
 
   it('drops a workspace from the snapshot as soon as it is closed', async () => {

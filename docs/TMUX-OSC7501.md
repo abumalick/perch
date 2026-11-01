@@ -81,16 +81,20 @@ The patched agent test runs only when `PERCH_TMUX_OSC` names the binary:
 
 ## Cutover
 
-**Switching costs every live workspace its process.** A tmux client cannot talk to a server of
-another protocol version, so the server must be replaced, which ends every pane and every
-`claude` in it. What survives: workspaces whose Claude session id is known come back **parked**
+**Switching costs every live workspace its process.** The patch lives in the server, so the
+running server must be replaced, which ends every pane and every `claude` in it. What survives: workspaces whose Claude session id is known come back **parked**
 (the server-lost recovery, `live.json`), and opening one resumes its conversation; the others
 are recorded in `~/.perch/workspace-log.jsonl` as `server-lost`. Pick a moment when that is fine.
 
 Everything that talks to the server finds `tmux` on `PATH`: the agent, the `tmux-server` unit and
-its script, `perch-hook.sh`, the `perch` CLI, tmux-resurrect and every shell. So the switch is one
-binary swap plus one server restart, done back to back: between the two, new clients cannot reach
-the old server.
+its script, `perch-hook.sh`, the `perch` CLI, tmux-resurrect and every shell. So the switch is a
+binary swap, then a server restart. The swap alone disrupts nothing: a 3.8 client talks to a
+running 3.4 server (same client protocol; checked on a private socket), and the new formats just
+read empty until the server is replaced. The restart is the step that costs the workspaces.
+
+Untested under 3.8: tmux-resurrect and tmux-continuum (the config parses, step 3, but no plugin
+ran). And the Linux swap makes `/usr/bin/tmux` a link into `$HOME`: fine with a user that
+lingers, but every `tmux` breaks if the home directory is ever unavailable.
 
 ### Linux (systemd `tmux-server` unit)
 
@@ -107,8 +111,8 @@ the old server.
    keep it there) and frees its path:
    `sudo dpkg-divert --local --rename --divert /usr/bin/tmux.distrib --add /usr/bin/tmux && sudo ln -s ~/.local/opt/tmux-osc/bin/tmux /usr/bin/tmux`.
    Check that `tmux -V`, `zsh -lc 'tmux -V'` and `env -i PATH=/usr/bin tmux -V` all name the
-   new version. (These clients cannot reach the old server; carry straight on.)
-6. Replace the server at once. The unit refuses a manual stop, so kill it:
+   new version. Nothing is disrupted yet: the running server is still the old one.
+6. Replace the server, when losing the live workspaces is fine. The unit refuses a manual stop, so kill it:
    `systemctl --user kill tmux-server`. `Restart=always` starts the new binary two seconds later,
    and its script restores the saved layout as bare shells.
 7. `systemctl --user restart perch-agent`: at startup it parks the lost workspaces and kills the
@@ -126,11 +130,14 @@ workspaces again.
 
 1. Deploy the agent (pull, `launchctl kickstart -k gui/$(id -u)/com.perch.agent`).
 2. Build and check as above (Homebrew dependencies first).
-3. Stop the old server **with the old client**: `tmux kill-server`.
-4. Put the new binary in Homebrew's place, keeping Homebrew's tmux installed for a rollback:
+3. Put the new binary in Homebrew's place, keeping Homebrew's tmux installed for a rollback:
    `brew unlink tmux && ln -s ~/.local/opt/tmux-osc/bin/tmux "$(brew --prefix)/bin/tmux"`.
-5. `launchctl kickstart -k gui/$(id -u)/com.perch.agent`; the agent's first tmux call starts the
-   new server.
+   Swapping first means nothing (the agent, a phone's create) can start another old server.
+4. Replace the server: `tmux kill-server`, then
+   `launchctl kickstart -k gui/$(id -u)/com.perch.agent`. The next session created starts the
+   new server; the agent parks the lost workspaces.
+
+Unverified on the Mac: its current tmux version and whether it runs tmux-resurrect.
 
 **Rollback:** `tmux kill-server`, `rm "$(brew --prefix)/bin/tmux" && brew link tmux`, kickstart the
 agent. A `brew upgrade` that relinks tmux undoes step 4; run it again after one.

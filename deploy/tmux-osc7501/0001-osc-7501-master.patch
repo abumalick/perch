@@ -1,0 +1,417 @@
+From ee0f280faaba324395bbb3f5405fbe59d7d32392 Mon Sep 17 00:00:00 2001
+From: abumalick <8377185+abumalick@users.noreply.github.com>
+Date: Sun, 1 Nov 2026 21:46:54 +0300
+Subject: [PATCH] Add support for the OSC 7501 program status protocol.
+
+A program can report its status (idle, working, done, blocked or error)
+with OSC 7501 and probe for support with "OSC 7501 ; ?". Answer the probe
+and keep the root record of each pane, exposed in the pane_program_state,
+pane_program_kind, pane_program_app and pane_program_time formats and
+announced by a pane-program-changed hook. Child records (with an id) are
+ignored. As the protocol asks, working and blocked are dropped when the
+program exits or a new OSC 133 prompt starts, and RIS clears the record.
+---
+ format.c        |  54 +++++++++++++++++++++
+ input.c         | 125 ++++++++++++++++++++++++++++++++++++++++++++++++
+ options-table.c |   3 ++
+ server-fn.c     |   1 +
+ tmux.1          |  10 ++++
+ tmux.h          |   8 ++++
+ window.c        |  51 ++++++++++++++++++++
+ 7 files changed, 252 insertions(+)
+
+diff --git a/format.c b/format.c
+index 193d8ce8..5d8ab215 100644
+--- a/format.c
++++ b/format.c
+@@ -2672,6 +2672,48 @@ format_cb_pane_pipe_pid(struct format_tree *ft)
+ 	return (value);
+ }
+ 
++/* Callback for pane_program_app. */
++static void *
++format_cb_pane_program_app(struct format_tree *ft)
++{
++	if (ft->wp != NULL && ft->wp->program_app != NULL)
++		return (xstrdup(ft->wp->program_app));
++	return (NULL);
++}
++
++/* Callback for pane_program_kind. */
++static void *
++format_cb_pane_program_kind(struct format_tree *ft)
++{
++	if (ft->wp != NULL && ft->wp->program_kind != NULL)
++		return (xstrdup(ft->wp->program_kind));
++	return (NULL);
++}
++
++/* Callback for pane_program_state. */
++static void *
++format_cb_pane_program_state(struct format_tree *ft)
++{
++	if (ft->wp != NULL && ft->wp->program_state != NULL)
++		return (xstrdup(ft->wp->program_state));
++	return (NULL);
++}
++
++/* Callback for pane_program_time. */
++static void *
++format_cb_pane_program_time(struct format_tree *ft)
++{
++	struct window_pane	*wp = ft->wp;
++	static struct timeval	 tv;
++
++	if (wp != NULL && wp->program_time != 0) {
++		tv.tv_sec = wp->program_time;
++		tv.tv_usec = 0;
++		return (&tv);
++	}
++	return (NULL);
++}
++
+ /* Callback for pane_pb_progress. */
+ static void *
+ format_cb_pane_pb_progress(struct format_tree *ft)
+@@ -4025,6 +4067,18 @@ static const struct format_table_entry format_table[] = {
+ 	{ "pane_private_modes", FORMAT_TABLE_STRING,
+ 	  format_cb_pane_private_modes
+ 	},
++	{ "pane_program_app", FORMAT_TABLE_STRING,
++	  format_cb_pane_program_app
++	},
++	{ "pane_program_kind", FORMAT_TABLE_STRING,
++	  format_cb_pane_program_kind
++	},
++	{ "pane_program_state", FORMAT_TABLE_STRING,
++	  format_cb_pane_program_state
++	},
++	{ "pane_program_time", FORMAT_TABLE_TIME,
++	  format_cb_pane_program_time
++	},
+ 	{ "pane_right", FORMAT_TABLE_STRING,
+ 	  format_cb_pane_right
+ 	},
+diff --git a/input.c b/input.c
+index 19fac60b..8eb0250e 100644
+--- a/input.c
++++ b/input.c
+@@ -178,6 +178,8 @@ static void	input_osc_110(struct input_ctx *, const char *);
+ static void	input_osc_111(struct input_ctx *, const char *);
+ static void	input_osc_112(struct input_ctx *, const char *);
+ static void	input_osc_133(struct input_ctx *, const char *);
++static void	input_osc_7501(struct input_ctx *, const char *);
++static void	input_fire_program_changed(struct window_pane *);
+ 
+ /* Transition entry/exit handlers. */
+ static void	input_clear(struct input_ctx *);
+@@ -1422,6 +1424,9 @@ input_esc_dispatch(struct input_ctx *ictx)
+ 
+ 	switch (entry->type) {
+ 	case INPUT_ESC_RIS:
++		if (ictx->wp != NULL &&
++		    window_pane_set_program_status(ictx->wp, NULL, NULL, NULL))
++			input_fire_program_changed(ictx->wp);
+ 		colour_palette_clear(ictx->palette);
+ 		input_reset_cell(ictx);
+ 		screen_write_reset(sctx);
+@@ -2788,6 +2793,9 @@ input_exit_osc(struct input_ctx *ictx)
+ 	case 133:
+ 		input_osc_133(ictx, p);
+ 		break;
++	case 7501:
++		input_osc_7501(ictx, p);
++		break;
+ 	default:
+ 		log_debug("%s: unknown '%u'", __func__, option);
+ 		break;
+@@ -3391,6 +3399,121 @@ input_fire_command_event(struct window_pane *wp, const char *name)
+ 	events_fire(name, ep);
+ }
+ 
++/* Fire a program status changed event. */
++static void
++input_fire_program_changed(struct window_pane *wp)
++{
++	struct event_payload	*ep;
++	struct cmd_find_state	 fs;
++
++	ep = event_payload_create();
++	cmd_find_from_pane(&fs, wp, 0);
++	event_payload_set_target(ep, &fs);
++	event_payload_set_pane(ep, "pane", wp);
++	event_payload_set_window(ep, "window", wp->window);
++	if (wp->program_state != NULL)
++		event_payload_set_string(ep, "program_state", "%s",
++		    wp->program_state);
++	if (wp->program_kind != NULL)
++		event_payload_set_string(ep, "program_kind", "%s",
++		    wp->program_kind);
++	if (wp->program_app != NULL)
++		event_payload_set_string(ep, "program_app", "%s",
++		    wp->program_app);
++	events_fire("pane-program-changed", ep);
++	server_status_window(wp->window);
++}
++
++/* Check a value is one of a comma-separated list of words. */
++static int
++input_osc_7501_one_of(const char *value, const char *list)
++{
++	size_t	len = strlen(value);
++
++	while (*list != '\0') {
++		if (strncmp(list, value, len) == 0 &&
++		    (list[len] == ',' || list[len] == '\0'))
++			return (1);
++		list = strchr(list, ',');
++		if (list == NULL)
++			break;
++		list++;
++	}
++	return (0);
++}
++
++/*
++ * Handle the OSC 7501 sequence (program status). Only the root record (no id)
++ * is kept; child records are ignored. A report that does not parse is
++ * discarded whole.
++ */
++static void
++input_osc_7501(struct input_ctx *ictx, const char *p)
++{
++	struct window_pane	*wp = ictx->wp;
++	static const char	 states[] = "idle,working,done,blocked,error";
++	static const char	 kinds[] = "permission,question,auth";
++	char			*copy, *next, *pair, *value;
++	const char		*state = NULL, *kind = NULL, *app = NULL;
++	const char		*end, *cp;
++	int			 child = 0, changed;
++
++	if (wp == NULL)
++		return;
++
++	if (strcmp(p, "?") == 0) {
++		if (ictx->input_end == INPUT_END_BEL)
++			end = "\007";
++		else
++			end = "\033\\";
++		input_reply(ictx, 1, "\033]7501;?:states=%s:kinds=%s%s", states,
++		    kinds, end);
++		return;
++	}
++
++	copy = next = xstrdup(p);
++	while ((pair = strsep(&next, ":")) != NULL) {
++		value = strchr(pair, '=');
++		if (value == NULL)
++			goto out;
++		*value++ = '\0';
++		if (strcmp(pair, "state") == 0)
++			state = value;
++		else if (strcmp(pair, "kind") == 0)
++			kind = value;
++		else if (strcmp(pair, "app") == 0)
++			app = value;
++		else if (strcmp(pair, "id") == 0 && *value != '\0')
++			child = 1;
++	}
++	if (state == NULL || child)
++		goto out;
++
++	if (strcmp(state, "clear") == 0)
++		changed = window_pane_set_program_status(wp, NULL, NULL, NULL);
++	else {
++		if (!input_osc_7501_one_of(state, states))
++			goto out;
++		if (kind != NULL && (strcmp(state, "blocked") != 0 ||
++		    !input_osc_7501_one_of(kind, kinds)))
++			kind = NULL;
++		if (app != NULL) {
++			if (*app == '\0' || strlen(app) > 32)
++				goto out;
++			for (cp = app; *cp != '\0'; cp++) {
++				if (*cp <= ' ' || *cp > '~')
++					goto out;
++			}
++		}
++		changed = window_pane_set_program_status(wp, state, kind, app);
++	}
++	if (changed)
++		input_fire_program_changed(wp);
++
++out:
++	free(copy);
++}
++
+ /* Handle the OSC 133 sequence. */
+ static void
+ input_osc_133(struct input_ctx *ictx, const char *p)
+@@ -3416,6 +3539,8 @@ input_osc_133(struct input_ctx *ictx, const char *p)
+ 		if (wp != NULL) {
+ 			wp->last_prompt_time = time(NULL);
+ 			events_fire_pane("pane-shell-prompt", wp);
++			if (window_pane_drop_program_status(wp))
++				input_fire_program_changed(wp);
+ 		}
+ 		break;
+ 	case 'P':
+diff --git a/options-table.c b/options-table.c
+index f03564d4..d14ef34e 100644
+--- a/options-table.c
++++ b/options-table.c
+@@ -2139,6 +2139,9 @@ const struct options_table_entry options_table[] = {
+ 	    "Run when a pane exits a mode."),
+ 	OPTIONS_TABLE_PANE_HOOK("pane-moved", "",
+ 	    "Run when a pane is moved to another window."),
++	OPTIONS_TABLE_PANE_HOOK("pane-program-changed", "",
++	    "Run when the program status reported by OSC 7501 changes in a "
++	    "pane."),
+ 	OPTIONS_TABLE_PANE_HOOK("pane-prompt-closed", "",
+ 	    "Run when a prompt in a pane is closed."),
+ 	OPTIONS_TABLE_PANE_HOOK("pane-prompt-opened", "",
+diff --git a/server-fn.c b/server-fn.c
+index 45809ee9..27c3660d 100644
+--- a/server-fn.c
++++ b/server-fn.c
+@@ -369,6 +369,7 @@ server_destroy_pane(struct window_pane *wp, int notify)
+ 		close(wp->fd);
+ 		wp->fd = -1;
+ 	}
++	window_pane_drop_program_status(wp);
+ 	if (wp->pipe_fd != -1) {
+ 		bufferevent_free(wp->pipe_event);
+ 		wp->pipe_event = NULL;
+diff --git a/tmux.1 b/tmux.1
+index abbcf870..0ccfb26d 100644
+--- a/tmux.1
++++ b/tmux.1
+@@ -6748,6 +6748,9 @@ Run when a pane enters a mode.
+ Run when a pane exits a mode.
+ .It pane\-moved
+ Run when a pane is moved to another window.
++.It pane\-program\-changed
++Run when the program status reported in a pane with the OSC 7501
++sequence changes.
+ .It pane\-prompt\-closed
+ Run when a prompt in a pane is closed.
+ .It pane\-prompt\-opened
+@@ -7584,6 +7587,9 @@ The following variables are available, where appropriate:
+ .It Li "hook_monitor_format" Ta "" Ta "Format for a monitor hook"
+ .It Li "hook_monitor_target" Ta "" Ta "Target for a monitor hook"
+ .It Li "hook_pane" Ta "" Ta "ID of pane where hook was run, if any"
++.It Li "hook_program_app" Ta "" Ta "Program reporting the status, for an OSC 7501 hook"
++.It Li "hook_program_kind" Ta "" Ta "Blocked status kind, for an OSC 7501 hook"
++.It Li "hook_program_state" Ta "" Ta "Program status, for an OSC 7501 hook"
+ .It Li "hook_session" Ta "" Ta "ID of session where hook was run, if any"
+ .It Li "hook_session_name" Ta "" Ta "Name of session where hook was run, if any"
+ .It Li "hook_value" Ta "" Ta "New value for a monitor hook"
+@@ -7682,6 +7688,10 @@ The following variables are available, where appropriate:
+ .It Li "pane_pipe" Ta "" Ta "1 if pane is being piped"
+ .It Li "pane_pipe_pid" Ta "" Ta "PID of pipe process, if any"
+ .It Li "pane_private_modes" Ta "" Ta "List of enabled DECSET private modes"
++.It Li "pane_program_app" Ta "" Ta "Program reporting the OSC 7501 status, if any"
++.It Li "pane_program_kind" Ta "" Ta "Kind of OSC 7501 blocked status, if any"
++.It Li "pane_program_state" Ta "" Ta "OSC 7501 program status, if any"
++.It Li "pane_program_time" Ta "" Ta "Time OSC 7501 program status last changed"
+ .It Li "pane_pb_state" Ta "" Ta "Pane progress bar state, one of hidden, normal, error, indeterminate, paused (can be set by application)"
+ .It Li "pane_pb_progress" Ta "" Ta "Pane progress bar progress percentage (can be set by application)"
+ .It Li "pane_right" Ta "" Ta "Right of pane"
+diff --git a/tmux.h b/tmux.h
+index 0a7b07d7..33047880 100644
+--- a/tmux.h
++++ b/tmux.h
+@@ -1420,6 +1420,11 @@ struct window_pane {
+ 	int		 cmd_status;
+ 	char		*cmd_line;
+ 
++	char		*program_state;
++	char		*program_kind;
++	char		*program_app;
++	time_t		 program_time;
++
+ 	int		 fd;
+ 	struct bufferevent *event;
+ 
+@@ -3868,6 +3873,9 @@ int		 window_pane_set_mode(struct window_pane *,
+ 		     struct cmdq_item *, struct cmd_find_state *, struct args *);
+ void		 window_pane_reset_mode(struct window_pane *);
+ void		 window_pane_reset_mode_all(struct window_pane *);
++int		 window_pane_set_program_status(struct window_pane *,
++		     const char *, const char *, const char *);
++int		 window_pane_drop_program_status(struct window_pane *);
+ int		 window_pane_key(struct window_pane *, struct client *,
+ 		     struct session *, struct winlink *, key_code,
+ 		     struct mouse_event *);
+diff --git a/window.c b/window.c
+index 5a9d1772..be2db37e 100644
+--- a/window.c
++++ b/window.c
+@@ -1682,6 +1682,9 @@ window_pane_free(struct window_pane *wp)
+ 
+ 	free(wp->searchstr);
+ 	free(wp->cmd_line);
++	free(wp->program_state);
++	free(wp->program_kind);
++	free(wp->program_app);
+ 	screen_free(&wp->status_screen);
+ 	screen_free(&wp->base);
+ 	free(wp->r.ranges);
+@@ -1916,6 +1919,54 @@ window_pane_reset_mode_all(struct window_pane *wp)
+ 		window_pane_reset_mode(wp);
+ }
+ 
++/* Replace a program status string, returning 1 if it changed. */
++static int
++window_pane_replace_program_string(char **field, const char *value)
++{
++	if (*field == NULL && value == NULL)
++		return (0);
++	if (*field != NULL && value != NULL && strcmp(*field, value) == 0)
++		return (0);
++	free(*field);
++	*field = (value == NULL ? NULL : xstrdup(value));
++	return (1);
++}
++
++/*
++ * Set the program status (OSC 7501 root record) of a pane, or clear it if
++ * state is NULL. Returns 1 if anything changed.
++ */
++int
++window_pane_set_program_status(struct window_pane *wp, const char *state,
++    const char *kind, const char *app)
++{
++	int	changed = 0;
++
++	if (state == NULL)
++		kind = app = NULL;
++	changed |= window_pane_replace_program_string(&wp->program_state, state);
++	changed |= window_pane_replace_program_string(&wp->program_kind, kind);
++	changed |= window_pane_replace_program_string(&wp->program_app, app);
++	if (changed)
++		wp->program_time = (state == NULL ? 0 : time(NULL));
++	return (changed);
++}
++
++/*
++ * Drop a working or blocked program status, which is stale once the program
++ * exits or a new shell prompt starts. Returns 1 if it was dropped.
++ */
++int
++window_pane_drop_program_status(struct window_pane *wp)
++{
++	if (wp->program_state == NULL)
++		return (0);
++	if (strcmp(wp->program_state, "working") != 0 &&
++	    strcmp(wp->program_state, "blocked") != 0)
++		return (0);
++	return (window_pane_set_program_status(wp, NULL, NULL, NULL));
++}
++
+ /* Prompt input callback. */
+ static enum prompt_result
+ window_pane_prompt_input_callback(void *data, const char *s,
+-- 
+2.54.0
+

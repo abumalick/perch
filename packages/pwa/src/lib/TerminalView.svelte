@@ -4,6 +4,8 @@
   import { FitAddon } from '@xterm/addon-fit';
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import { isIOSWebKit, openTerminalLink } from './terminal-link';
+  import { workspaceIdLinkProvider } from './workspace-id-link-provider';
+  import { resolveWorkspaceId } from '../core/workspace-id-links';
   import '@xterm/xterm/css/xterm.css';
   import type { PerchStore } from '../store.svelte';
   import { TERMINAL_FONT_MIN, TERMINAL_FONT_MAX, isConnectable } from '../core/settings-store';
@@ -251,6 +253,15 @@
     fit = f;
     t.loadAddon(f);
     t.loadAddon(new WebLinksAddon((_event, uri) => openLink(uri)));
+    t.registerLinkProvider(
+      workspaceIdLinkProvider(
+        t,
+        (id) => resolveWorkspaceId(store.workspaces, id, store.active?.machineId ?? null),
+        (ws) => {
+          if (ws.id !== store.active?.id) store.open(ws);
+        },
+      ),
+    );
     t.open(container);
     f.fit();
     t.parser.registerOscHandler(52, (data) => {

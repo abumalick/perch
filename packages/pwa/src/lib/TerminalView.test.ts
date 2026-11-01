@@ -22,6 +22,7 @@ vi.mock('@xterm/xterm', () => ({
     options: Record<string, unknown>;
     constructor(opts: Record<string, unknown>) { this.options = { ...opts }; lastTerminalOptions = this.options; }
     loadAddon(addon: unknown) { loadedAddons.push(addon); }
+    registerLinkProvider() { return { dispose() {} }; }
     textarea?: HTMLTextAreaElement;
     // Like xterm, open() puts its hidden textarea inside the container.
     open(el: HTMLElement) { this.textarea = document.createElement('textarea'); el.appendChild(this.textarea); }

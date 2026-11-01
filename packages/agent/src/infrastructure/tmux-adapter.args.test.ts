@@ -3,10 +3,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // No tmux server is touched here: execFile is replaced, so these check the arguments the adapter
 // sends and how it parses tmux's answer.
 const calls: string[][] = [];
+const binaries: string[] = [];
 let stdout = '';
 vi.mock('node:child_process', () => ({
-  execFile: (_cmd: string, args: string[], _opts: unknown, cb: (err: null, res: { stdout: string; stderr: string }) => void) => {
+  execFile: (cmd: string, args: string[], _opts: unknown, cb: (err: null, res: { stdout: string; stderr: string }) => void) => {
     calls.push(args);
+    binaries.push(cmd);
     cb(null, { stdout, stderr: '' });
   },
 }));
@@ -19,21 +21,33 @@ beforeEach(() => {
 });
 
 describe('TmuxAdapter (arguments)', () => {
-  it('reads @perch_parent before the pane title, which stays last', async () => {
+  it('reads @perch_parent and the program status before the pane title, which stays last', async () => {
     await new TmuxAdapter().listSessions('perch-');
     const fields = calls[0]![2]!.split('|:|');
-    expect(fields.at(-2)).toBe('#{@perch_parent}');
-    expect(fields.at(-1)).toBe('#{pane_title}');
+    expect(fields.slice(-4)).toEqual(['#{@perch_parent}', '#{pane_program_state}', '#{pane_program_time}', '#{pane_title}']);
   });
 
   it('parses a parent, and omits an empty one', async () => {
     stdout = [
-      'perch-a|:|/w|:|10|:|claude|:|perch-p|:|a|:|title',
-      'perch-b|:|/w|:|10|:|claude|:||:|plain',
+      'perch-a|:|/w|:|10|:|claude|:|perch-p|:||:||:|a|:|title',
+      'perch-b|:|/w|:|10|:|claude|:||:||:||:|plain',
     ].join('\n');
     const [a, b] = await new TmuxAdapter().listSessions('perch-');
     expect(a).toEqual({ name: 'perch-a', startPath: '/w', command: 'claude', createdAt: 10_000, parent: 'perch-p', title: 'a|:|title' });
     expect(b).toEqual({ name: 'perch-b', startPath: '/w', command: 'claude', createdAt: 10_000, title: 'plain' });
+  });
+
+  // A stock tmux expands the two fields to '', which must read as "no program status".
+  it('parses the program status a patched tmux reports', async () => {
+    stdout = 'perch-a|:|/w|:|10|:|claude|:||:|done|:|1700000000|:|t';
+    const [a] = await new TmuxAdapter().listSessions('perch-');
+    expect(a?.program).toEqual({ state: 'done', changedAt: 1_700_000_000_000 });
+    expect(a?.title).toBe('t');
+  });
+
+  it('runs the tmux binary it was given', async () => {
+    await new TmuxAdapter({ binary: '/opt/tmux/bin/tmux' }).listSessions('perch-');
+    expect(binaries.at(-1)).toBe('/opt/tmux/bin/tmux');
   });
 
   it('sets @perch_parent on a new session only when given one', async () => {

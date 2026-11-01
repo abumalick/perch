@@ -49,14 +49,14 @@ describe('attentionDecision', () => {
   describe('Stop', () => {
     it('defers while a backgrounded shell is still running', () => {
       expect(attentionDecision({ event: 'Stop', claude: runningShell, wasDeferred: false })).toEqual({
-        status: null,
+        status: 'working',
         deferral: 'set',
       });
     });
 
     it('defers while a background subagent is still running', () => {
       expect(attentionDecision({ event: 'Stop', claude: runningSubagent, wasDeferred: false })).toEqual({
-        status: null,
+        status: 'working',
         deferral: 'set',
       });
     });
@@ -71,7 +71,7 @@ describe('attentionDecision', () => {
       ['an MCP task', { id: 'm2', type: 'MCP task', status: 'pending', server: 'jobs', tool: 'run' }],
     ])('defers while %s is running', (_label, task) => {
       expect(attentionDecision({ event: 'Stop', claude: { background_tasks: [task] }, wasDeferred: false })).toEqual({
-        status: null,
+        status: 'working',
         deferral: 'set',
       });
     });
@@ -275,7 +275,7 @@ describe('attentionDecision', () => {
     it('defers a Stop whose last tool was SendMessage', () => {
       expect(
         attentionDecision({ event: 'Stop', claude: { background_tasks: [] }, wasDeferred: false, messagedLast: true }),
-      ).toEqual({ status: null, deferral: 'set' });
+      ).toEqual({ status: 'working', deferral: 'set' });
     });
 
     it('a tool call after SendMessage ends the wait', () => {

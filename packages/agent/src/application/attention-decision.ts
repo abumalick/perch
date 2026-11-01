@@ -120,10 +120,10 @@ export function attentionDecision(input: {
   switch (input.event) {
     case 'Stop':
       if (hasRunningBackgroundTask(input.claude)) {
-        return { reason: 'stop-background', status: null, deferral: 'set', ...endsQuestion };
+        return { reason: 'stop-background', status: 'working', deferral: 'set', ...endsQuestion };
       }
       return input.messagedLast
-        ? { reason: 'stop-messaged', status: null, deferral: 'set', ...endsQuestion }
+        ? { reason: 'stop-messaged', status: 'working', deferral: 'set', ...endsQuestion }
         : { reason: 'stop', status: 'needs-feedback', deferral: 'clear', ...endsQuestion };
     // Fired instead of Stop when an API error ends the turn.
     case 'StopFailure':

@@ -37,6 +37,7 @@ import type { Workspace } from '@perch/contracts';
 import { ConnectionHandler } from './connection-handler';
 import { ViewerRegistry } from './viewer-registry';
 import { applyHookEvent } from '../application/apply-hook-event';
+import { applyProgramStatus } from '../application/apply-program-status';
 import type { HookEventLogPort } from '../ports/hook-event-log-port';
 import { listWorkspaces } from '../application/list-workspaces';
 import { isHiddenPath } from '../application/is-hidden-path';
@@ -124,6 +125,8 @@ export class WsServer {
   };
   // Codex sessions with a question waiting on the user — see applyHookEvent.
   private readonly questionPending = new Set<string>();
+  // The last OSC 7501 record seen per pane, so only a change is applied (applyProgramStatus).
+  private readonly programSeen = new Map<string, string>();
 
   constructor(private readonly deps: WsServerDeps) {}
 
@@ -182,6 +185,7 @@ export class WsServer {
       // Tracked first, so a workspace lost with its tmux server is already parked when the
       // title poll looks for it, rather than logged and pushed as closed.
       void this.trackLive().then(() => this.pollTitles());
+      void this.pollProgramStatus();
       void this.pollBrowserSessions();
     }, this.deps.titlePollMs ?? DEFAULT_TITLE_POLL_MS);
     this.titlePoll.unref?.();
@@ -305,6 +309,29 @@ export class WsServer {
         res.writeHead(400).end();
       }
     });
+  }
+
+  // The second status source beside the hooks, from a tmux patched to keep each pane's OSC 7501
+  // status; a stock tmux reports none and this changes nothing. Runs whether or not a client is
+  // connected: a stale `working` matters most when nobody is watching. Best-effort, like the tick.
+  private async pollProgramStatus(): Promise<void> {
+    let sessions;
+    try {
+      sessions = await this.deps.tmux.listSessions(this.deps.config.sessionPrefix);
+    } catch {
+      return;
+    }
+    applyProgramStatus(
+      {
+        store: this.deps.status,
+        deferred: this.deferred,
+        messagedLast: this.messagedLast,
+        questionPending: this.questionPending,
+        seen: this.programSeen,
+        log: this.deps.hookEventLog,
+      },
+      sessions,
+    );
   }
 
   // Runs whether or not a client is connected: the snapshot must be current when the server dies.

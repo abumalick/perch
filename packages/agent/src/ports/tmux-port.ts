@@ -5,6 +5,9 @@ export interface TmuxSessionInfo {
   createdAt: number;
   // The orchestrator workspace this one was spawned for (`@perch_parent`); absent when none.
   parent?: string;
+  // The pane's OSC 7501 status (Program Status Protocol) and when tmux saw it change. Only a
+  // tmux patched to keep it reports one; absent otherwise, and while the program reports nothing.
+  program?: { state: string; changedAt: number };
   title: string;
 }
 
@@ -30,6 +33,10 @@ export interface TmuxPort {
   ensureHyperlinks?(): Promise<void>;
   // The CLI's additions (`perch spawn` / `peek` / `--child`), optional for the same reason.
   setPaneTitle?(name: string, title: string): Promise<void>;
+  // Whether the server can stop a pane's program from setting its title (`allow-set-title`,
+  // tmux 3.5+), and doing so for one session's pane. Optional for the same reason.
+  supportsTitleLock?(): Promise<boolean>;
+  lockPaneTitle?(name: string): Promise<void>;
   // The pane's text from `historyLines` lines of scrollback to the bottom, wrapped lines joined.
   capturePane?(name: string, historyLines: number): Promise<string>;
   // The session holding a pane (e.g. `$TMUX_PANE`), or null when tmux cannot find it.

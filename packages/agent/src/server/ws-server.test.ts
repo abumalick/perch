@@ -527,10 +527,10 @@ describe('WsServer (E2E, real tmux)', () => {
     socket.send(JSON.stringify({ type: 'auth', token: 'secret' }));
     await nextMessage(socket); // authResult
 
-    let broadcast = false;
+    const broadcast: string[] = [];
     socket.on('message', (raw) => {
       const msg = JSON.parse(raw.toString()) as AgentMessage;
-      if (msg.type === 'workspaceUpdated') broadcast = true;
+      if (msg.type === 'workspaceUpdated') broadcast.push(msg.workspace.status);
     });
 
     const res = await fetch(`http://127.0.0.1:${port}/hooks`, {
@@ -545,7 +545,7 @@ describe('WsServer (E2E, real tmux)', () => {
     expect(res.status).toBe(204);
 
     await new Promise((r) => setTimeout(r, 300));
-    expect(broadcast).toBe(false);
+    expect(broadcast).not.toContain('needs-feedback');
 
     await new Promise<void>((resolve) => {
       socket.on('close', () => resolve());
@@ -1939,6 +1939,29 @@ describe('WsServer lost-workspace tracking', () => {
 
     expect(await parked.get('perch-a')).toMatchObject({ name: 'Portal work', claudeSessionId: 'sess-a' });
     expect(status.get('perch-a')).toBe('parked');
+  });
+
+  // An Esc interrupt fires no hook; a tmux patched for OSC 7501 still sees the turn end.
+  it('ends a stale working status from the pane program status, with no client connected', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-osc-'));
+    dirs.push(home);
+    const config = testConfig(home);
+    let program = { state: 'working', changedAt: 1000 };
+    const tmux: TmuxPort = {
+      listSessions: async () => [{ ...session('perch-a'), program }],
+      createSession: async () => undefined,
+      killSession: async () => undefined,
+      hasSession: async () => true,
+    };
+    const status = new InMemoryStatusStore();
+    status.set('perch-a', 'working');
+    server = new WsServer({ ...makeServerDeps(config, noClientLog), tmux, status, titlePollMs: 30 });
+    await server.start();
+
+    await new Promise((r) => setTimeout(r, 100));
+    expect(status.get('perch-a')).toBe('working');
+    program = { state: 'idle', changedAt: 2000 };
+    await until(async () => status.get('perch-a') === 'needs-feedback');
   });
 
   it('drops a workspace from the snapshot as soon as it is closed', async () => {

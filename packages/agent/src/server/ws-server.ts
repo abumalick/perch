@@ -1,3 +1,4 @@
+import type { ClaudeVoice } from '../application/claude-voice';
 import { constantTimeEqual } from '@perch/secure-channel';
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import { NoiseClientConnection, type NoiseClientConnectionOptions } from './noise-client-connection';
@@ -79,6 +80,7 @@ export interface WsServerDeps {
   repoRemote?: RepoRemotePort;
   claudeSessions?: ClaudeSessionsPort;
   scopes?: ProcessScopePort;
+  claudeVoice?: Pick<ClaudeVoice, 'dictate'>;
   // Absent on a platform with no collector: the agent then never sends `stats` and the
   // PWA shows no load strip for this machine.
   systemStats?: SystemStatsPort;

@@ -8,7 +8,6 @@
     DEFAULT_CLEANUP_PROMPT,
     presetError,
     type DictationPreset,
-    type DictationProvider,
   } from '../core/dictation-presets';
 
   let {
@@ -20,7 +19,7 @@
     >;
   } = $props();
 
-  type Draft = { id: string; name: string; badge: string; provider: DictationProvider; model: string; prompt: string };
+  type Draft = { id: string; name: string; badge: string; provider: DictationPreset['provider']; model: string; prompt: string };
 
   // index null = a new preset, appended on save.
   let editing = $state<{ index: number | null; draft: Draft; touched: boolean } | null>(null);
@@ -41,8 +40,10 @@
     const base = { id: d.id, name: d.name.trim(), badge: d.badge.trim() };
     return d.provider === 'openrouter'
       ? { ...base, provider: 'openrouter', model: d.model.trim(), prompt: d.prompt }
-      : { ...base, provider: 'elevenlabs' };
+      : { ...base, provider: d.provider };
   }
+
+  const PROVIDER_LABELS = { elevenlabs: 'ElevenLabs', claude: 'Claude voice (on the machine)' } as const;
 
   function edit(index: number) {
     editing = { index, draft: toDraft(presets[index]!), touched: false };
@@ -96,7 +97,7 @@
         <span class="badge">{preset.badge}</span>
         <span class="label">{preset.name}</span>
         {#if preset.id === inUseId}<span class="in-use">In use</span>{/if}
-        <span class="provider">{preset.provider === 'openrouter' ? preset.model : 'ElevenLabs'}</span>
+        <span class="provider">{preset.provider === 'openrouter' ? preset.model : PROVIDER_LABELS[preset.provider]}</span>
       </button>
       <button type="button" class="icon" aria-label="Move {preset.name} up" disabled={i === 0} onclick={() => move(i, -1)}>↑</button>
       <button type="button" class="icon" aria-label="Move {preset.name} down" disabled={i === presets.length - 1} onclick={() => move(i, 1)}>↓</button>
@@ -133,6 +134,7 @@
         <select id="preset-provider" bind:value={editing.draft.provider}>
           <option value="elevenlabs">ElevenLabs (plain transcript)</option>
           <option value="openrouter">OpenRouter (model + prompt)</option>
+          <option value="claude">Claude Code /voice (Linux machine, set up by hand)</option>
         </select>
       </div>
       {#if editing.draft.provider === 'openrouter'}

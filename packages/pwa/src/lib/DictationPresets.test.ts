@@ -95,6 +95,18 @@ describe('DictationPresets', () => {
     expect(new Set(list.map((p) => p.id)).size).toBe(4);
   });
 
+  it('adds a Claude voice preset, with no model or prompt', async () => {
+    const store = fakeStore();
+    render(DictationPresets, { props: { store: store as never } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Add preset' }));
+    await fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'claude' } });
+    expect(screen.queryByLabelText('Model')).toBeNull();
+    await fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'Claude voice' } });
+    await fireEvent.input(screen.getByLabelText('Badge'), { target: { value: 'CV' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save preset' }));
+    expect(saved(store)[3]).toEqual({ id: expect.any(String), name: 'Claude voice', badge: 'CV', provider: 'claude' });
+  });
+
   it('deletes and reorders', async () => {
     const store = fakeStore();
     render(DictationPresets, { props: { store: store as never } });

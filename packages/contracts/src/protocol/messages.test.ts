@@ -119,6 +119,11 @@ describe('clientMessageSchema', () => {
     expect(parseClientMessage(msg)).toEqual(msg);
   });
 
+  it('parses a voiceClip message', () => {
+    const msg = { type: 'voiceClip', workspaceId: 'perch-a', data: 'AAAA' };
+    expect(parseClientMessage(msg)).toEqual(msg);
+  });
+
   it('parses a ping message', () => {
     expect(parseClientMessage({ type: 'ping' })).toEqual({ type: 'ping' });
   });
@@ -142,6 +147,13 @@ describe('agentMessageSchema', () => {
   it('parses a fileStored message', () => {
     const msg = { type: 'fileStored', workspaceId: 'perch-a', path: '.tmp/files/pasted-image.png' };
     expect(parseAgentMessage(msg)).toEqual(msg);
+  });
+
+  it('parses voiceClipDone, with and without an error', () => {
+    const ok = { type: 'voiceClipDone', workspaceId: 'perch-a', ok: true };
+    const failed = { type: 'voiceClipDone', workspaceId: 'perch-a', ok: false, error: 'busy' };
+    expect(parseAgentMessage(ok)).toEqual(ok);
+    expect(parseAgentMessage(failed)).toEqual(failed);
   });
 
   it('parses a workspaces snapshot', () => {

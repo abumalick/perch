@@ -1,7 +1,7 @@
 import { generateAgentKeys, pairingLink } from '@perch/secure-channel';
 import { audioMediaType, imageMediaType, pdfMediaType } from '@perch/contracts';
 import { describe, it, expect, vi } from 'vitest';
-import { PerchStore } from './store.svelte';
+import { PerchStore, VOICE_REPLY_BASE_MS } from './store.svelte';
 import { ConnectionManager } from './core/connection-manager';
 import { WorkspaceAggregator } from './core/workspace-aggregator';
 import { SettingsStore, type MachineConfig } from './core/settings-store';
@@ -323,6 +323,53 @@ describe('PerchStore', () => {
     const sent = sockets['wss://mac']!.sent.map((s) => JSON.parse(s));
     expect(sent.some((m) => m.type === 'putFile' && m.name === 'archive.zip')).toBe(true);
     expect(store.actionError).toBeNull();
+  });
+
+  describe('sendVoiceClip', () => {
+    function opened() {
+      const built = build([mac]);
+      built.store.start();
+      built.sockets['wss://mac']!.open();
+      built.sockets['wss://mac']!.deliver({ type: 'authResult', ok: true });
+      built.store.open({ machineId: 'mac', id: 'perch-a', name: 'a', projectPath: '/a', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'idle' as const });
+      return built;
+    }
+    const clip = () => new Uint8Array([1, 2, 3]);
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+
+    it('sends the clip and resolves once the agent is done, restarting the input field', async () => {
+      const { store, sockets } = opened();
+      let injected = 0;
+      store.onInjectedInput = () => injected++;
+      const done = store.sendVoiceClip(clip());
+      await flush();
+      const sent = sockets['wss://mac']!.sent.map((s) => JSON.parse(s));
+      expect(sent).toContainEqual({ type: 'voiceClip', workspaceId: 'perch-a', data: btoa(String.fromCharCode(1, 2, 3)) });
+      store.handleMessage('mac', { type: 'voiceClipDone', workspaceId: 'perch-a', ok: true });
+      await expect(done).resolves.toBeUndefined();
+      expect(injected).toBe(1);
+    });
+
+    it('rejects with the agent’s reason', async () => {
+      const { store } = opened();
+      const done = store.sendVoiceClip(clip());
+      await flush();
+      store.handleMessage('mac', { type: 'voiceClipDone', workspaceId: 'perch-a', ok: false, error: 'Voice is off' });
+      await expect(done).rejects.toThrow('Voice is off');
+    });
+
+    it('gives up on an agent that never answers', async () => {
+      vi.useFakeTimers();
+      try {
+        const { store } = opened();
+        const done = store.sendVoiceClip(clip());
+        const caught = done.catch((e: Error) => e);
+        await vi.advanceTimersByTimeAsync(VOICE_REPLY_BASE_MS + 10);
+        expect(String(await caught)).toMatch(/does not support Claude voice/);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('fileStored types the stored path into the terminal as input', () => {

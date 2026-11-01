@@ -1040,6 +1040,58 @@ describe('ConnectionHandler.pushBrowserSessions', () => {
   });
 });
 
+describe('ConnectionHandler voiceClip', () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  it('dictates into the attached workspace and replies voiceClipDone', async () => {
+    const fp = fakePty();
+    const conn = fakeConn();
+    const dictate = vi.fn(async (audio: Uint8Array, press: () => void) => {
+      expect([...audio]).toEqual([1, 2, 3]);
+      press();
+      press();
+      return null;
+    });
+    new ConnectionHandler(conn.conn, { ...baseDeps(), pty: fp.pty, claudeVoice: { dictate } });
+    conn.emit({ type: 'auth', token: 'secret' });
+    conn.emit({ type: 'attach', workspaceId: 'perch-aa', cols: 80, rows: 24 });
+    await tick();
+    conn.emit({ type: 'voiceClip', workspaceId: 'perch-aa', data: Buffer.from([1, 2, 3]).toString('base64') });
+    await tick();
+    expect(fp.sessions[0]!.written).toEqual([' ', ' ']);
+    expect(conn.sent).toContainEqual({ type: 'voiceClipDone', workspaceId: 'perch-aa', ok: true });
+  });
+
+  it('reports a refusal from the dictation', async () => {
+    const conn = fakeConn();
+    new ConnectionHandler(conn.conn, { ...baseDeps(), pty: fakePty().pty, claudeVoice: { dictate: async () => 'busy' } });
+    conn.emit({ type: 'auth', token: 'secret' });
+    conn.emit({ type: 'attach', workspaceId: 'perch-aa', cols: 80, rows: 24 });
+    await tick();
+    conn.emit({ type: 'voiceClip', workspaceId: 'perch-aa', data: 'AAAA' });
+    await tick();
+    expect(conn.sent).toContainEqual({ type: 'voiceClipDone', workspaceId: 'perch-aa', ok: false, error: 'busy' });
+  });
+
+  it('refuses a workspace that is not attached, and a machine without voice', async () => {
+    const dictate = vi.fn(async () => null);
+    const conn = fakeConn();
+    new ConnectionHandler(conn.conn, { ...baseDeps(), claudeVoice: { dictate } });
+    conn.emit({ type: 'auth', token: 'secret' });
+    conn.emit({ type: 'voiceClip', workspaceId: 'perch-aa', data: 'AAAA' });
+    await tick();
+    expect(dictate).not.toHaveBeenCalled();
+    expect(conn.sent).toContainEqual(expect.objectContaining({ type: 'voiceClipDone', ok: false }));
+
+    const bare = fakeConn();
+    new ConnectionHandler(bare.conn, baseDeps());
+    bare.emit({ type: 'auth', token: 'secret' });
+    bare.emit({ type: 'voiceClip', workspaceId: 'perch-aa', data: 'AAAA' });
+    await tick();
+    expect(bare.sent).toContainEqual(expect.objectContaining({ type: 'voiceClipDone', ok: false, error: expect.stringMatching(/Linux/) }));
+  });
+});
+
 describe('ConnectionHandler attach lifecycle', () => {
   it('attaches, streams base64 output, forwards input and resize', async () => {
     const fp = fakePty();

@@ -40,6 +40,7 @@ import { browseDir } from '../application/browse-dir';
 import { makeDir } from '../application/make-dir';
 import { readFile } from '../application/read-file';
 import { storePastedFile } from '../application/store-pasted-file';
+import type { ClaudeVoice } from '../application/claude-voice';
 import type { FileWriterPort } from '../ports/file-writer-port';
 import type { ClientLogPort } from '../ports/client-log-port';
 import type { ConnectUpstream } from '../ports/browser-stream-port';
@@ -87,6 +88,8 @@ export interface ConnectionHandlerDeps {
   repoRemote?: RepoRemotePort;
   claudeSessions?: ClaudeSessionsPort;
   scopes?: ProcessScopePort;
+  // Shared by every connection (one virtual mic per machine); absent where it can't work.
+  claudeVoice?: Pick<ClaudeVoice, 'dictate'>;
 }
 
 export class ConnectionHandler {
@@ -438,6 +441,17 @@ export class ConnectionHandler {
         const path = await storePastedFile({ writer: this.deps.writer }, { projectPath, name: message.name, bytes });
         this.conn.send({ type: 'fileStored', workspaceId: message.workspaceId, path });
         return;
+      }
+      case 'voiceClip': {
+        const { workspaceId } = message;
+        const done = (error?: string) =>
+          this.conn.send(error ? { type: 'voiceClipDone', workspaceId, ok: false, error } : { type: 'voiceClipDone', workspaceId, ok: true });
+        if (!this.deps.claudeVoice) return done('Claude voice needs a Linux machine with the voice loopback set up');
+        if (this.attachment?.workspaceId !== workspaceId) return done('Open the workspace before dictating');
+        const error = await this.deps.claudeVoice.dictate(new Uint8Array(Buffer.from(message.data, 'base64')), () => {
+          if (this.attachment?.workspaceId === workspaceId) this.attachment.session.write(' ');
+        });
+        return done(error ?? undefined);
       }
       case 'ping': {
         this.conn.send({ type: 'pong' });

@@ -18,6 +18,7 @@ import { MediaRecorderAudio } from './adapters/media-recorder-audio';
 import { ElevenLabsTranscriber } from './adapters/elevenlabs-transcriber';
 import { OpenRouterTranscriber } from './adapters/openrouter-transcriber';
 import { PresetTranscriber } from './core/preset-transcriber';
+import { ClaudeVoiceTranscriber } from './core/claude-voice-transcriber';
 import { VERSION_FILE, parseVersionJson } from './core/version-file';
 import { acceptPairingLink, outsideInstalledApp, takePairingFragment, type PairingPrompts } from './core/pairing';
 
@@ -140,6 +141,7 @@ store = new PerchStore({
       },
       () => store.keyterms(),
     ),
+    claude: new ClaudeVoiceTranscriber((bytes) => store.sendVoiceClip(bytes)),
   }),
   connectionLog,
   logMeta,

@@ -49,6 +49,12 @@ describe('parsePresets', () => {
     expect(parsePresets(JSON.stringify([custom, broken, 42, null]))).toEqual([custom]);
   });
 
+  it('keeps a Claude voice preset, which needs no key', () => {
+    const claude = { id: 'cv', name: 'Claude voice', badge: 'CV', provider: 'claude' };
+    expect(parsePresets(JSON.stringify([claude]))).toEqual([claude]);
+    expect(needsKey(claude as never, { elevenlabs: false, openrouter: false })).toBe(false);
+  });
+
   it('returns null when nothing valid is left', () => {
     expect(parsePresets(JSON.stringify([{ id: 'x' }]))).toBeNull();
   });

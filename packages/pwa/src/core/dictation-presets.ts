@@ -3,9 +3,12 @@
 // (Settings); the app ships only the neutral defaults below.
 export type DictationPreset =
   | { id: string; name: string; badge: string; provider: 'elevenlabs' }
-  | { id: string; name: string; badge: string; provider: 'openrouter'; model: string; prompt: string };
+  | { id: string; name: string; badge: string; provider: 'openrouter'; model: string; prompt: string }
+  // Claude Code's own /voice on the machine: the agent plays the clip into its virtual mic.
+  | { id: string; name: string; badge: string; provider: 'claude' };
 
-export type DictationProvider = DictationPreset['provider'];
+// The providers that need an API key on the phone; Claude voice runs on the machine.
+export type DictationProvider = Exclude<DictationPreset['provider'], 'claude'>;
 
 export const DEFAULT_CLEANUP_PROMPT = `You turn a developer's voice dictation into the message they meant to type to an AI coding agent.
 
@@ -60,7 +63,7 @@ function asPreset(value: unknown): DictationPreset | null {
   if (typeof v.id !== 'string' || !v.id || typeof v.name !== 'string' || typeof v.badge !== 'string') return null;
   const base = { id: v.id, name: v.name, badge: v.badge };
   let preset: DictationPreset;
-  if (v.provider === 'elevenlabs') preset = { ...base, provider: 'elevenlabs' };
+  if (v.provider === 'elevenlabs' || v.provider === 'claude') preset = { ...base, provider: v.provider };
   else if (v.provider === 'openrouter' && typeof v.model === 'string' && typeof v.prompt === 'string')
     preset = { ...base, provider: 'openrouter', model: v.model, prompt: v.prompt };
   else return null;
@@ -90,7 +93,7 @@ export function parsePresets(raw: string | null): DictationPreset[] | null {
 }
 
 export function needsKey(p: DictationPreset, keys: Record<DictationProvider, boolean>): boolean {
-  return !keys[p.provider];
+  return p.provider !== 'claude' && !keys[p.provider];
 }
 
 export function hasUsablePreset(presets: readonly DictationPreset[], keys: Record<DictationProvider, boolean>): boolean {

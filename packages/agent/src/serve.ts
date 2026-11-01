@@ -1,5 +1,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { ClaudeVoice } from './application/claude-voice';
+import { FileClaudeSettings, LoopbackVoicePlayer } from './infrastructure/loopback-voice-player';
 import { loadConfig, assertServerConfig, configWarnings } from './infrastructure/config';
 import { systemClock, RandomIdGenerator, systemPathResolver } from './infrastructure/system';
 import { TmuxAdapter } from './infrastructure/tmux-adapter';
@@ -124,6 +126,13 @@ async function main(): Promise<void> {
     claudeSessions: new FileClaudeSessionsStore(config.claudeSessionsDir),
     scopes: new SystemdScopeReaper(),
     systemStats: new ProcSystemStats(),
+    claudeVoice:
+      process.platform === 'linux'
+        ? new ClaudeVoice({
+            player: new LoopbackVoicePlayer(join(homedir(), '.perch', 'voice')),
+            settings: new FileClaudeSettings(join(homedir(), '.claude', 'settings.json')),
+          })
+        : undefined,
   });
   await server.start();
   process.stdout.write(`perch agent: hooks on 127.0.0.1:${server.address().port}\n`);

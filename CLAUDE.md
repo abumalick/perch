@@ -142,6 +142,18 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   - **The long press ends the key's press itself** (`cancel()` in the hold timer): the finger
     lifts over the menu's backdrop, so the mic never sees its own `pointerup`. While recording
     the hold is not armed, so a slow press still stops the recording.
+- **A Claude voice preset (prototype, Linux) hands the clip to Claude Code's own `/voice`.**
+  The phone sends the recording as `voiceClip`; the agent (`application/claude-voice.ts`)
+  holds space in the attached workspace (a space every 30 ms: a terminal has no key release,
+  so Claude reads a held key from its repeats), plays the clip with `ffmpeg` into an ALSA
+  loopback, releases, and answers `voiceClipDone`. Claude writes the transcript into the
+  prompt, unsent; the phone types nothing. Set up by hand per machine: `snd-aloop` loaded, a
+  `~/.asoundrc` whose default capture is `plughw:Loopback,1` (Claude records from the default
+  device), and `/voice` on in **hold** mode. The agent refuses voice off or tap mode before
+  pressing anything: in tap mode each space would toggle recording and submit. The clip goes
+  through a file because Safari's MP4 cannot be read from a pipe. One clip at a time per
+  machine (one loopback). The PWA gives up after `VOICE_REPLY_BASE_MS` plus the clip's
+  length, since an older agent's `bad_message` is silent.
 - **Connection-event log — a client→agent diagnostic that survives drops.** The PWA records
   connection lifecycle events (`connect`/`online`/`close`/`manual-reconnect` per machine —
   `manual-reconnect` = the user tapped Reconnect, `auto-reconnect` = a foreground/`online`

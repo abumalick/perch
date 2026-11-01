@@ -80,7 +80,8 @@ export interface ConnectionHandlerDeps {
   connectUpstream: ConnectUpstream;
   // Browser viewers, shared by every connection: one viewer per session across them all.
   browserViewers: ViewerRegistry;
-  forgetWorkspace: (id: string) => Workspace | undefined;
+  // `closing` is set by an explicit close only: see WsServer.forgetWorkspace.
+  forgetWorkspace: (id: string, closing?: boolean) => Workspace | undefined;
   broadcastClosed: (id: string) => void;
   // WsServer's SendMessage mark, which listWorkspaces turns into `waitingOn`.
   messagedLast?: Pick<ReadonlySet<string>, 'has'>;
@@ -292,7 +293,7 @@ export class ConnectionHandler {
       case 'close': {
         const parkedRecord = await this.deps.parked.get(message.workspaceId);
         const workspace =
-          this.deps.forgetWorkspace(message.workspaceId) ??
+          this.deps.forgetWorkspace(message.workspaceId, true) ??
           (parkedRecord
             ? {
                 machineId: parkedRecord.machineId,

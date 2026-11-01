@@ -1537,47 +1537,92 @@ describe('WsServer waiting-on-parent push', () => {
     expect(updates).toHaveLength(2);
   });
 
-  // An explicit close forgets the workspace before its tmux kill completes. A poll that still
-  // lists the session in that gap must not take it back, or the workspace is logged a second
-  // time as `exited` (and pushed closed again) once the kill lands.
-  it('does not take back a workspace that is being closed while tmux still lists it', async () => {
+  // A fake tmux the poll reads, a connected client, and what reaches the log and the client.
+  async function pollingServer() {
     const home = await mkdtemp(join(tmpdir(), 'perch-closing-'));
     dirs.push(home);
-    let alive = true;
+    let title: string | null = '';
     const tmux: TmuxPort = {
       listSessions: async () =>
-        alive ? [{ name: 'perch-x', startPath: tmpdir(), command: 'claude', createdAt: 1000, title: '' }] : [],
+        title === null ? [] : [{ name: 'perch-x', startPath: tmpdir(), command: 'claude', createdAt: 1000, title }],
       createSession: async () => undefined,
       killSession: async () => undefined,
-      hasSession: async () => alive,
+      hasSession: async () => title !== null,
     };
+    const clock = { t: 1_000_000, now() { return this.t; } };
     const logged: string[] = [];
-    server = new WsServer({
+    const closed: string[] = [];
+    const names: string[] = [];
+    const s = new WsServer({
       ...makeServerDeps(testConfig(home), noClientLog),
       tmux,
+      clock,
       workspaceLog: { append: async (e) => void logged.push(`${e.id}:${e.reason}`) },
       titlePollMs: 20,
     });
-    await server.start();
+    server = s;
+    await s.start();
     const socket = new WebSocket(await clientUrl());
     sockets.push(socket);
     await new Promise((r) => socket.once('open', r));
     socket.send(JSON.stringify({ type: 'auth', token: 'secret' }));
     await nextMessage(socket);
-    const closed: string[] = [];
     socket.on('message', (raw) => {
       const msg = JSON.parse(raw.toString()) as AgentMessage;
       if (msg.type === 'closed') closed.push(msg.workspaceId);
+      if (msg.type === 'workspaceUpdated' && msg.workspace.id === 'perch-x') names.push(msg.workspace.name);
     });
-    await new Promise((r) => setTimeout(r, 100));
+    await ticks();
+    return {
+      server: s,
+      clock,
+      logged,
+      closed,
+      names,
+      // null = tmux no longer lists the session.
+      setTitle: (next: string | null) => void (title = next),
+    };
+  }
+  const ticks = () => new Promise((r) => setTimeout(r, 100));
 
-    expect(server.forgetWorkspace('perch-x')).toMatchObject({ id: 'perch-x' });
-    await new Promise((r) => setTimeout(r, 100));
-    alive = false;
-    await new Promise((r) => setTimeout(r, 100));
+  // An explicit close forgets the workspace before its tmux kill completes. A poll that still
+  // lists the session in that gap must not take it back, or the workspace is logged a second
+  // time as `exited` (and pushed closed again) once the kill lands.
+  it('does not take back a workspace that is being closed while tmux still lists it', async () => {
+    const s = await pollingServer();
+    expect(s.server.forgetWorkspace('perch-x', true)).toMatchObject({ id: 'perch-x' });
+    await ticks();
+    s.setTitle(null);
+    await ticks();
+    expect(s.logged).toEqual([]);
+    expect(s.closed).toEqual([]);
+  });
 
-    expect(logged).toEqual([]);
-    expect(closed).toEqual([]);
+  // Parking forgets the workspace too, but its parked record keeps it listed, and unparking
+  // brings the same id back live: the poll must go on following it.
+  it('goes on following a workspace forgotten by a park, after it is unparked', async () => {
+    const s = await pollingServer();
+    s.server.forgetWorkspace('perch-x');
+    await ticks();
+    s.setTitle('✳ renamed');
+    await ticks();
+    expect(s.names).toContain('renamed');
+    s.setTitle(null);
+    await ticks();
+    expect(s.logged).toEqual(['perch-x:exited']);
+    expect(s.closed).toEqual(['perch-x']);
+  });
+
+  // A kill that never lands leaves the session listed; the workspace must not vanish for good.
+  it('takes a closing workspace back once tmux has gone on listing it too long', async () => {
+    const s = await pollingServer();
+    s.server.forgetWorkspace('perch-x', true);
+    await ticks();
+    s.clock.t += 11_000;
+    await ticks();
+    s.setTitle('✳ still here');
+    await ticks();
+    expect(s.names).toContain('still here');
   });
 
   // The mark lives in the status store, so a restarted agent still knows the child is waiting.

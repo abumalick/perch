@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ConnectionHandler } from './connection-handler';
+import { ConnectionHandler, type ConnectionHandlerDeps } from './connection-handler';
 import { ViewerRegistry } from './viewer-registry';
 import type { ClientConnection } from '../ports/client-connection';
 import type { PtyPort } from '../ports/pty-port';
@@ -211,9 +211,15 @@ beforeEach(() => {
 // tmux fake (a single live session named 'perch-aa'), these scenarios exercise a workspace
 // id ('perch-1') that starts out live in tmux by default, so setStatus/attach can find it.
 function makeHandler(
-  overrides: { isDirectory?: DirectoryChecker; command?: string; claudeSessionId?: string } = {},
+  overrides: {
+    isDirectory?: DirectoryChecker;
+    command?: string;
+    claudeSessionId?: string;
+    forgetWorkspace?: ConnectionHandlerDeps['forgetWorkspace'];
+  } = {},
 ) {
   const deps = baseDeps();
+  if (overrides.forgetWorkspace) deps.forgetWorkspace = overrides.forgetWorkspace;
   const parkedStore = fakeParkedStore();
   deps.parked = parkedStore;
   // Parking requires a known Claude session id, so default to one and let a test opt out by
@@ -817,6 +823,24 @@ describe('ConnectionHandler park/unpark', () => {
     await send({ type: 'setStatus', workspaceId: 'perch-1', status: 'parked' });
     expect(await parkedStore.get('perch-1')).toMatchObject({ id: 'perch-1' });
     expect(tmux.killSession).toHaveBeenCalledWith('perch-1');
+  });
+
+  // Only a close keeps the poll from taking a still-listed workspace back (WsServer.closing): a
+  // parked workspace stays listed through its record, and unparking revives the same id.
+  it('forgets a parked workspace without marking it closing', async () => {
+    const forgetWorkspace = vi.fn((_id: string, _closing?: boolean) => undefined);
+    const { handler, send } = makeHandler({ forgetWorkspace });
+    await authenticate(handler, send);
+    await send({ type: 'setStatus', workspaceId: 'perch-1', status: 'parked' });
+    expect(forgetWorkspace).toHaveBeenCalledWith('perch-1');
+  });
+
+  it('marks a closed workspace closing', async () => {
+    const forgetWorkspace = vi.fn((_id: string, _closing?: boolean) => undefined);
+    const { handler, send } = makeHandler({ forgetWorkspace });
+    await authenticate(handler, send);
+    await send({ type: 'close', workspaceId: 'perch-1' });
+    expect(forgetWorkspace).toHaveBeenCalledWith('perch-1', true);
   });
 
   it('does not park for any other status', async () => {

@@ -90,6 +90,8 @@ const DEFAULT_TITLE_POLL_MS = 2000;
 // Load readings are ambient information, not a signal anyone acts on within seconds, so
 // they run on their own slower interval rather than riding the title poll.
 const DEFAULT_STATS_POLL_MS = 5000;
+// How long an explicit close keeps the poll from taking a still-listed workspace back.
+const CLOSING_MS = 10_000;
 
 // Phones reach the agent only through the relays it dials out to. The one thing it listens for
 // is Claude Code's hooks, from this machine, so the listener is bound to loopback whatever the
@@ -111,9 +113,10 @@ export class WsServer {
   private titlePoll: ReturnType<typeof setInterval> | null = null;
   private statsPoll: ReturnType<typeof setInterval> | null = null;
   private readonly lastWorkspaces = new Map<string, Workspace>();
-  // Workspaces an explicit close has forgotten while tmux may still list them (the kill is async);
-  // pollTitles must not take them back. Dropped once tmux no longer lists them.
-  private readonly closing = new Set<string>();
+  // Workspaces an explicit close has forgotten while tmux may still list them (the kill is async),
+  // with when the mark lapses: pollTitles must not take them back meanwhile. Dropped once tmux no
+  // longer lists them, or after CLOSING_MS, so a kill that never lands cannot hide one for good.
+  private readonly closing = new Map<string, number>();
   private lastBrowserNames = new Set<string>();
   // Sessions parked on background work or on a peer session's reply, so the idle notification
   // that follows their Stop can be told apart from a genuine one. In-memory on purpose — see
@@ -141,11 +144,13 @@ export class WsServer {
   // entry (the session is about to be killed and tmux won't be able to answer afterward)
   // and to keep the disappearance poll from separately logging it as `exited`. The tmux kill
   // is async, so a poll tick in that gap still lists the session: `closing` keeps the poll
-  // from taking it back, which would log a duplicate `exited` once the kill lands.
-  forgetWorkspace(id: string): Workspace | undefined {
+  // from taking it back, which would log a duplicate `exited` once the kill lands. Only a close
+  // sets it: a park also forgets the workspace, but its parked record keeps it listed and an
+  // unpark brings the same id back, which the poll must go on following.
+  forgetWorkspace(id: string, closing = false): Workspace | undefined {
     const workspace = this.lastWorkspaces.get(id);
     this.lastWorkspaces.delete(id);
-    this.closing.add(id);
+    if (closing) this.closing.set(id, this.deps.clock.now() + CLOSING_MS);
     // A closed workspace must not come back parked if the tmux server dies before the next tick.
     void this.deps.liveSnapshot?.remove(id).catch(() => undefined);
     return workspace;
@@ -239,7 +244,7 @@ export class WsServer {
       ...this.deps,
       registry: this.registry,
       browserViewers: this.browserViewers,
-      forgetWorkspace: (id: string) => this.forgetWorkspace(id),
+      forgetWorkspace: (id: string, closing?: boolean) => this.forgetWorkspace(id, closing),
       broadcastClosed: (id: string) => this.broadcastClosed(id),
       messagedLast: this.messagedLast,
     });
@@ -384,8 +389,9 @@ export class WsServer {
     const hidden = await this.deps.hiddenFolders.list();
     const present = new Set<string>();
     const listed = new Set(workspaces.map((w) => w.id));
-    for (const id of this.closing) {
-      if (!listed.has(id)) this.closing.delete(id);
+    const now = this.deps.clock.now();
+    for (const [id, until] of this.closing) {
+      if (!listed.has(id) || now >= until) this.closing.delete(id);
     }
     for (const workspace of workspaces) {
       if (isHiddenPath(workspace.projectPath, hidden) || this.closing.has(workspace.id)) continue;

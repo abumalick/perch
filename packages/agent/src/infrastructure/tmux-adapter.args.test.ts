@@ -68,8 +68,8 @@ describe('TmuxAdapter (spawn and peek arguments)', () => {
   });
 
   it('sets the pane title', async () => {
-    await new TmuxAdapter().setPaneTitle('perch-c', '✳ story');
-    expect(calls).toEqual([['select-pane', '-t', 'perch-c', '-T', '✳ story']]);
+    await new TmuxAdapter().setPaneTitle('perch-c', '✳ story #S');
+    expect(calls).toEqual([['select-pane', '-t', 'perch-c', '-T', '✳ story ##S']]);
   });
 
   it('captures the pane joined, from N lines of history', async () => {

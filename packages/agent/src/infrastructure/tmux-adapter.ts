@@ -182,7 +182,9 @@ export class TmuxAdapter implements TmuxPort {
   }
 
   async setPaneTitle(name: string, title: string): Promise<void> {
-    await this.tmux(['select-pane', '-t', name, '-T', title]);
+    // `select-pane -T` expands formats in its argument (`#S`, `#{…}`, `#(…)`, and `##` to `#`),
+    // which would rewrite a name on every park/unpark. `##` is tmux's literal `#`.
+    await this.tmux(['select-pane', '-t', name, '-T', title.replaceAll('#', '##')]);
   }
 
   // `allow-set-title` exists from tmux 3.5; an older server answers "invalid option". No server

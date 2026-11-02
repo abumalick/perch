@@ -2,6 +2,9 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { TmuxAdapter, isMissingSession, isNoServer, tmux } from './tmux-adapter';
 
 const exec = promisify(execFile);
@@ -180,6 +183,27 @@ describe('tmux (the agent\'s tmux client)', () => {
       if (saved === undefined) delete process.env.PERCH_TOKEN;
       else process.env.PERCH_TOKEN = saved;
       await exec('tmux', ['-L', socket, 'kill-server']).catch(() => undefined);
+    }
+  });
+});
+
+// ISOLATION: its own server on a sandbox socket (`-S`, which beats $TMUX), with no config.
+describe('TmuxAdapter.setPaneTitle against a real tmux', () => {
+  it('sets the title literally: tmux format characters are not expanded', async () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '.tmp');
+    await mkdir(root, { recursive: true });
+    const sandbox = await mkdtemp(join(root, 'title-'));
+    const socket = join(sandbox, 's');
+    const adapter = new TmuxAdapter({ socket, config: '/dev/null' });
+    try {
+      await adapter.createSession({ name: 'perch-title', cwd: sandbox, command: 'sleep 30' });
+      const title = '✳ fix #S and #{session_name}, ## and #(true) #1077';
+      await adapter.setPaneTitle('perch-title', title);
+      const { stdout } = await exec('tmux', ['-S', socket, 'display-message', '-p', '-t', 'perch-title', '#{pane_title}']);
+      expect(stdout.replace(/\n$/, '')).toBe(title);
+    } finally {
+      await exec('tmux', ['-S', socket, 'kill-server']).catch(() => undefined);
+      await rm(sandbox, { recursive: true, force: true });
     }
   });
 });

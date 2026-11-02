@@ -78,9 +78,10 @@ patch. The build never touches the `tmux` on `PATH`, and `check` runs its own se
 `-S` socket without `$TMUX` or any config. `check` verifies the probe order, every state rule
 above, and (on Linux) the `tmux-spawn-*.scope`.
 
-**macOS (Homebrew):** `brew install libevent ncurses utf8proc pkg-config autoconf automake bison`,
+**macOS (Homebrew):** `brew install libevent ncurses utf8proc jemalloc pkg-config autoconf automake bison`,
 then the same two commands. The script puts Homebrew's bison first (macOS's is too old), points
-`pkg-config` at the Homebrew libraries and adds `--enable-utf8proc`; there is no systemd.
+`pkg-config` at the Homebrew libraries and adds `--enable-utf8proc --enable-jemalloc` (3.8's
+configure stops on macOS without a jemalloc choice); there is no systemd.
 
 The patched agent test runs only when `PERCH_TMUX_OSC` names the binary:
 `PERCH_TMUX_OSC=/opt/tmux-osc/bin/tmux pnpm --filter @perch/agent exec vitest run src/infrastructure/tmux-adapter.osc.test.ts`.
@@ -100,8 +101,7 @@ swap and the restart every Perch terminal opened (each is an attach) fails. Chec
 real attach, not `tmux -V` or `ls`:
 `script -qec "tmux new-session -s attach-check 'sleep 1'" /dev/null` must exit 0.
 
-Untested under 3.8: tmux-resurrect and tmux-continuum (the config parses, step 3, but no plugin
-ran).
+tmux-resurrect and tmux-continuum ran under 3.8 on macOS (continuum restored the saved layout).
 
 ### Linux (systemd `tmux-server` unit)
 
@@ -141,18 +141,28 @@ workspaces again. `/opt/tmux-osc` can stay; `sudo rm -rf /opt/tmux-osc` once not
 
 1. Deploy the agent (pull, `launchctl kickstart -k gui/$(id -u)/com.perch.agent`).
 2. Build and check as above (Homebrew dependencies first).
-3. Swap the binary and replace the server in one go: a new client cannot attach to the old
+3. Save the layout if tmux-resurrect runs (`~/.config/tmux/plugins/tmux-resurrect/scripts/save.sh`).
+4. Swap the binary and replace the server in one go: a new client cannot attach to the old
    server, so every terminal opened in between would fail. The new binary goes in Homebrew's
-   place, keeping Homebrew's tmux installed for a rollback; swapping before the kill means
-   nothing (the agent, a phone's create) can start another old server:
-   `brew unlink tmux && ln -s /opt/tmux-osc/bin/tmux "$(brew --prefix)/bin/tmux" && tmux kill-server; launchctl kickstart -k gui/$(id -u)/com.perch.agent`.
-   The next session created starts the new server; the agent parks the lost workspaces.
-4. Verify with the attach check above.
+   place, keeping Homebrew's tmux installed for a rollback, and the old server is killed with
+   the old binary:
+   `touch ~/tmux_no_auto_restore; brew unlink tmux && ln -s /opt/tmux-osc/bin/tmux "$(brew --prefix)/bin/tmux" && "$(brew --prefix)/Cellar/tmux/<old version>/bin/tmux" -L default kill-server`.
+   The running agent parks the lost workspaces on its next poll (`~/.perch/parked.json`).
+5. **Let the agent start the new server; never start it from an ssh session.** A tmux server
+   started over ssh lives outside the login session, so its panes cannot read the login
+   keychain: every `claude` in it reports "Not logged in". `perch unpark <id>...` asks the agent
+   (a launchd GUI agent) to create the sessions, so the first one starts the server there.
+   Session commands sent over ssh afterwards are fine: panes are forked by the server.
+   tmux-continuum would restore the saved layout as bare shells when that server starts and
+   race the unpark for the same names; `~/tmux_no_auto_restore` (step 4) halts it, so remove
+   that file once the workspaces are back, and recreate any bare shell by hand.
+6. Verify with the attach check, in BSD `script` syntax and with a terminal type (a
+   non-interactive ssh has none, and tmux's "unsuitable terminal" looks like the skew error):
+   `TERM=xterm-256color script -q /dev/null tmux new-session -s attach-check 'sleep 1'`.
 
-Unverified on the Mac: its current tmux version and whether it runs tmux-resurrect.
-
-**Rollback:** `tmux kill-server`, `rm "$(brew --prefix)/bin/tmux" && brew link tmux`, kickstart the
-agent. A `brew upgrade` that relinks tmux undoes step 3; run it again after one.
+**Rollback:** `tmux -L default kill-server`, `rm "$(brew --prefix)/bin/tmux" && brew link tmux`,
+kickstart the agent, then unpark. A `brew upgrade` that relinks tmux undoes step 4; run it again
+after one.
 
 ### After the cutover
 

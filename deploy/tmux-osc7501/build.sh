@@ -48,13 +48,14 @@ build() {
     Darwin)
       command -v brew >/dev/null || { echo 'Homebrew is required on macOS' >&2; exit 1; }
       local pkg
-      for pkg in libevent ncurses utf8proc pkg-config autoconf automake bison; do
+      for pkg in libevent ncurses utf8proc jemalloc pkg-config autoconf automake bison; do
         brew list --versions "$pkg" >/dev/null || { echo "missing: brew install $pkg" >&2; exit 1; }
       done
       # macOS ships a bison too old for tmux's grammar.
       PATH="$(brew --prefix bison)/bin:$PATH"
-      export PKG_CONFIG_PATH="$(brew --prefix libevent)/lib/pkgconfig:$(brew --prefix ncurses)/lib/pkgconfig:$(brew --prefix utf8proc)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-      configure_args+=(--enable-utf8proc)
+      export PKG_CONFIG_PATH="$(brew --prefix libevent)/lib/pkgconfig:$(brew --prefix ncurses)/lib/pkgconfig:$(brew --prefix utf8proc)/lib/pkgconfig:$(brew --prefix jemalloc)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+      # tmux 3.8's configure stops on macOS unless jemalloc is enabled or explicitly disabled.
+      configure_args+=(--enable-utf8proc --enable-jemalloc)
       ;;
   esac
 

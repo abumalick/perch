@@ -62,6 +62,8 @@ describe('Settings — machines list', () => {
     render(Settings, { props: { store: store as never } });
     expect(screen.getByRole('button', { name: /^Cloud box/ })).toHaveTextContent('relay.example.com');
     expect(screen.getByRole('button', { name: /^Home box/ })).toHaveTextContent('box.example.ts.net:8451');
+    const [cloudHost] = screen.getAllByTestId('relay-host');
+    expect(cloudHost?.parentElement).toHaveTextContent(/^Cloud box\s*relay\.example\.com$/);
   });
 
   it('opens the machine detail on tap, and comes back', async () => {

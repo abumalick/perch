@@ -319,7 +319,105 @@ None of this is required by Perch.
   then `sudo apparmor_parser -r /etc/apparmor.d/agent-browser-chrome`. Name a session after its
   workspace and Perch's browser view picks it up (`docs/BROWSER.md`).
 
-## 12. Pitfalls
+## 12. Another Linux user on the same machine
+
+One machine can run several Perch agents, one per Linux user. Each user has its own agent, tmux
+server, `~/.perch` (agent key, paired phones, parked workspaces, and its own `hidden-folders.json`,
+`commands.json` and `launchers.json`), Claude Code login and config, and files. The phone sees
+each agent as a separate machine. Use it to keep one kind of work apart from the rest: a client's
+projects in an account that cannot read your home directory, your credentials or your sessions.
+
+Everything below runs from your admin account. `<user>` is the new user, `<uid>` its id
+(`id -u <user>`).
+
+**The user.** Give it neither `sudo` nor the `docker` group: either one can read every other
+user's files, which defeats the point. Check that your own home is closed to it as well
+(`stat -c %a ~` should say `750` or `700`; older Ubuntu installs made homes `755`). Other users
+can still see command lines in `ps`, which is why Perch keeps its secrets off them.
+
+```bash
+sudo adduser --disabled-password --gecos '' <user>
+sudo loginctl enable-linger <user>
+id <user>                     # no sudo, no docker among the groups
+```
+
+If the user needs Docker, run it rootless and private to that user
+([rootless mode](https://docs.docker.com/engine/security/rootless/)).
+
+**Memory.** With several users, cap each one's `user-<uid>.slice`, yours included, instead of the
+single `user@<uid>.service` of step 2: the slice also holds the user's SSH logins. Keep the sum
+of the limits within the machine, so one user's runaway job cannot freeze another's workspaces.
+For each user:
+
+```bash
+sudo mkdir -p /etc/systemd/system/user-<uid>.slice.d
+sudo tee /etc/systemd/system/user-<uid>.slice.d/50-share.conf >/dev/null <<'EOF'
+[Slice]
+MemoryHigh=<e.g. 8G>
+MemoryMax=<e.g. 10G>
+MemorySwapMax=2G
+EOF
+sudo systemctl daemon-reload
+```
+
+Then remove step 2's `user@<uid>.service.d/50-memory.conf` for your own user. Give the new user
+the `heavy` wrapper of step 2 in its own `~/.local/bin`.
+
+**Working as that user.** For the interactive parts (step 3's installers, the Claude Code and
+Codex logins), open a shell as that user:
+
+```bash
+sudo -iu <user>
+export XDG_RUNTIME_DIR=/run/user/$(id -u)   # or systemctl --user cannot reach its user manager
+```
+
+For scripted parts, a here-doc keeps the quoting simple. It runs a non-interactive shell, which
+reads no profile, so set the two variables it lacks:
+
+```bash
+sudo -u <user> -H bash -s <<'EOF'
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+export PATH=$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH
+cd ~/workspace/perch && git pull --ff-only
+EOF
+```
+
+**Steps 3 to 6, 8 and 9 again, as that user** (step 7 is done once per Cloudflare account). The new user needs its own clone (a private fork needs git
+credentials of its own). In `deploy/agent.env`, three values differ:
+
+- **`PERCH_PORT` must differ from every other agent's on the machine** (and step 6's check
+  `curl`s that port). Each agent listens on `127.0.0.1:<port>` for its hooks, and with the port
+  taken the second agent exits at once and its service restarts it in a loop. Pick 8789 or above
+  (8788 is `wrangler dev`'s). `install-hooks` and the `perch` CLI read the port from
+  `agent.env`; `install-hooks` writes it into each hook, so run it again after changing the port.
+- **`PERCH_MACHINE_ID`** is the name the phone shows: give each agent its own.
+- **`PERCH_STATS`**: each agent shows its own user's memory room on the home screen, which is
+  how you see the new user's jobs nearing their cap. `PERCH_STATS=off` hides that line.
+
+**What not to copy from your account.**
+- **`~/.perch`:** never copy it. Two agents with one agent key take turns on the relay instead of
+  both staying connected (`docs/relay-cf-runbook.md`, "Several relays at once").
+- **`~/.claude`:** never copy it whole. It holds your Claude login (`.credentials.json`) and your
+  conversations (`projects/`, `history.jsonl`). Copy only what the user should have: the
+  instructions in `CLAUDE.md`, chosen skills, `settings.json`. In that `settings.json` `env`, set
+  `ENABLE_CLAUDEAI_MCP_SERVERS=false`, or the claude.ai connectors of a shared Claude account
+  (mail, drive) come along.
+
+**Relay and phone (step 8).** The same relay is fine: each agent key is its own account there,
+and the phone gets a separate entry for it. The new user has no join key of its own: give it the
+key from your password manager through the environment, as step 8 does, or install a private copy
+in its `~/.perch/relay-join-key` (mode `600`). `perch connect` prints the first pairing code;
+`perch pair` makes more. Turn token enrolment off for this agent too
+(`pnpm perch devices enrolment off`).
+
+**Running it from your account.**
+- Its user services: `sudo systemctl --user -M <user>@ <status|restart> perch-agent`.
+- Its logs: `sudo journalctl _UID=<uid> _SYSTEMD_USER_UNIT=perch-agent.service`.
+- Updating it is step 9, run as that user.
+- Each user has its own tmux server. Upgrading tmux replaces **every** user's server in the same
+  step, or a newer client cannot attach to an older server (`docs/TMUX-OSC7501.md`).
+
+## 13. Pitfalls
 
 - **Every new workspace says "No session" (status 127):** `claude` is not on the user services'
   PATH. Step 4, then restart the agent.

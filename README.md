@@ -33,7 +33,8 @@ against fakes, with a Playwright e2e suite driving the PWA against a fake agent.
 ## Where to look
 
 - `docs/SETUP-MACHINE.md` — setting up your own machine end to end: preparing Ubuntu, the
-  agent, your relay and app on a free Cloudflare account, pairing your phone, and the pitfalls.
+  agent, your relay and app on a free Cloudflare account, pairing your phone, a second Linux
+  user with its own agent on the same machine, and the pitfalls.
 - `docs/DEPLOY.md` — running agents as services, connecting them to a relay, hosting the
   PWA, installing Claude Code hooks.
 - `docs/relay-cf-runbook.md` — the relays, device keys, pairing and the threat model.

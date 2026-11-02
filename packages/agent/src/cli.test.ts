@@ -303,6 +303,7 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
 
   function fakeTmux(pane: Record<string, string> = {}) {
     const created: Array<{ name: string; cwd: string; command: string; parent?: string; storedCommand?: string }> = [];
+    const locked: string[] = [];
     const tmux: TmuxPort = {
       listSessions: async (prefix) => live.filter((s) => s.name.startsWith(prefix)),
       createSession: async (input) => {
@@ -313,10 +314,14 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
       },
       hasSession: async () => true,
       setPaneTitle: async () => {},
+      supportsTitleLock: async () => true,
+      lockPaneTitle: async (name) => {
+        locked.push(name);
+      },
       capturePane: async () => 'old\n\nline 1\n   \nline 2\nline 3\n\n\n',
       sessionOfPane: async (id) => pane[id] ?? null,
     };
-    return { tmux, created };
+    return { tmux, created, locked };
   }
 
   async function machine() {
@@ -393,14 +398,50 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     await expect(run(['ls', '--parent'], env, home, io(tmux))).rejects.toThrow(/usage: perch ls/);
   });
 
+  it('unparks through the running agent, one line per id, failing if any did not open', async () => {
+    const { home } = await machine();
+    await writeFile(join(home, '.perch', 'token'), 'hook-secret');
+    const env = { PERCH_AGENT_ENV: join(home, 'agent.env') };
+    await writeFile(env.PERCH_AGENT_ENV, 'PERCH_PORT=9911\n');
+    const calls: Array<{ url: string; auth: string; body: string }> = [];
+    const results: Record<string, string> = { 'perch-aaaaaa': 'unparked', 'perch-bbbbbb': 'not-parked', 'perch-cccccc': 'missing-directory' };
+    const fetch = async (url: string | URL | Request, init?: RequestInit) => {
+      const body = String(init?.body);
+      calls.push({ url: String(url), auth: new Headers(init?.headers).get('authorization') ?? '', body });
+      const { id } = JSON.parse(body) as { id: string };
+      return new Response(JSON.stringify({ result: results[id] }), { status: 200 });
+    };
+    expect(await run(['unpark', 'perch-aaaaaa'], env, home, io(fakeTmux().tmux, { fetch }))).toBe('perch-aaaaaa: opened');
+    expect(calls[0]).toEqual({ url: 'http://127.0.0.1:9911/unpark', auth: 'Bearer hook-secret', body: '{"id":"perch-aaaaaa"}' });
+    // Every id is tried; the failures are reported together.
+    await expect(run(['unpark', 'perch-bbbbbb', 'perch-aaaaaa', 'perch-cccccc'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(
+      'perch-bbbbbb: not parked\nperch-aaaaaa: opened\nperch-cccccc: its project directory no longer exists',
+    );
+    await expect(run(['unpark'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/usage: perch unpark/);
+  });
+
+  it('says the agent is not running when nothing answers', async () => {
+    const { home, env } = await machine();
+    await writeFile(join(home, '.perch', 'token'), 'hook-secret');
+    const fetch = async () => {
+      throw new TypeError('fetch failed', { cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }) });
+    };
+    await expect(run(['unpark', 'perch-aaaaaa'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/agent is not running/);
+    await rm(join(home, '.perch', 'token'));
+    await expect(run(['unpark', 'perch-aaaaaa'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/agent is not running/);
+  });
+
   it('spawns from the caller cwd with the brief from stdin, and prints the id', async () => {
     const { home, env } = await machine();
     await mkdir(join(home, 'proj'));
-    const { tmux, created } = fakeTmux();
+    const { tmux, created, locked } = fakeTmux();
     const id = await run(['spawn', '--title', 'T', 'proj'], env, home, io(tmux, { cwd: home, stdin: async () => 'Do it.\n' }));
     expect(id).toMatch(/^perch-[0-9a-f]{6}$/);
     expect(created[0]!.cwd).toBe(await realpath(join(home, 'proj')));
     expect(created[0]!.storedCommand).toBe(`claude --model 'opus[1m]' --name ${id}`);
+    // The title is held by tmux's lock, not by the env switch that also silences OSC 7501.
+    expect(locked).toEqual([id]);
+    expect(created[0]!.command).not.toContain('CLAUDE_CODE_DISABLE_TERMINAL_TITLE');
     expect(await readFile(join(home, '.perch', 'spawn', `${id}.md`), 'utf8')).toBe('Do it.\n');
   });
 

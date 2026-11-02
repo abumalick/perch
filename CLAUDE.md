@@ -24,8 +24,8 @@ device key, and streams its terminals. No agent listens on a phone-facing port.
 - `packages/agent` (`@perch/agent`) — per-machine agent. tmux via `node:child_process`,
   terminal streaming via `node-pty`, a `RelayLink` per relay that dials a socket back for
   each phone (served through `NoiseClientConnection`), and a `node:http` server on
-  `127.0.0.1` whose only route is the bearer-token-guarded `POST /hooks` (Claude Code hooks
-  report attention here).
+  `127.0.0.1` with two bearer-token-guarded routes: `POST /hooks` (Claude Code hooks report
+  attention here) and `POST /unpark` (`perch unpark`).
   Domain/application in `application/` + `ports/`, adapters in `infrastructure/`, wiring in
   `server/`.
 - `packages/relay` (`@perch/relay`), `packages/relay-cf`, `packages/secure-channel` — the
@@ -76,7 +76,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   PATH). Run `mise trust` once per machine or the unit crash-loops.
 - **An agent is reached only through its relays.** It binds `127.0.0.1` whatever
   `PERCH_HOST` says (a non-loopback value is ignored with a warning), serves only `POST /hooks`
-  there, and is never published with `tailscale serve`. `pnpm perch connect` joins a machine
+  and `POST /unpark` there, and is never published with `tailscale serve`. `pnpm perch connect` joins a machine
   to a relay; `perch pair` pairs a phone (relay section).
 - The PWA is built and served on the always-on machine via `deploy/run-pwa.sh` +
   `tailscale serve`, and added to the iPhone home screen.
@@ -184,7 +184,19 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   and no PWA logic — and the disappearance poll never sees it vanish, so it logs no
   spurious `exited`. Opening it recreates the session with `--resume` injected into the
   **original** command (`claude --model 'opus[1m]' --resume <id>`, preserving flags), then
-  clears the record. **The parked record — not `status === 'parked'` — is the source of
+  clears the record. **The name is put back and held:** a workspace's name is its pane title,
+  and the resumed Claude writes a new one at once (the bare id for a `--name perch-…` spawn, a
+  fresh summary otherwise), so unpark sets `✳ <parked name>` (the glyph is what makes
+  `deriveWorkspaceName` trust it) and locks it with `allow-set-title off` on tmux 3.5+. The lock
+  applies to **every** unpark: the record cannot tell an explicit `--title` from a name Claude
+  chose, and a frozen name the user knows beats one that moves to something they do not; the
+  cost is that an unparked workspace stops renaming itself. On an older tmux the title is set
+  unlocked and may not hold: the spawn's `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` prefix would cover
+  only the left half of `<cmd> --resume <id> || exec <cmd>`, and it silences OSC 7501 too.
+  `perch unpark <id>...` opens parked workspaces from a shell through the same path, by asking
+  the running agent (`POST /unpark`, the hooks secret): the agent holds `status.json` in memory
+  and writes `parked.json`, so a CLI writing either would race it, and only the agent tells the
+  phones. **The parked record — not `status === 'parked'` — is the source of
   truth for behavior:** the rename migration relabels pre-existing live workspaces to
   `parked` with no record, so status-keyed logic would try to recreate a live session on
   attach. The unpark command carries a `|| exec <original>` tail because
@@ -223,9 +235,10 @@ See `docs/DEPLOY.md` for the full runbook. In short:
 
 - **The `perch` CLI and the orchestrator → child link.** `deploy/install-cli.sh` links
   `deploy/perch-cli.sh` to `~/.local/bin/perch` on each machine, so any session in any repo can
-  run `perch spawn [--child]`, `perch ls [--mine]` and `perch peek <id>`. These three read
-  tmux and the `~/.perch` stores directly (read-only, no agent.env needed) and skip the GitHub
-  lookup, so `ls` answers in a fraction of a second. **Orchestration is explicit:** a plain
+  run `perch spawn [--child]`, `perch ls [--mine]`, `perch peek <id>` and `perch unpark <id>...`.
+  The first three read tmux and the `~/.perch` stores directly (read-only, no agent.env needed)
+  and skip the GitHub lookup, so `ls` answers in a fraction of a second; `unpark` asks the
+  running agent (parking section). **Orchestration is explicit:** a plain
   `perch spawn` is an ordinary workspace; `--child` records the caller's **workspace id** (never
   its Claude session name, which changes on rename) as the tmux option `@perch_parent`, read
   into `Workspace.parentId`. The link is carried in `parked.json` and `live.json` and re-set by
@@ -522,7 +535,8 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     answered without taking `pairing.json`'s lock, so made-up ones cannot keep `perch pair` out.
   - **The hooks have their own secret, kept off every command line.** `POST /hooks` takes a
     random secret the agent writes to `~/.perch/token` at each start (the path installed hooks
-    already read), never `PERCH_TOKEN`, which enrols phones. `perch-hook.sh` gives curl the header
+    already read), never `PERCH_TOKEN`, which enrols phones. `POST /unpark` takes the same
+    secret, which `perch unpark` reads from that file into a header in-process. `perch-hook.sh` gives curl the header
     through a file (process substitution) and the body on stdin, built with the `printf` builtin:
     any local user can read a process's argv. `perch-hook.test.sh` asserts neither reaches it.
   - **An agent refuses a `ws://` relay off loopback** (`isCleartextRemote`): `perch connect`

@@ -28,6 +28,7 @@ import type { KeytermsPort } from '../ports/keyterms-port';
 import type { ClientLogPort } from '../ports/client-log-port';
 import type { WorkspaceLogPort } from '../ports/workspace-log-port';
 import type { ParkedStorePort } from '../ports/parked-store-port';
+import { unparkWorkspace } from '../application/unpark-workspace';
 import type { LiveSnapshotPort } from '../ports/live-snapshot-port';
 import type { ProcessScopePort } from '../ports/process-scope-port';
 import type { SystemStatsPort } from '../ports/system-stats-port';
@@ -254,11 +255,15 @@ export class WsServer {
     });
   }
 
+  // Two routes, both behind the hooks secret: `/hooks` for Claude Code's hook events, and
+  // `/unpark` for `perch unpark`, which must go through the agent because it holds status.json in
+  // memory and writes parked.json itself.
   private handleHttp(req: IncomingMessage, res: ServerResponse): void {
-    if (req.method !== 'POST' || req.url !== '/hooks') {
+    if (req.method !== 'POST' || (req.url !== '/hooks' && req.url !== '/unpark')) {
       res.writeHead(404).end();
       return;
     }
+    const route = req.url;
     const token = this.deps.hookToken;
     const authorization = req.headers.authorization ?? '';
     if (!token || !constantTimeEqual(authorization, `Bearer ${token}`)) {
@@ -281,6 +286,10 @@ export class WsServer {
     });
     req.on('end', () => {
       if (refused) return;
+      if (route === '/unpark') {
+        void this.handleUnpark(body, res);
+        return;
+      }
       try {
         const parsed: unknown = JSON.parse(body);
         const { sessionName, event, claude, agent } = parsed as {
@@ -319,6 +328,26 @@ export class WsServer {
         res.writeHead(400).end();
       }
     });
+  }
+
+  private async handleUnpark(body: string, res: ServerResponse): Promise<void> {
+    let id: unknown;
+    try {
+      id = (JSON.parse(body) as { id?: unknown }).id;
+    } catch {
+      id = undefined;
+    }
+    if (typeof id !== 'string' || !id.startsWith(this.deps.config.sessionPrefix)) {
+      res.writeHead(400).end();
+      return;
+    }
+    try {
+      const { parked, tmux, isDirectory, status } = this.deps;
+      const result = await unparkWorkspace({ parked, tmux, isDirectory, status }, id);
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ result }));
+    } catch (err) {
+      res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: (err as Error).message }));
+    }
   }
 
   // The second status source beside the hooks, from a tmux patched to keep each pane's OSC 7501

@@ -930,6 +930,41 @@ describe('WsServer (E2E, real tmux)', () => {
     ]);
   });
 
+  // `perch unpark` asks the running agent: it owns status.json in memory and writes parked.json,
+  // so a CLI writing either itself would race it.
+  it('unparks a workspace over POST /unpark, restoring its name', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-unpark-'));
+    dirs.push(home);
+    const config = testConfig(home);
+    const name = `perch-unpark${process.pid}`;
+    sessions.push(name);
+    const deps = makeServerDeps(config, noClientLog);
+    await deps.parked.add({
+      id: name, name: 'audit workflows #1077', projectPath: tmpdir(), command: 'sleep 30',
+      machineId: 'test', createdAt: 1, parkedAt: 2, parent: 'perch-orch',
+    });
+    deps.status.set(name, 'parked');
+    server = new WsServer(deps);
+    await server.start();
+    const post = (body: unknown, token = HOOK_TOKEN) =>
+      fetch(`http://127.0.0.1:${server!.address().port}/unpark`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+
+    expect((await post({ id: name }, 'wrong')).status).toBe(401);
+    expect((await post({ nope: 1 })).status).toBe(400);
+    const res = await post({ id: name });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ result: 'unparked' });
+    expect(await deps.parked.get(name)).toBeUndefined();
+    expect(deps.status.get(name)).toBe('idle');
+    const { stdout } = await exec('tmux', ['display-message', '-p', '-t', name, '#{pane_title}|#{@perch_parent}']);
+    expect(stdout.trim()).toBe('✳ audit workflows #1077|perch-orch');
+    expect(await (await post({ id: name })).json()).toEqual({ result: 'not-parked' });
+  });
+
   it('rejects a /hooks POST without the bearer token', async () => {
     const home = await mkdtemp(join(tmpdir(), 'perch-hook401-'));
     dirs.push(home);

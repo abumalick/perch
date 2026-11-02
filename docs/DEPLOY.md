@@ -143,6 +143,10 @@ use them:
 - `perch peek <workspace id> [-n <lines>]`: its status line and the last 40 (or N) non-blank lines
   of its pane.
 
+`perch unpark <workspace id>...` reopens parked workspaces, one line per id, exactly as opening
+one on the phone does. It asks the running agent over its loopback listener (`PERCH_PORT` from
+`deploy/agent.env`, the hooks secret in `~/.perch/token`), so it needs the agent running.
+
 ## 5. Host the PWA (the always-on Linux machine only)
 ```sh
 sed "s#REPO_PATH#$(pwd)#g" deploy/perch-pwa.service > ~/.config/systemd/user/perch-pwa.service

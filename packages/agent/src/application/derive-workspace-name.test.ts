@@ -6,6 +6,11 @@ describe('deriveWorkspaceName', () => {
     expect(deriveWorkspaceName('✳ ui improvements', '/home/u/workspace/api')).toBe('ui improvements');
   });
 
+  // unpark sets `✳ <parked name>`, which must read back as exactly that name.
+  it.each(['audit claude workflows #1077', '#1077 audit', 'story foo 9'])('round-trips a restored title (%s)', (name) => {
+    expect(deriveWorkspaceName(`✳ ${name}`, '/home/u/workspace/api')).toBe(name);
+  });
+
   it('handles braille spinner glyphs', () => {
     expect(deriveWorkspaceName('⠂ session-title', '/home/u/workspace/api')).toBe('session-title');
   });

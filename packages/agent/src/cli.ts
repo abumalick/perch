@@ -56,11 +56,12 @@ export interface CliIo {
   cwd?: string;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  fetch?: typeof fetch;
 }
 
 export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo = {}): Promise<string> {
   if (argv[0] === 'connect' || argv[0] === 'pair') return relaySetup(argv[0], argv.slice(1), env, home);
-  if (argv[0] === 'ls' || argv[0] === 'spawn' || argv[0] === 'peek') return orchestration(argv[0], argv.slice(1), env, home, io);
+  if (argv[0] === 'ls' || argv[0] === 'spawn' || argv[0] === 'peek' || argv[0] === 'unpark') return orchestration(argv[0], argv.slice(1), env, home, io);
   const config = loadConfig({ ...env, ...(await agentEnvValues(env)) }, home);
   const { tmux, recent, lister, hiddenFolders, repoRemote, claudeSessions } = wire(config);
   const [command, ...rest] = argv;
@@ -185,10 +186,11 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, 
 const LS_USAGE = 'usage: perch ls [--json] [--mine] [--parent <workspace id>]';
 const SPAWN_USAGE = 'usage: perch spawn [--title <title>] [--child] [--model <model>] <projectPath>   (brief on stdin)';
 const PEEK_USAGE = 'usage: perch peek <workspace id> [-n <lines>]';
+const UNPARK_USAGE = 'usage: perch unpark <workspace id>...';
 
 // `ls`, `spawn` and `peek` serve sessions in any repo, so none of them needs deploy/agent.env:
 // it only lends the machine id, and the store paths come from $HOME.
-async function orchestration(command: 'ls' | 'spawn' | 'peek', argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo): Promise<string> {
+async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark', argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo): Promise<string> {
   const values = await agentEnvValues(env).catch(() => ({}) as Record<string, string>);
   const config = loadConfig({ PERCH_MACHINE_ID: hostname().split('.')[0], ...env, ...values }, home);
   const tmux = io.tmux ?? new TmuxAdapter();
@@ -266,7 +268,57 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek', argv: string[], e
       const tail = text.split('\n').filter((line) => line.trim().length > 0).slice(-lines);
       return [table([workspace]), '', ...tail].join('\n');
     }
+    case 'unpark': {
+      if (args.length === 0 || args.some((id) => id.startsWith('-'))) throw new Error(UNPARK_USAGE);
+      const unpark = agentUnparker(config.port, home, io.fetch ?? fetch);
+      const lines: string[] = [];
+      let failed = false;
+      for (const id of args) {
+        const result = await unpark(id);
+        failed ||= result !== 'unparked';
+        lines.push(`${id}: ${UNPARK_WORDS[result] ?? result}`);
+      }
+      if (failed) throw new Error(lines.join('\n'));
+      return lines.join('\n');
+    }
   }
+}
+
+const UNPARK_WORDS: Record<string, string> = {
+  unparked: 'opened',
+  'not-parked': 'not parked',
+  'missing-directory': 'its project directory no longer exists',
+};
+
+// Unparking goes through the running agent, the one process that writes status.json (it holds
+// it in memory, so a write from here would be overwritten) and parked.json, and the one that
+// tells the phones. It authenticates with the hooks secret the agent writes at each start.
+function agentUnparker(port: number, home: string, fetchFn: typeof fetch) {
+  const notRunning = `the Perch agent is not running (nothing answered on 127.0.0.1:${port})`;
+  let token: Promise<string> | undefined;
+  return async (id: string): Promise<string> => {
+    token ??= readFile(joinPath(home, '.perch', 'token'), 'utf8').then(
+      (text) => text.trim(),
+      () => {
+        throw new Error(`${notRunning}: no ${joinPath(home, '.perch', 'token')}`);
+      },
+    );
+    const secret = await token;
+    let res: Response;
+    try {
+      res = await fetchFn(`http://127.0.0.1:${port}/unpark`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${secret}` },
+        body: JSON.stringify({ id }),
+      });
+    } catch {
+      throw new Error(notRunning);
+    }
+    const body = (await res.json().catch(() => ({}))) as { result?: string; error?: string };
+    if (res.status === 401) throw new Error('the agent refused the hooks secret: was it restarted since ~/.perch/token was read?');
+    if (!res.ok || !body.result) throw new Error(`${id}: the agent answered ${res.status}${body.error ? ` (${body.error})` : ''}`);
+    return body.result;
+  };
 }
 
 // The workspace the caller's own pane belongs to. Targeted at $TMUX_PANE: an untargeted
@@ -288,6 +340,8 @@ function withSpawnMethods(tmux: TmuxPort) {
     createSession: tmux.createSession.bind(tmux),
     hasSession: tmux.hasSession.bind(tmux),
     setPaneTitle: setPaneTitle.bind(tmux),
+    supportsTitleLock: tmux.supportsTitleLock?.bind(tmux),
+    lockPaneTitle: tmux.lockPaneTitle?.bind(tmux),
   };
 }
 

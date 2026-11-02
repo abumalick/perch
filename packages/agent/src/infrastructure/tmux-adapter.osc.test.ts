@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TmuxAdapter } from './tmux-adapter';
+import { unparkWorkspace } from '../application/unpark-workspace';
 
 // Runs only against a tmux built with the OSC 7501 patch (deploy/tmux-osc7501): set
 // PERCH_TMUX_OSC to its binary. A stock tmux keeps no program status, so without it this skips.
@@ -59,5 +60,23 @@ describe.skipIf(!BINARY)('TmuxAdapter against a tmux patched for OSC 7501', () =
     await t(['send-keys', '-t', 'perch-osc2', "printf '\\033]2;theirs\\007\\033]7501;state=done\\033\\\\'", 'Enter']);
     await until(async () => (await adapter.listSessions('perch-osc2'))[0]?.program?.state === 'done');
     expect((await adapter.listSessions('perch-osc2'))[0]?.title).toBe('✳ ours');
+  });
+
+  it('an unparked workspace keeps its parked name when the resumed program writes a title', async () => {
+    const record = { id: 'perch-osc3', name: 'audit workflows #1077', projectPath: sandbox, command: 'sh', machineId: 'm', createdAt: 1, parkedAt: 2 };
+    const statuses: string[] = [];
+    const result = await unparkWorkspace(
+      {
+        parked: { get: async () => record, remove: async () => {} },
+        tmux: adapter,
+        isDirectory: async () => true,
+        status: { set: (_id, status) => void statuses.push(status) },
+      },
+      record.id,
+    );
+    expect(result).toBe('unparked');
+    await t(['send-keys', '-t', 'perch-osc3', "printf '\\033]2;perch-osc3\\007\\033]7501;state=done\\033\\\\'", 'Enter']);
+    await until(async () => (await adapter.listSessions('perch-osc3'))[0]?.program?.state === 'done');
+    expect((await adapter.listSessions('perch-osc3'))[0]?.title).toBe('✳ audit workflows #1077');
   });
 });

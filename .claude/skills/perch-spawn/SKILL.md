@@ -82,9 +82,12 @@ with ten near-identical summaries, and the tiles cannot be told apart. Give each
 the identifier the rest of the work already uses — the branch, the ticket, the
 row — and a tile matches a log line without guessing.
 
-The title survives for the life of the session. It does **not** survive an
-unpark: a resumed workspace starts a fresh Claude Code without the flag that
-suppresses renaming, so it goes back to naming itself.
+The title survives for the life of the session, and an unpark: opening a parked
+workspace puts back the name it had when parked and holds it (on tmux 3.5+), so
+it keeps that name from then on whether it came from `--title` or not.
+
+`perch unpark <id>...` reopens parked workspaces from a shell, the same way
+opening one on the phone does (it asks the running agent).
 
 Always pass the brief through a **quoted** heredoc (`<<'PROMPT'`). An unquoted
 one lets the shell expand `$` and backticks in the brief before it is written.

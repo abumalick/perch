@@ -147,6 +147,41 @@ function nextMessage(socket: WebSocket): Promise<AgentMessage> {
   });
 }
 
+// The reply to a request, past anything pushed meanwhile: a poll tick or a status change can
+// broadcast a workspaceUpdated just before it.
+function replyOfType<T extends AgentMessage['type']>(socket: WebSocket, type: T): Promise<Extract<AgentMessage, { type: T }>> {
+  return new Promise((resolve) => {
+    const onMessage = (raw: unknown) => {
+      const msg = JSON.parse(String(raw)) as AgentMessage;
+      if (msg.type !== type) return;
+      socket.off('message', onMessage);
+      resolve(msg as Extract<AgentMessage, { type: T }>);
+    };
+    socket.on('message', onMessage);
+  });
+}
+
+// Counts the server's finished poll ticks (pass `onPollTick` to it), so a test waits for polls
+// rather than for time, which a loaded machine stretches. A tick already running when `after` is
+// called counts, so `after(2)` is the first count that includes a whole tick started after it.
+function pollTicks() {
+  let done = 0;
+  let waiters: Array<{ at: number; resolve: () => void }> = [];
+  return {
+    onPollTick: () => {
+      done++;
+      const due = waiters.filter((w) => w.at <= done);
+      waiters = waiters.filter((w) => w.at > done);
+      for (const w of due) w.resolve();
+    },
+    after: (n: number) => new Promise<void>((resolve) => waiters.push({ at: done + n, resolve })),
+  };
+}
+
+// For vi.waitFor on effects of real subprocesses and file writes, which take far longer than its
+// 1 s default on a loaded machine.
+const LOADED_WAIT = { timeout: 15_000 };
+
 function testConfig(home: string, overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
     machineId: 'test',
@@ -379,7 +414,7 @@ describe('WsServer (E2E, real tmux)', () => {
       const pairing = await noiseClient(url, keys.x25519.publicKey, paired);
       pairing.send({ type: 'auth', token: secret });
       expect(await pairing.next()).toMatchObject({ type: 'authResult', ok: true });
-      await vi.waitFor(async () => expect((await store.read()).devices.map((d) => d.x25519)).toContain(paired.x25519.publicKey));
+      await vi.waitFor(async () => expect((await store.read()).devices.map((d) => d.x25519)).toContain(paired.x25519.publicKey), LOADED_WAIT);
       expect((await pairings.read()).map((p) => p.usedAt !== undefined)).toEqual([true]);
       pairing.socket.close();
       const tokenless = await noiseClient(url, keys.x25519.publicKey, paired);
@@ -687,6 +722,7 @@ describe('WsServer (E2E, real tmux)', () => {
     const home = await mkdtemp(join(tmpdir(), 'perch-title-'));
     dirs.push(home);
     const config = testConfig(home);
+    const polls = pollTicks();
     server = new WsServer({
       config,
       hookToken: HOOK_TOKEN,
@@ -713,6 +749,7 @@ describe('WsServer (E2E, real tmux)', () => {
       parked: new FileParkedStore(config.parkedStorePath),
       connectUpstream: noConnectUpstream,
       titlePollMs: 50,
+      onPollTick: polls.onPollTick,
     });
     await server.start();
     const port = server.address().port;
@@ -736,7 +773,7 @@ describe('WsServer (E2E, real tmux)', () => {
     });
 
     // Let the poller record the session's initial (hostname-derived) name first.
-    await new Promise((r) => setTimeout(r, 300));
+    await polls.after(2);
     await exec('tmux', ['select-pane', '-t', name, '-T', '✳ fresh title']);
 
     const msg = await renamed;
@@ -757,6 +794,7 @@ describe('WsServer (E2E, real tmux)', () => {
     const config = testConfig(home);
     const workspaceLogged: WorkspaceLogEntry[] = [];
     const workspaceLog: WorkspaceLogPort = { append: async (e) => void workspaceLogged.push(e) };
+    const polls = pollTicks();
     server = new WsServer({
       config,
       hookToken: HOOK_TOKEN,
@@ -783,6 +821,7 @@ describe('WsServer (E2E, real tmux)', () => {
       parked: new FileParkedStore(config.parkedStorePath),
       connectUpstream: noConnectUpstream,
       titlePollMs: 50,
+      onPollTick: polls.onPollTick,
     });
     await server.start();
     const port = server.address().port;
@@ -805,7 +844,7 @@ describe('WsServer (E2E, real tmux)', () => {
 
     // Let the poller record the session as present first, then kill it out from under
     // the agent (as happens when the inner Claude process exits and tmux destroys it).
-    await new Promise((r) => setTimeout(r, 300));
+    await polls.after(2);
     await exec('tmux', ['kill-session', '-t', name]);
 
     const msg = await closed;
@@ -813,9 +852,12 @@ describe('WsServer (E2E, real tmux)', () => {
     if (msg.type === 'closed') {
       expect(msg.workspaceId).toBe(name);
     }
-    expect(workspaceLogged).toEqual([
-      expect.objectContaining({ id: name, projectPath: tmpdir(), reason: 'exited' }),
-    ]);
+    // The poll pushes the close before it writes the log entry.
+    await vi.waitFor(() => {
+      expect(workspaceLogged).toEqual([
+        expect.objectContaining({ id: name, projectPath: tmpdir(), reason: 'exited' }),
+      ]);
+    }, LOADED_WAIT);
 
     await new Promise<void>((resolve) => {
       socket.on('close', () => resolve());
@@ -829,6 +871,7 @@ describe('WsServer (E2E, real tmux)', () => {
     const config = testConfig(home);
     const workspaceLogged: WorkspaceLogEntry[] = [];
     const workspaceLog: WorkspaceLogPort = { append: async (e) => void workspaceLogged.push(e) };
+    const polls = pollTicks();
     server = new WsServer({
       config,
       hookToken: HOOK_TOKEN,
@@ -861,6 +904,7 @@ describe('WsServer (E2E, real tmux)', () => {
       // test. A wider gap leaves a comfortable margin around the close for the real
       // tmux-kill subprocess to finish well clear of the neighbouring poll ticks.
       titlePollMs: 400,
+      onPollTick: polls.onPollTick,
     });
     await server.start();
     const port = server.address().port;
@@ -880,7 +924,7 @@ describe('WsServer (E2E, real tmux)', () => {
     await nextMessage(observer); // authResult
 
     // Let the poller record the session as present before closing it.
-    await new Promise((r) => setTimeout(r, 450));
+    await polls.after(2);
 
     const observerClosed = new Promise<AgentMessage>((resolve) => {
       observer.on('message', (raw) => {
@@ -895,8 +939,8 @@ describe('WsServer (E2E, real tmux)', () => {
     const msg = await observerClosed; // the OTHER device must also get it
     expect(msg.type).toBe('closed');
 
-    // Give the next poll tick(s) a chance to run and confirm no duplicate 'exited' entry appears.
-    await new Promise((r) => setTimeout(r, 450));
+    // Let polls run once tmux no longer lists the session and confirm no duplicate 'exited' entry appears.
+    await polls.after(3);
     expect(workspaceLogged.filter((e) => e.id === name)).toEqual([
       expect.objectContaining({ id: name, reason: 'closed-by-user' }),
     ]);
@@ -1191,30 +1235,26 @@ describe('WsServer (E2E, real tmux)', () => {
     socket.send(JSON.stringify({ type: 'setStatus', workspaceId: name, status: 'parked' }));
     await vi.waitFor(async () => {
       expect(await tmux.hasSession(name)).toBe(false);
-    });
+    }, LOADED_WAIT);
 
     // Still listed as parked — the PWA sees no gap, and parking is not a close.
     socket.send(JSON.stringify({ type: 'list' }));
     // The park's own workspaceUpdated can still be in flight once tmux has dropped the session.
-    let listed = await nextMessage(socket);
-    while (listed.type === 'workspaceUpdated') listed = await nextMessage(socket);
-    expect(listed.type).toBe('workspaces');
-    if (listed.type === 'workspaces') {
-      expect(listed.workspaces.find((w) => w.id === name)).toMatchObject({ status: 'parked' });
-    }
+    const listed = await replyOfType(socket, 'workspaces');
+    expect(listed.workspaces.find((w) => w.id === name)).toMatchObject({ status: 'parked' });
     expect(logged.find((e) => e.id === name)).toBeUndefined();
 
     // Reopening recreates the session.
     socket.send(JSON.stringify({ type: 'attach', workspaceId: name, cols: 80, rows: 24 }));
     await vi.waitFor(async () => {
       expect(await tmux.hasSession(name)).toBe(true);
-    });
+    }, LOADED_WAIT);
     // unparkWorkspace creates the session before clearing the record, so hasSession can
     // flip true a moment before the parked-store write lands — poll this too rather than
     // reading the file exactly once.
     await vi.waitFor(async () => {
       expect(JSON.parse(await readFile(config.parkedStorePath, 'utf8'))).toEqual([]);
-    });
+    }, LOADED_WAIT);
 
     await new Promise<void>((resolve) => {
       socket.on('close', () => resolve());
@@ -1275,7 +1315,7 @@ describe('WsServer (E2E, real tmux)', () => {
     socket.send(JSON.stringify({ type: 'setStatus', workspaceId: name, status: 'parked' }));
     await vi.waitFor(async () => {
       expect(await tmux.hasSession(name)).toBe(false);
-    });
+    }, LOADED_WAIT);
 
     const parked = JSON.parse(await readFile(config.parkedStorePath, 'utf8')) as Array<{ id: string; command: string }>;
     expect(parked).toHaveLength(1);
@@ -1283,12 +1323,8 @@ describe('WsServer (E2E, real tmux)', () => {
 
     socket.send(JSON.stringify({ type: 'list' }));
     // The park's own workspaceUpdated can still be in flight once tmux has dropped the session.
-    let listed = await nextMessage(socket);
-    while (listed.type === 'workspaceUpdated') listed = await nextMessage(socket);
-    expect(listed.type).toBe('workspaces');
-    if (listed.type === 'workspaces') {
-      expect(listed.workspaces.find((w) => w.id === name)).toMatchObject({ status: 'parked' });
-    }
+    const listed = await replyOfType(socket, 'workspaces');
+    expect(listed.workspaces.find((w) => w.id === name)).toMatchObject({ status: 'parked' });
 
     await new Promise<void>((resolve) => {
       socket.on('close', () => resolve());
@@ -1359,6 +1395,7 @@ describe('WsServer (E2E, real tmux)', () => {
     const config = testConfig(home);
     const logged: WorkspaceLogEntry[] = [];
     const workspaceLog: WorkspaceLogPort = { append: async (e) => void logged.push(e) };
+    const polls = pollTicks();
     server = new WsServer({
       config,
       hookToken: HOOK_TOKEN,
@@ -1385,6 +1422,7 @@ describe('WsServer (E2E, real tmux)', () => {
       parked: new FileParkedStore(config.parkedStorePath),
       connectUpstream: noConnectUpstream,
       titlePollMs: 50,
+      onPollTick: polls.onPollTick,
     });
     await server.start();
     const port = server.address().port;
@@ -1407,7 +1445,7 @@ describe('WsServer (E2E, real tmux)', () => {
     // Let the poller record the session as present first, so the id is already tracked in
     // WsServer's internal `lastWorkspaces` map when it disappears below — exactly the
     // precondition the disappearance-detection loop needs to fire.
-    await new Promise((r) => setTimeout(r, 300));
+    await polls.after(2);
 
     // Land the workspace directly in the settled post-park state (a parked record on disk,
     // no tmux session) instead of going through the WS `setStatus: 'parked'` flow. That
@@ -1429,20 +1467,15 @@ describe('WsServer (E2E, real tmux)', () => {
     });
     await exec('tmux', ['kill-session', '-t', name]);
 
-    // Give several poll ticks (titlePollMs: 50) a chance to run against the settled state.
-    // Absence can't be `vi.waitFor`'d, so wait a fixed window well past several ticks, then
-    // assert.
-    await new Promise((r) => setTimeout(r, 400));
-
-    expect(closedForParked).toEqual([]);
+    // Absence can't be `vi.waitFor`'d: wait for whole poll ticks against the settled state.
+    await polls.after(3);
     expect(logged.find((e) => e.id === name)).toBeUndefined();
 
+    // Anything those ticks pushed reaches the socket before this reply does.
     socket.send(JSON.stringify({ type: 'list' }));
-    const listed = await nextMessage(socket);
-    expect(listed.type).toBe('workspaces');
-    if (listed.type === 'workspaces') {
-      expect(listed.workspaces.find((w) => w.id === name)).toMatchObject({ status: 'parked' });
-    }
+    const listed = await replyOfType(socket, 'workspaces');
+    expect(listed.workspaces.find((w) => w.id === name)).toMatchObject({ status: 'parked' });
+    expect(closedForParked).toEqual([]);
 
     await new Promise<void>((resolve) => {
       socket.on('close', () => resolve());
@@ -1592,12 +1625,14 @@ describe('WsServer waiting-on-parent push', () => {
     const logged: string[] = [];
     const closed: string[] = [];
     const names: string[] = [];
+    const polls = pollTicks();
     const s = new WsServer({
       ...makeServerDeps(testConfig(home), noClientLog),
       tmux,
       clock,
       workspaceLog: { append: async (e) => void logged.push(`${e.id}:${e.reason}`) },
       titlePollMs: 20,
+      onPollTick: polls.onPollTick,
     });
     server = s;
     await s.start();
@@ -1611,9 +1646,16 @@ describe('WsServer waiting-on-parent push', () => {
       if (msg.type === 'closed') closed.push(msg.workspaceId);
       if (msg.type === 'workspaceUpdated' && msg.workspace.id === 'perch-x') names.push(msg.workspace.name);
     });
+    // A whole poll tick, then a round trip, so whatever that tick pushed has reached the client.
+    const ticks = async () => {
+      await polls.after(2);
+      socket.send(JSON.stringify({ type: 'list' }));
+      await replyOfType(socket, 'workspaces');
+    };
     await ticks();
     return {
       server: s,
+      ticks,
       clock,
       logged,
       closed,
@@ -1622,7 +1664,6 @@ describe('WsServer waiting-on-parent push', () => {
       setTitle: (next: string | null) => void (title = next),
     };
   }
-  const ticks = () => new Promise((r) => setTimeout(r, 100));
 
   // An explicit close forgets the workspace before its tmux kill completes. A poll that still
   // lists the session in that gap must not take it back, or the workspace is logged a second
@@ -1630,9 +1671,9 @@ describe('WsServer waiting-on-parent push', () => {
   it('does not take back a workspace that is being closed while tmux still lists it', async () => {
     const s = await pollingServer();
     expect(s.server.forgetWorkspace('perch-x', true)).toMatchObject({ id: 'perch-x' });
-    await ticks();
+    await s.ticks();
     s.setTitle(null);
-    await ticks();
+    await s.ticks();
     expect(s.logged).toEqual([]);
     expect(s.closed).toEqual([]);
   });
@@ -1642,12 +1683,12 @@ describe('WsServer waiting-on-parent push', () => {
   it('goes on following a workspace forgotten by a park, after it is unparked', async () => {
     const s = await pollingServer();
     s.server.forgetWorkspace('perch-x');
-    await ticks();
+    await s.ticks();
     s.setTitle('✳ renamed');
-    await ticks();
+    await s.ticks();
     expect(s.names).toContain('renamed');
     s.setTitle(null);
-    await ticks();
+    await s.ticks();
     expect(s.logged).toEqual(['perch-x:exited']);
     expect(s.closed).toEqual(['perch-x']);
   });
@@ -1656,11 +1697,11 @@ describe('WsServer waiting-on-parent push', () => {
   it('takes a closing workspace back once tmux has gone on listing it too long', async () => {
     const s = await pollingServer();
     s.server.forgetWorkspace('perch-x', true);
-    await ticks();
+    await s.ticks();
     s.clock.t += 11_000;
-    await ticks();
+    await s.ticks();
     s.setTitle('✳ still here');
-    await ticks();
+    await s.ticks();
     expect(s.names).toContain('still here');
   });
 
@@ -1689,6 +1730,110 @@ describe('WsServer waiting-on-parent push', () => {
     socket.send(JSON.stringify({ type: 'list' }));
     const list = await nextMessage(socket);
     expect(list).toMatchObject({ type: 'workspaces', workspaces: [{ id: 'perch-child', waitingOn: 'parent' }] });
+  });
+});
+
+describe('WsServer poll ticks', () => {
+  function fakeTmux(listSessions: TmuxPort['listSessions']): TmuxPort {
+    return {
+      listSessions,
+      createSession: async () => undefined,
+      killSession: async () => undefined,
+      hasSession: async () => true,
+    };
+  }
+
+  // A tick that outlasts the interval (a loaded machine, a slow tmux) must not let the next one
+  // start beside it: a stale tick finishing last would take back a workspace a newer one saw go.
+  it('does not start a tick while the previous one is still running', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-overlap-'));
+    dirs.push(home);
+    let release!: () => void;
+    const blocked = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    const tmux = fakeTmux(async () => {
+      calls++;
+      await blocked;
+      return [];
+    });
+    let ticks = 0;
+    server = new WsServer({
+      ...makeServerDeps(testConfig(home), noClientLog),
+      tmux,
+      titlePollMs: 10,
+      onPollTick: () => void ticks++,
+    });
+    await server.start();
+    const socket = new WebSocket(await clientUrl());
+    await new Promise((r) => socket.once('open', r));
+    socket.send(JSON.stringify({ type: 'auth', token: 'secret' }));
+    await nextMessage(socket);
+
+    await vi.waitFor(() => expect(calls).toBeGreaterThan(0), LOADED_WAIT);
+    const started = calls;
+    await new Promise((r) => setTimeout(r, 100));
+    expect(calls).toBe(started);
+    expect(ticks).toBe(0);
+
+    release();
+    await vi.waitFor(() => expect(ticks).toBeGreaterThan(0), LOADED_WAIT);
+    socket.close();
+  });
+
+  // The guard must not turn one call that never returns (a wedged tmux) into no polling at all.
+  it('starts ticks again once a hung one passes its deadline', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-hung-'));
+    dirs.push(home);
+    let calls = 0;
+    const tmux = fakeTmux(async () => {
+      calls++;
+      return calls <= 2 ? new Promise<never>(() => undefined) : [];
+    });
+    let ticks = 0;
+    server = new WsServer({
+      ...makeServerDeps(testConfig(home), noClientLog),
+      tmux,
+      titlePollMs: 10,
+      tickDeadlineMs: 100,
+      onPollTick: () => void ticks++,
+    });
+    await server.start();
+    const socket = new WebSocket(await clientUrl());
+    await new Promise((r) => socket.once('open', r));
+    socket.send(JSON.stringify({ type: 'auth', token: 'secret' }));
+    await nextMessage(socket);
+
+    await vi.waitFor(() => expect(calls).toBeGreaterThan(2), LOADED_WAIT);
+    socket.close();
+  });
+
+  // A status change is pushed from a fire-and-forget listing; a tmux failing there (its server
+  // exiting with its last session) must not become an unhandled rejection, which ends the agent.
+  it('survives a tmux failure while pushing a status change', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-pushfail-'));
+    dirs.push(home);
+    let failed = false;
+    const tmux = fakeTmux(async () => {
+      failed = true;
+      throw Object.assign(new Error('tmux list-sessions failed'), { stderr: 'server exited unexpectedly\n' });
+    });
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      server = new WsServer({ ...makeServerDeps(testConfig(home), noClientLog), tmux, titlePollMs: 60_000 });
+      await server.start();
+      const res = await fetch(`http://127.0.0.1:${server.address().port}/hooks`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${HOOK_TOKEN}` },
+        body: JSON.stringify({ sessionName: 'perch-x', event: 'UserPromptSubmit' }),
+      });
+      expect(res.status).toBe(204);
+      await vi.waitFor(() => expect(failed).toBe(true), LOADED_WAIT);
+      for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
   });
 });
 

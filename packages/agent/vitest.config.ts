@@ -5,5 +5,6 @@ export default defineConfig({
     fileParallelism: false,
     testTimeout: 20000,
     hookTimeout: 20000,
+    globalSetup: ['./src/tmux-anchor.test-support.ts'],
   },
 });

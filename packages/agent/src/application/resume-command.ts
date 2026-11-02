@@ -17,8 +17,18 @@ export function resumeCommand(command: string, sessionId: string | undefined): s
   if (!sessionId || command.trim().length === 0) {
     return command;
   }
-  const base = stripResumeFlag(command);
+  const base = stripResumeFlag(unwrapResume(command));
   return `${base} --resume ${sessionId} || exec ${base}`;
+}
+
+// An agent that predates `storedCommand` on unpark recorded this function's own output as
+// `@perch_command`. Only that exact shape is unwrapped: the `|| exec` arm equals the first arm
+// without its `--resume`.
+function unwrapResume(command: string): string {
+  const at = command.indexOf(' || exec ');
+  if (at < 0) return command;
+  const fallback = command.slice(at + ' || exec '.length).trim();
+  return stripResumeFlag(command.slice(0, at)) === stripResumeFlag(fallback) ? fallback : command;
 }
 
 // Drops an existing `--resume <value>` pair so parking a workspace twice replaces the id

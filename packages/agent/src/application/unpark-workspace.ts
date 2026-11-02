@@ -40,6 +40,9 @@ export async function unparkWorkspace(
     name: record.id,
     cwd: record.projectPath,
     command: resumeCommand(record.command, record.claudeSessionId),
+    // Recorded bare, so parking this workspace again resumes it instead of re-wrapping the
+    // `|| exec` fallback, whose first arm would then start a fresh session.
+    storedCommand: record.command,
     ...(record.parent ? { parent: record.parent } : {}),
   });
   // The workspace's name is its pane title, and the resumed Claude would write a new one: the

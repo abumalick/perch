@@ -62,6 +62,7 @@ describe('unparkWorkspace', () => {
       name: 'perch-a',
       cwd: '/home/u/workspace/foo',
       command: 'claude --model opus --resume sess-1 || exec claude --model opus',
+      storedCommand: 'claude --model opus',
     });
   });
 

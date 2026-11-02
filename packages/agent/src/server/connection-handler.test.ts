@@ -880,6 +880,7 @@ describe('ConnectionHandler park/unpark', () => {
       name: 'perch-1',
       cwd: '/projects/app',
       command: 'claude --resume sess-1 || exec claude',
+      storedCommand: 'claude',
     });
     expect(await parkedStore.get('perch-1')).toBeUndefined();
   });

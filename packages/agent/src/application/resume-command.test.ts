@@ -50,4 +50,17 @@ describe('resumeCommand', () => {
   it('returns a whitespace-only command unchanged even with a session id', () => {
     expect(resumeCommand('   ', 'sess-1')).toBe('   ');
   });
+
+  // An agent that predates storedCommand on unpark recorded the whole resume string as
+  // `@perch_command`; parking such a workspace again must not run a fresh session first.
+  it('unwraps a command that is already a resume string', () => {
+    const base = "claude --model 'opus[1m]'";
+    expect(resumeCommand(`${base} --resume old || exec ${base}`, 'new')).toBe(
+      `${base} --resume new || exec ${base}`,
+    );
+  });
+
+  it('keeps a command whose || tail is not its own fallback', () => {
+    expect(resumeCommand('claude || exec bash', 's')).toBe('claude || exec bash --resume s || exec claude || exec bash');
+  });
 });

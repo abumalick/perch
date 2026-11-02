@@ -137,9 +137,13 @@ use them:
   starts a workspace running Claude Code on the brief and prints its id (also its Claude session
   name). `--child` makes the caller's own workspace its orchestrator. The child records the
   parent's workspace id, cannot ask the user or enter plan mode, and reports back with SendMessage.
-- `perch ls [--json] [--mine] [--parent <workspace id>]`: every workspace, parked ones included,
-  with its messaging name, stored status, time in that status, parent, title and folder. `--mine`
-  lists the caller's children.
+- `perch ls [--json] [--mine] [--parent <workspace id>] [--role orchestrator|child|normal] [--path <dir>]`:
+  every workspace, parked ones included, with its messaging name, stored status, time in that
+  status, role, parent, title and folder. The role comes from the `--child` links: a workspace with
+  a listed child is an orchestrator (even if it is a child too), one with a parent is a child, the
+  rest are normal. `--mine` lists the caller's children, `--role` one role, and `--path` the
+  workspaces whose folder is that directory or under it (relative to the caller, so `--path .`
+  means "this project", worktrees included). Filters combine.
 - `perch peek <workspace id> [-n <lines>]`: its status line and the last 40 (or N) non-blank lines
   of its pane.
 

@@ -36,6 +36,7 @@ import { FsFileWriter } from './infrastructure/fs-file-writer';
 import { fsResolveDirectory } from './infrastructure/fs-directory-checker';
 import { spawnWorkspace } from './application/spawn-workspace';
 import { formatWorkspaceTable } from './application/format-workspace-table';
+import { isUnderPath, WORKSPACE_ROLES, workspaceRole, type WorkspaceRole } from './application/workspace-role';
 import type { TmuxPort } from './ports/tmux-port';
 import type { StatusStorePort } from './ports/status-store-port';
 
@@ -183,7 +184,7 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, 
   }
 }
 
-const LS_USAGE = 'usage: perch ls [--json] [--mine] [--parent <workspace id>]';
+const LS_USAGE = `usage: perch ls [--json] [--mine] [--parent <workspace id>] [--role ${WORKSPACE_ROLES.join('|')}] [--path <project dir>]`;
 const SPAWN_USAGE = 'usage: perch spawn [--title <title>] [--child] [--model <model>] <projectPath>   (brief on stdin)';
 const PEEK_USAGE = 'usage: perch peek <workspace id> [-n <lines>]';
 const UNPARK_USAGE = 'usage: perch unpark <workspace id>...';
@@ -213,7 +214,8 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark', argv: 
       claudeSessions,
       messagedLast: { has: (id) => status.getMessagedLast(id) },
     });
-    return workspaces.filter((w) => !isHiddenPath(w.projectPath, hidden));
+    const shown = workspaces.filter((w) => !isHiddenPath(w.projectPath, hidden));
+    return shown.map((w) => ({ ...w, role: workspaceRole(w, shown) }));
   };
   const table = (workspaces: Awaited<ReturnType<typeof list>>) =>
     formatWorkspaceTable(workspaces, { now: (io.now ?? Date.now)(), home });
@@ -223,9 +225,17 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark', argv: 
       const json = flag('--json');
       const mine = flag('--mine');
       const parent = takeOption(args, '--parent', LS_USAGE);
-      if (args.length > 0) throw new Error(LS_USAGE);
+      const role = takeOption(args, '--role', LS_USAGE);
+      const path = takeOption(args, '--path', LS_USAGE);
+      if (args.length > 0 || (role !== undefined && !WORKSPACE_ROLES.includes(role as WorkspaceRole))) throw new Error(LS_USAGE);
       const of = mine ? await callerWorkspace(env, tmux) : parent;
-      const workspaces = (await list()).filter((w) => of === undefined || w.parentId === of);
+      const dir = path === undefined ? undefined : resolvePath(io.cwd ?? process.cwd(), path);
+      const workspaces = (await list()).filter(
+        (w) =>
+          (of === undefined || w.parentId === of) &&
+          (role === undefined || w.role === role) &&
+          (dir === undefined || isUnderPath(w.projectPath, dir)),
+      );
       return json ? JSON.stringify(workspaces, null, 2) : table(workspaces);
     }
     case 'spawn': {

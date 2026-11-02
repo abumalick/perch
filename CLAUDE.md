@@ -235,7 +235,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
 
 - **The `perch` CLI and the orchestrator → child link.** `deploy/install-cli.sh` links
   `deploy/perch-cli.sh` to `~/.local/bin/perch` on each machine, so any session in any repo can
-  run `perch spawn [--child]`, `perch ls [--mine]`, `perch peek <id>` and `perch unpark <id>...`.
+  run `perch spawn [--child]`, `perch ls [--mine|--role|--path]`, `perch peek <id>` and `perch unpark <id>...`.
   The first three read tmux and the `~/.perch` stores directly (read-only, no agent.env needed)
   and skip the GitHub lookup, so `ls` answers in a fraction of a second; `unpark` asks the
   running agent (parking section). **Orchestration is explicit:** a plain

@@ -347,15 +347,16 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     );
     const out = await run(['ls'], env, home, io(fakeTmux().tmux));
     const lines = out.split('\n');
-    expect(lines[0]).toMatch(/^ID +NAME +STATUS +AGE +PARENT +TITLE +FOLDER$/);
-    expect(out).toMatch(/perch-aaaaaa +- +idle +1h +- +Fix login +\/w\/foo/);
-    expect(out).toMatch(/perch-bbbbbb +- +needs-feedback \(urgent\) +2m +perch-aaaaaa +Child/);
-    expect(out).toMatch(/perch-pppppp +- +parked +1d/);
+    expect(lines[0]).toMatch(/^ID +NAME +STATUS +AGE +ROLE +PARENT +TITLE +FOLDER$/);
+    expect(out).toMatch(/perch-aaaaaa +- +idle +1h +orchestrator +- +Fix login +\/w\/foo/);
+    expect(out).toMatch(/perch-bbbbbb +- +needs-feedback \(urgent\) +2m +child +perch-aaaaaa +Child/);
+    expect(out).toMatch(/perch-pppppp +- +parked +1d +normal /);
     expect(out).not.toContain('perch-hhhhhh');
     const json = JSON.parse(await run(['ls', '--json'], env, home, io(fakeTmux().tmux))) as Workspace[];
     expect(json.map((w) => w.id)).toEqual(['perch-aaaaaa', 'perch-bbbbbb', 'perch-pppppp']);
     expect(json[0]!.machineId).toBe(hostname().split('.')[0]);
     expect(json[1]!.parentId).toBe('perch-aaaaaa');
+    expect(json.map((w) => (w as Workspace & { role: string }).role)).toEqual(['orchestrator', 'child', 'normal']);
   });
 
   it('shows a child whose last act was SendMessage as waiting on its orchestrator', async () => {
@@ -385,6 +386,28 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     await mkdir(join(home, '.perch', 'status.json'));
     await mkdir(join(home, '.perch', 'parked.json'));
     expect(await run(['ls'], env, home, io(fakeTmux().tmux))).toContain('perch-aaaaaa');
+  });
+
+  it('filters by role, keeping the role the whole list gives', async () => {
+    const { home, env } = await machine();
+    const ids = async (...argv: string[]) => (JSON.parse(await run(['ls', '--json', ...argv], env, home, io(fakeTmux().tmux))) as Workspace[]).map((w) => w.id);
+    expect(await ids('--role', 'orchestrator')).toEqual(['perch-aaaaaa']);
+    expect(await ids('--role', 'child')).toEqual(['perch-bbbbbb']);
+    expect(await ids('--role', 'normal')).toEqual([]);
+    await expect(run(['ls', '--role', 'boss'], env, home, io(fakeTmux().tmux))).rejects.toThrow(/usage: perch ls/);
+  });
+
+  it('filters by project path: the directory and everything under it, relative to the caller', async () => {
+    const { home, env } = await machine();
+    const ids = async (cwd: string, ...argv: string[]) =>
+      (JSON.parse(await run(['ls', '--json', ...argv], env, home, io(fakeTmux().tmux, { cwd }))) as Workspace[]).map((w) => w.id);
+    expect(await ids('/', '--path', '/w/foo')).toEqual(['perch-aaaaaa']);
+    expect(await ids('/', '--path', '/w')).toEqual(['perch-aaaaaa', 'perch-bbbbbb']);
+    expect(await ids('/w', '--path', 'bar')).toEqual(['perch-bbbbbb']);
+    expect(await ids('/w/bar', '--path', '.')).toEqual(['perch-bbbbbb']);
+    expect(await ids('/', '--path', '/w/fo')).toEqual([]);
+    const out = await run(['ls', '--path', '/w/bar'], env, home, io(fakeTmux().tmux, { cwd: '/' }));
+    expect(out).toMatch(/perch-bbbbbb .* child +perch-aaaaaa/);
   });
 
   it('filters by parent, and --mine by the workspace the caller runs in', async () => {

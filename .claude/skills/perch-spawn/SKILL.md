@@ -30,9 +30,9 @@ this conversation. **The brief is the only thing it will ever know.**
 
 ## Workflow
 
-1. **Check nothing already covers it.** `perch ls` lists every workspace, parked
-   ones included, with its title and folder; resume or message an existing one
-   rather than spawning a duplicate.
+1. **Check nothing already covers it.** `perch ls --path <project>` lists every
+   workspace in that project, parked ones included, with its title and role;
+   resume or message an existing one rather than spawning a duplicate.
 2. **Resolve a project path per item** — it must exist (a relative one resolves
    against your cwd). Two items on the same repo get the same path (see Isolation).
 3. **Write a self-contained brief per item** (see below).

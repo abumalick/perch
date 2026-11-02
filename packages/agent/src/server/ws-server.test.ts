@@ -1195,7 +1195,9 @@ describe('WsServer (E2E, real tmux)', () => {
 
     // Still listed as parked — the PWA sees no gap, and parking is not a close.
     socket.send(JSON.stringify({ type: 'list' }));
-    const listed = await nextMessage(socket);
+    // The park's own workspaceUpdated can still be in flight once tmux has dropped the session.
+    let listed = await nextMessage(socket);
+    while (listed.type === 'workspaceUpdated') listed = await nextMessage(socket);
     expect(listed.type).toBe('workspaces');
     if (listed.type === 'workspaces') {
       expect(listed.workspaces.find((w) => w.id === name)).toMatchObject({ status: 'parked' });

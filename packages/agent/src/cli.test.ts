@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -408,6 +408,18 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     expect(await ids('/', '--path', '/w/fo')).toEqual([]);
     const out = await run(['ls', '--path', '/w/bar'], env, home, io(fakeTmux().tmux, { cwd: '/' }));
     expect(out).toMatch(/perch-bbbbbb .* child +perch-aaaaaa/);
+  });
+
+  it('matches --path through a symlink, since spawn stores the resolved folder', async () => {
+    const { home, env } = await machine();
+    const real = await realpath(await mkdtemp(join(home, 'real-')));
+    await symlink(real, join(home, 'link'));
+    await writeFile(
+      join(home, '.perch', 'parked.json'),
+      JSON.stringify([{ id: 'perch-pppppp', name: 'Parked one', projectPath: real, command: 'claude', machineId: 'm', createdAt: 1, parkedAt: NOW }]),
+    );
+    const out = await run(['ls', '--json', '--path', join(home, 'link')], env, home, io(fakeTmux().tmux, { cwd: '/' }));
+    expect((JSON.parse(out) as Workspace[]).map((w) => w.id)).toEqual(['perch-pppppp']);
   });
 
   it('filters by parent, and --mine by the workspace the caller runs in', async () => {

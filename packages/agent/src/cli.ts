@@ -1,5 +1,5 @@
 import { homedir, hostname } from 'node:os';
-import { readFile, writeFile, mkdir, copyFile, chmod } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, copyFile, chmod, realpath } from 'node:fs/promises';
 import { dirname, join as joinPath, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, type AgentConfig } from './infrastructure/config';
@@ -229,12 +229,14 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark', argv: 
       const path = takeOption(args, '--path', LS_USAGE);
       if (args.length > 0 || (role !== undefined && !WORKSPACE_ROLES.includes(role as WorkspaceRole))) throw new Error(LS_USAGE);
       const of = mine ? await callerWorkspace(env, tmux) : parent;
-      const dir = path === undefined ? undefined : resolvePath(io.cwd ?? process.cwd(), path);
+      const given = path === undefined ? undefined : resolvePath(io.cwd ?? process.cwd(), path);
+      // spawn stores the resolved folder, a workspace made from the phone the one it was given.
+      const dirs = given === undefined ? undefined : [given, await realpath(given).catch(() => given)];
       const workspaces = (await list()).filter(
         (w) =>
           (of === undefined || w.parentId === of) &&
           (role === undefined || w.role === role) &&
-          (dir === undefined || isUnderPath(w.projectPath, dir)),
+          (dirs === undefined || dirs.some((dir) => isUnderPath(w.projectPath, dir))),
       );
       return json ? JSON.stringify(workspaces, null, 2) : table(workspaces);
     }

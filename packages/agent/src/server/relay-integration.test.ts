@@ -108,7 +108,6 @@ function serverFor(config: AgentConfig): WsServer {
       setViewport: async () => undefined,
     },
     hiddenFolders: { list: async () => [] },
-    commands: { list: async () => [] },
     launchers: { list: async () => [], remember: async () => {}, forget: async () => {} },
     detectInstalled: async () => [],
     keyterms: { list: async () => [] },

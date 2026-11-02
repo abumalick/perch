@@ -127,10 +127,6 @@
   // The BrowserPicker routes on the count: none → start, one → open, several → a dropdown.
   const browserSessions = $derived(store.active ? store.browserSessionsFor(store.active) : []);
   const canStartBrowser = $derived(!!store.active && store.supportsBrowser(store.active.machineId));
-  // Per-machine: the shortcuts come from the agent the active workspace lives on.
-  const commandShortcuts = $derived(
-    store.active ? (store.machineCommands[store.active.machineId] ?? []) : [],
-  );
   const openBrowserSession = (name: string) => {
     const ws = store.active;
     if (ws) store.openBrowserView(ws.machineId, name);
@@ -457,7 +453,6 @@
     presetKeys={store.presetKeys}
     onSelectPreset={(id) => store.selectPreset(id)}
     onAddPreset={() => store.addDictationPreset()}
-    commands={commandShortcuts}
     onPickFile={pickFile}
 
     bind:ctrl

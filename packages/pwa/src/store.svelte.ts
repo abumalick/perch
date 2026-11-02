@@ -1,4 +1,4 @@
-import type { AgentMessage, BrowserSession, ClientMessage, CommandEntry, MachineStats, MediaResult, Workspace, WorkspaceStatus } from '@perch/contracts';
+import type { AgentMessage, BrowserSession, ClientMessage, MachineStats, MediaResult, Workspace, WorkspaceStatus } from '@perch/contracts';
 import { imageMediaType, pdfMediaType, audioMediaType } from '@perch/contracts';
 import { SvelteSet } from 'svelte/reactivity';
 import type { ConnectionManager } from './core/connection-manager';
@@ -146,9 +146,6 @@ export class PerchStore {
   // The agent's configured project roots, per machine, used as the folder picker's
   // top-level browse points. Filled from the `roots` reply to `listRoots` (sent on goCreate).
   machineRoots = $state<Record<string, string[]>>({});
-  // The agent machine's command shortcuts, per machine, offered by the keyboard bar's
-  // drop-down. Filled from the `commands` reply to `listCommands` (sent on every connect).
-  machineCommands = $state<Record<string, CommandEntry[]>>({});
   // What each machine offers in the Create Workspace command list: the known CLIs it has
   // installed and the custom commands launched there. Filled from the `launchers` reply to
   // `listLaunchers` (sent whenever the create form opens); absent for an agent too old to answer.
@@ -537,9 +534,6 @@ export class PerchStore {
       }
       case 'launchers':
         this.machineLaunchers = { ...this.machineLaunchers, [machineId]: { detected: message.detected, custom: message.custom } };
-        return;
-      case 'commands':
-        this.machineCommands = { ...this.machineCommands, [machineId]: message.commands };
         return;
       case 'keyterms':
         this.machineKeyterms = { ...this.machineKeyterms, [machineId]: message.keyterms };

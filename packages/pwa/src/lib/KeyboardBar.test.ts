@@ -96,15 +96,12 @@ describe('KeyboardBar', () => {
     expect(screen.queryByRole('button', { name: /attach file/i })).toBeNull();
   });
 
-  it('places Attach file right after Paste and before the Commands trigger', () => {
-    render(KeyboardBar, {
-      props: { ...base, onPickFile: vi.fn(), commands: [{ command: '/rename', submit: true }] },
-    });
+  it('places Attach file right after Paste', () => {
+    render(KeyboardBar, { props: { ...base, onPickFile: vi.fn() } });
     const labels = screen
       .getAllByRole('button')
       .map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim());
     expect(labels.indexOf('Attach file')).toBe(labels.indexOf('Paste') + 1);
-    expect(labels.indexOf('Attach file')).toBeLessThan(labels.indexOf('Commands'));
   });
 
   it('has a Command modifier button', () => {
@@ -191,42 +188,6 @@ describe('KeyboardBar', () => {
       'Select text',
       'Paste',
     ]);
-  });
-
-  // Placement is a deliberate exception to the fold rationale above: the commands
-  // trigger goes last. Pinned here so it stays deliberate rather than drifting.
-  it('puts the commands trigger last in the bar', () => {
-    render(KeyboardBar, { props: { ...base, commands: [{ command: '/rename', submit: true }] } });
-    const labels = screen
-      .getAllByRole('button')
-      .map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim());
-    expect(labels.at(-1)).toBe('Commands');
-  });
-
-  // No config file on that machine → nothing to offer, so the bar is unchanged.
-  it('omits the commands trigger when the machine has no shortcuts', () => {
-    render(KeyboardBar, { props: { ...base, commands: [] } });
-    expect(screen.queryByRole('button', { name: /commands/i })).toBeNull();
-  });
-
-  it('sends the command text when a shortcut is picked', async () => {
-    const send = vi.fn();
-    render(KeyboardBar, {
-      props: { ...base, send, commands: [{ command: '/rename', submit: true }] },
-    });
-    await fireEvent.click(screen.getByRole('button', { name: /commands/i }));
-    await fireEvent.click(screen.getByRole('option', { name: '/rename' }));
-    expect(send).toHaveBeenCalledWith('/rename\r');
-  });
-
-  it('leaves an argument-taking command in the prompt with a trailing space', async () => {
-    const send = vi.fn();
-    render(KeyboardBar, {
-      props: { ...base, send, commands: [{ command: '/myplugin:task', submit: false }] },
-    });
-    await fireEvent.click(screen.getByRole('button', { name: /commands/i }));
-    await fireEvent.click(screen.getByRole('option', { name: '/myplugin:task' }));
-    expect(send).toHaveBeenCalledWith('/myplugin:task ');
   });
 
   it('does not render the special-character keys after Enter', () => {

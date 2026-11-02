@@ -23,7 +23,6 @@ import type { AgentConfig } from '../infrastructure/config';
 import type { BrowserDiscoveryPort } from '../ports/browser-discovery-port';
 import type { BrowserCommandPort } from '../ports/browser-command-port';
 import type { HiddenFoldersPort } from '../ports/hidden-folders-port';
-import type { CommandsPort } from '../ports/commands-port';
 import type { LaunchersPort } from '../ports/launchers-port';
 import type { KeytermsPort } from '../ports/keyterms-port';
 import type { ClientLogPort } from '../ports/client-log-port';
@@ -104,7 +103,6 @@ const noBrowserCommands: BrowserCommandPort = {
   setViewport: async () => undefined,
 };
 const noHiddenFolders: HiddenFoldersPort = { list: async () => [] };
-const noCommands: CommandsPort = { list: async () => [] };
 const noLaunchers: LaunchersPort = { list: async () => [], remember: async () => {}, forget: async () => {} };
 const noKeyterms: KeytermsPort = { list: async () => [] };
 const noClientLog: ClientLogPort = { append: async () => {} };
@@ -156,7 +154,6 @@ function testConfig(home: string, overrides: Partial<AgentConfig> = {}): AgentCo
     recentStorePath: join(home, 'recent.json'),
     statusStorePath: join(home, 'status.json'),
     hiddenFoldersPath: join(home, 'hidden-folders.json'),
-    commandsPath: join(home, 'commands.json'),
     launchersPath: join(home, 'launchers.json'),
     keytermsPath: join(home, 'keyterms.txt'),
     clientLogPath: join(home, 'client-log.jsonl'),
@@ -195,7 +192,6 @@ function makeServerDeps(config: AgentConfig, clientLog: ClientLogPort) {
     browserDiscovery: noBrowserDiscovery,
     browserCommands: noBrowserCommands,
     hiddenFolders: noHiddenFolders,
-    commands: noCommands,
     launchers: noLaunchers,
     detectInstalled: async () => [],
     keyterms: noKeyterms,
@@ -228,7 +224,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -437,7 +432,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -506,7 +500,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -576,7 +569,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: { list: async () => ['secret-proj'] },
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -640,7 +632,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -704,7 +695,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -774,7 +764,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -846,7 +835,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -977,7 +965,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -1038,7 +1025,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -1080,7 +1066,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -1156,7 +1141,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -1248,7 +1232,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -1317,7 +1300,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -1376,7 +1358,6 @@ describe('WsServer (E2E, real tmux)', () => {
       browserDiscovery: noBrowserDiscovery,
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -1717,7 +1698,6 @@ describe('WsServer browser-session polling', () => {
       browserDiscovery: { listSessions: async () => live },
       browserCommands: noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,
@@ -1792,7 +1772,6 @@ describe('WsServer browser-session cascade', () => {
       browserDiscovery: browser?.discovery ?? noBrowserDiscovery,
       browserCommands: browser?.commands ?? noBrowserCommands,
       hiddenFolders: noHiddenFolders,
-      commands: noCommands,
       launchers: noLaunchers,
       detectInstalled: async () => [],
       keyterms: noKeyterms,

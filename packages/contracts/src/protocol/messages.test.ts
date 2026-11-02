@@ -179,25 +179,6 @@ describe('agentMessageSchema', () => {
     expect(parseAgentMessage({ type: 'roots' })).toEqual({ type: 'roots', roots: [] });
   });
 
-  it('parses a commands message', () => {
-    expect(
-      parseAgentMessage({
-        type: 'commands',
-        commands: [{ command: '/myplugin:task' }, { command: '/rename', submit: true }],
-      }),
-    ).toEqual({
-      type: 'commands',
-      commands: [
-        { command: '/myplugin:task', submit: false },
-        { command: '/rename', submit: true },
-      ],
-    });
-  });
-
-  it('defaults commands to [] when an older agent omits them', () => {
-    expect(parseAgentMessage({ type: 'commands' })).toEqual({ type: 'commands', commands: [] });
-  });
-
   it('parses a launchers message and defaults both lists for an older agent', () => {
     expect(parseAgentMessage({ type: 'launchers', detected: ['claude'], custom: ['pi'] })).toEqual({
       type: 'launchers',

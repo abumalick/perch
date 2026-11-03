@@ -16,7 +16,6 @@ import type { FileWriterPort } from '../ports/file-writer-port';
 import type { BrowserDiscoveryPort } from '../ports/browser-discovery-port';
 import type { BrowserCommandPort } from '../ports/browser-command-port';
 import type { HiddenFoldersPort } from '../ports/hidden-folders-port';
-import type { CommandsPort } from '../ports/commands-port';
 import type { LaunchersPort } from '../ports/launchers-port';
 import type { AgentConfig } from '../infrastructure/config';
 import type { WorkspaceLogEntry, WorkspaceLogPort } from '../ports/workspace-log-port';
@@ -150,7 +149,6 @@ function baseDeps() {
     read: async () => ({ bytes: new TextEncoder().encode('file body'), truncated: false }),
   };
   const hiddenFolders: HiddenFoldersPort = { list: async () => [] };
-  const commands: CommandsPort = { list: async () => [] };
   return {
     config,
     tmux,
@@ -187,7 +185,6 @@ function baseDeps() {
     } as BrowserDiscoveryPort,
     browserCommands: stubBrowserCommands(),
     hiddenFolders,
-    commands,
     launchers: fakeLaunchers(),
     detectInstalled: async (names: string[]) => names.filter((n) => n === 'claude'),
     keyterms: { list: async (): Promise<string[]> => [] },
@@ -353,11 +350,11 @@ describe('ConnectionHandler serving an enrolled device at once', () => {
   }
   const settle = () => new Promise((r) => setTimeout(r, 0));
 
-  it('answers authResult, then the workspaces, commands and dictation vocabulary', async () => {
+  it('answers authResult, then the workspaces and dictation vocabulary', async () => {
     const p = pushed();
     p.fire();
     await settle();
-    expect(p.sent.map((m) => m.type)).toEqual(['authResult', 'workspaces', 'browserSessions', 'commands', 'keyterms']);
+    expect(p.sent.map((m) => m.type)).toEqual(['authResult', 'workspaces', 'browserSessions', 'keyterms']);
     expect(p.sent[0]).toEqual({ type: 'authResult', ok: true, credential: 'device', pushed: true });
     expect(p.sent.at(-1)).toEqual({ type: 'keyterms', keyterms: ['Perch'] });
   });
@@ -533,33 +530,14 @@ describe('ConnectionHandler control routing', () => {
     expect(f.sent).toContainEqual({ type: 'roots', roots: ['/home/u/workspace', '/srv/code'] });
   });
 
-  it('answers listCommands with the machine configured shortcuts', async () => {
-    const deps = baseDeps();
-    deps.commands = {
-      list: async () => [
-        { command: '/myplugin:task', submit: false },
-        { command: '/rename', submit: true },
-      ],
-    };
-    new ConnectionHandler(f.conn, deps);
-    f.emit({ type: 'auth', token: 'secret' });
-    f.emit({ type: 'listCommands' });
-    await new Promise((r) => setTimeout(r, 0));
-    expect(f.sent).toContainEqual({
-      type: 'commands',
-      commands: [
-        { command: '/myplugin:task', submit: false },
-        { command: '/rename', submit: true },
-      ],
-    });
-  });
-
-  it('answers listCommands with an empty list when the machine has no config file', async () => {
+  it('ignores listCommands from an older PWA, with no reply and no error', async () => {
     new ConnectionHandler(f.conn, baseDeps());
     f.emit({ type: 'auth', token: 'secret' });
+    await new Promise((r) => setTimeout(r, 0));
+    const before = f.sent.length;
     f.emit({ type: 'listCommands' });
     await new Promise((r) => setTimeout(r, 0));
-    expect(f.sent).toContainEqual({ type: 'commands', commands: [] });
+    expect(f.sent.slice(before)).toEqual([]);
   });
 
   it('answers listLaunchers with the installed CLIs and the remembered commands', async () => {

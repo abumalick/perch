@@ -446,17 +446,6 @@ export async function startFakeAgent(
           case 'listRoots':
             send({ type: 'roots', roots: ['/home/u/workspace'] });
             break;
-          // Mirrors a machine with a ~/.perch/commands.json: one command that takes an
-          // argument and one that submits on the spot.
-          case 'listCommands':
-            send({
-              type: 'commands',
-              commands: [
-                { command: '/myplugin:task', submit: false },
-                { command: '/rename', submit: true },
-              ],
-            });
-            break;
           // Mirrors a machine with a ~/.perch/keyterms.txt dictation vocabulary.
           case 'listKeyterms':
             send({ type: 'keyterms', keyterms: ['Perch', 'HeliBoard'] });
@@ -493,7 +482,7 @@ export async function startFakeAgent(
       conn.onKeyAuthenticated(() => {
         authed = true;
         conn.send({ type: 'authResult', ok: true, credential: 'device', pushed: true });
-        for (const type of ['list', 'listCommands', 'listKeyterms']) route({ type });
+        for (const type of ['list', 'listKeyterms']) route({ type });
       });
     };
     const relays = startRelayLinks({

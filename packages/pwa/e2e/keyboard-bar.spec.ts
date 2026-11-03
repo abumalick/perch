@@ -94,27 +94,11 @@ test('locked Ctrl persists after a character is typed', async ({ page }) => {
   await expect(ctrl).toHaveClass(/locked/);
 });
 
-// The whole chain: listCommands on connect → the agent's commands reply → the drop-down →
-// the bytes on the pty. The unit tests each cover one link; only this covers the protocol.
 function inputs(): string[] {
   return agent.received
     .filter((m) => m.type === 'input')
     .map((m) => Buffer.from(String(m.data), 'base64').toString('utf8'));
 }
-
-test('a submit shortcut types the command and runs it', async ({ page }) => {
-  await openTerminal(page);
-  await bar(page).getByRole('button', { name: 'Commands' }).click();
-  await page.getByRole('option', { name: '/rename' }).click();
-  await expect.poll(inputs).toContain('/rename\r');
-});
-
-test('an argument-taking shortcut leaves the command in the prompt', async ({ page }) => {
-  await openTerminal(page);
-  await bar(page).getByRole('button', { name: 'Commands' }).click();
-  await page.getByRole('option', { name: '/myplugin:task' }).click();
-  await expect.poll(inputs).toContain('/myplugin:task ');
-});
 
 // Only an end-to-end run proves the whole chain: pointer drag → cursor-pad reducer →
 // applyEditKey → websocket → pty bytes.
@@ -162,12 +146,4 @@ test('the cursor pad opts out of the touch scrolling of the bar', async ({ page 
     'touch-action',
     'none',
   );
-});
-
-// Tapping a shortcut must not close the soft keyboard.
-test('picking a command keeps the terminal focused', async ({ page }) => {
-  await openTerminal(page);
-  await bar(page).getByRole('button', { name: 'Commands' }).click();
-  await page.getByRole('option', { name: '/rename' }).click();
-  await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
 });

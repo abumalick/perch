@@ -83,8 +83,8 @@ export class ConnectionManager {
         refusalContext: { machine: config.name, credential: credentialKind(config) },
         // The agent only returns workspaces in response to `list` (or pushes them when it serves
         // the phone at once); asking on every (re)connect is what re-syncs the list, and what picks
-        // up an edit to the agent's ~/.perch/commands.json or ~/.perch/keyterms.txt.
-        openingRequests: [{ type: 'list' }, { type: 'listCommands' }, { type: 'listKeyterms' }],
+        // up an edit to the agent's ~/.perch/keyterms.txt.
+        openingRequests: [{ type: 'list' }, { type: 'listKeyterms' }],
         onDiagnostic: (diagnostic) => this.deps.onDiagnostic?.(config.id, diagnostic),
         onMessage: (message) => {
           const since = this.listPending.get(config.id);

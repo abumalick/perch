@@ -649,7 +649,7 @@ describe('MachineConnection opening requests', () => {
       onStatus: (s) => events.push(s),
       schedule: () => undefined,
       startTimer: () => () => undefined,
-      openingRequests: [{ type: 'list' }, { type: 'listCommands' }],
+      openingRequests: [{ type: 'list' }, { type: 'listKeyterms' }],
     });
     conn.connect();
     sockets[0]!.open();
@@ -659,7 +659,7 @@ describe('MachineConnection opening requests', () => {
   it('asks for them after an authResult that did not bring them, then goes online', () => {
     const { sockets, events } = opening();
     sockets[0]!.deliver({ type: 'authResult', ok: true, credential: 'device', enrolled: true });
-    expect(events).toEqual(['connecting', 'sent auth', 'sent list', 'sent listCommands', 'online']);
+    expect(events).toEqual(['connecting', 'sent auth', 'sent list', 'sent listKeyterms', 'online']);
   });
 
   it('asks for nothing when the agent pushed them, and still sends its auth', () => {

@@ -24,11 +24,8 @@
     type ModifierState,
   } from '../core/keyboard-modifiers';
   import type { DictationState } from '../core/speech-to-text';
-  import type { CommandEntry } from '@perch/contracts';
-  import { commandInput } from '../core/command-input';
   import { startKeyRepeat } from '../core/key-repeat';
   import { startGesture, moveGesture, type PadState, type PadDirection } from '../core/cursor-pad';
-  import CommandPicker from './CommandPicker.svelte';
   import DictationMenu from './DictationMenu.svelte';
   import { currentPreset, hasUsablePreset, type DictationPreset, type DictationProvider } from '../core/dictation-presets';
 
@@ -39,7 +36,6 @@
     onToggleSelect,
     dictation = 'idle',
     onDictate = () => {},
-    commands = [],
     presets = [],
     currentPresetId = null,
     presetKeys = { elevenlabs: true, openrouter: true },
@@ -56,7 +52,6 @@
     onToggleSelect: () => void;
     dictation?: DictationState;
     onDictate?: () => void;
-    commands?: CommandEntry[];
     presets?: DictationPreset[];
     currentPresetId?: string | null;
     presetKeys?: Record<DictationProvider, boolean>;
@@ -387,11 +382,6 @@
       tabindex="-1"
       onchange={onFileChange}
     />
-  {/if}
-  <!-- Last on the right, past the fold: a deliberate exception to the ordering rationale
-       above; pinned by a test so it stays deliberate. -->
-  {#if commands.length > 0}
-    <CommandPicker {commands} onSelect={(entry) => send(commandInput(entry))} />
   {/if}
 </div>
 

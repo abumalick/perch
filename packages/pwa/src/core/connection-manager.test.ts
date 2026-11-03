@@ -225,15 +225,13 @@ describe('ConnectionManager', () => {
     expect(sent).toContainEqual({ type: 'list' });
   });
 
-  // The keyboard bar's command drop-down is per-machine config; asking on every (re)connect
-  // is what picks up an edit to the agent's ~/.perch/commands.json.
-  it('requests the command shortcuts when a machine comes online', () => {
+  it('asks for the workspaces and the dictation vocabulary when a machine comes online', () => {
     const h = harness();
     h.manager.setMachines([mac]);
     h.sockets['wss://mac']!.open();
     h.sockets['wss://mac']!.deliver({ type: 'authResult', ok: true });
     const sent = h.sockets['wss://mac']!.sent.map((s) => JSON.parse(s) as { type: string });
-    expect(sent).toContainEqual({ type: 'listCommands' });
+    expect(sent.map((m) => m.type).filter((t) => t.startsWith('list'))).toEqual(['list', 'listKeyterms']);
   });
 
   it('opens a connection per machine and authenticates', () => {

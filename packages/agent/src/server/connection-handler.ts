@@ -19,7 +19,6 @@ import type { StatusStorePort } from '../ports/status-store-port';
 import type { BrowserDiscoveryPort } from '../ports/browser-discovery-port';
 import type { BrowserCommandPort } from '../ports/browser-command-port';
 import type { HiddenFoldersPort } from '../ports/hidden-folders-port';
-import type { CommandsPort } from '../ports/commands-port';
 import type { LaunchersPort } from '../ports/launchers-port';
 import { normalizeCommand } from '../application/remember-launcher';
 import { KNOWN_CLIS } from '../infrastructure/installed-detector';
@@ -70,7 +69,6 @@ export interface ConnectionHandlerDeps {
   browserDiscovery: BrowserDiscoveryPort;
   browserCommands: BrowserCommandPort;
   hiddenFolders: HiddenFoldersPort;
-  commands: CommandsPort;
   launchers: LaunchersPort;
   // Which of KNOWN_CLIS this machine can run, resolved the way a workspace's command is.
   detectInstalled: (names: string[]) => Promise<string[]>;
@@ -210,7 +208,7 @@ export class ConnectionHandler {
   private async serveAtOnce(): Promise<void> {
     this.authed = true;
     this.conn.send({ type: 'authResult', ok: true, credential: 'device', pushed: true });
-    for (const type of ['list', 'listCommands', 'listKeyterms'] as const) {
+    for (const type of ['list', 'listKeyterms'] as const) {
       try {
         await this.route({ type });
       } catch (err) {
@@ -220,7 +218,7 @@ export class ConnectionHandler {
   }
 
   protected async route(message: Exclude<ClientMessage, { type: 'auth' }>): Promise<void> {
-    const { config, tmux, recent, lister, reader, resolvePath, isDirectory, clock, ids, status, hiddenFolders, commands, repoRemote, claudeSessions } = this.deps;
+    const { config, tmux, recent, lister, reader, resolvePath, isDirectory, clock, ids, status, hiddenFolders, repoRemote, claudeSessions } = this.deps;
     switch (message.type) {
       case 'list': {
         const hidden = await hiddenFolders.list();
@@ -263,10 +261,10 @@ export class ConnectionHandler {
         this.conn.send({ type: 'roots', roots: config.projectRoots });
         return;
       }
-      case 'listCommands': {
-        this.conn.send({ type: 'commands', commands: await commands.list() });
+      // Sent by PWAs from before the keyboard bar lost its command shortcuts; answering it
+      // with an error would show them a banner on every connect.
+      case 'listCommands':
         return;
-      }
       case 'listLaunchers':
         await this.sendLaunchers();
         return;

@@ -6,7 +6,6 @@ import { ShortWorkspaceIds } from './application/short-workspace-ids';
 import { TmuxAdapter } from './infrastructure/tmux-adapter';
 import { FileRecentStore } from './infrastructure/file-recent-store';
 import { FileHiddenFoldersStore } from './infrastructure/file-hidden-folders-store';
-import { FileCommandsStore } from './infrastructure/file-commands-store';
 import { FileLaunchersStore } from './infrastructure/file-launchers-store';
 import { detectInstalled, loginShellResolver } from './infrastructure/installed-detector';
 import { FileKeytermsStore } from './infrastructure/file-keyterms-store';
@@ -112,7 +111,6 @@ async function main(): Promise<void> {
     browserDiscovery: new FsBrowserDiscovery(),
     browserCommands: new AgentBrowserCli(),
     hiddenFolders: new FileHiddenFoldersStore(config.hiddenFoldersPath),
-    commands: new FileCommandsStore(config.commandsPath),
     launchers: new FileLaunchersStore(config.launchersPath),
     detectInstalled: (names) => detectInstalled(names, loginShellResolver()),
     keyterms: new FileKeytermsStore(config.keytermsPath),

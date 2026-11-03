@@ -327,6 +327,13 @@ describe('applyHookEvent', () => {
       expect(deps.sentDuringTool.has('perch-aa')).toBe(true);
     });
 
+    it('a SendMessage PostToolUse after it consumes the send mark', () => {
+      const deps = setup();
+      applyHookEvent(deps, { ...post, claude: { tool_name: 'SendMessage' } });
+      expect(deps.messagedLast.has('perch-aa')).toBe(true);
+      expect(deps.sentDuringTool.has('perch-aa')).toBe(false);
+    });
+
     it('a prompt clears both', () => {
       const deps = setup();
       applyHookEvent(deps, { sessionName: 'perch-aa', event: 'UserPromptSubmit' });

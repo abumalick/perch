@@ -136,8 +136,9 @@ export class WsServer {
     add: (id: string) => this.deps.status.setMessagedLast(id, true),
     delete: (id: string) => this.deps.status.setMessagedLast(id, false),
   };
-  // Codex sessions with a question waiting on the user — see applyHookEvent.
+  // Sessions that ran perch send inside their current tool call — see markSent.
   private readonly sentDuringTool = new Set<string>();
+  // Codex sessions with a question waiting on the user — see applyHookEvent.
   private readonly questionPending = new Set<string>();
   // Sessions whose needs-feedback an OSC 7501 turn end set — see applyProgramStatus. In-memory:
   // losing it costs one race won by needs-feedback, never a hidden prompt.

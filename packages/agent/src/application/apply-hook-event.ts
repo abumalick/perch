@@ -152,6 +152,7 @@ export function applyHookEvent(
   }
   if (decision.messagedLast === 'set') {
     deps.messagedLast.add(input.sessionName);
+    deps.sentDuringTool.delete(input.sessionName);
   } else if (decision.messagedLast === 'clear') {
     deps.messagedLast.delete(input.sessionName);
     deps.sentDuringTool.delete(input.sessionName);

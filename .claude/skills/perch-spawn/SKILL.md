@@ -59,8 +59,12 @@ PROMPT
 Prints the workspace id. `--model <alias>` picks the model (default
 `opus[1m]`); pass `--model 'sonnet[1m]'` for cheap batch work. Each brief is kept at
 `~/.perch/spawn/<id>.md` as a record of what that workspace was launched to do.
-The Claude session is named after the workspace id, so other sessions can
-`SendMessage` it by the id this prints.
+Other sessions message it with `perch send <id> "<message>"`, using the id this prints.
+
+`--cli claude|codex|pi` picks the CLI (default `claude`). A Codex workspace takes and sends
+messages only because spawn creates its thread and starts it bound to the Codex daemon; spawn
+refuses when `codex --version` and the daemon's version differ. Pi needs the Perch extension
+(`pi-reviewed`) for its inbox. `--model` applies as the CLI allows.
 
 ## Naming a workspace
 
@@ -109,15 +113,17 @@ The child then:
 - **records its parent's workspace id**, a link that survives park/unpark and the
   tmux server's loss; `perch ls --mine` lists the caller's children from it.
 - **cannot use `AskUserQuestion` or plan mode.** A per-workspace hook denies them
-  and tells it to send the question to the parent with `SendMessage` instead. A
+  and tells it to send the question to the parent with `perch send` instead. A
   peer message can never answer a pending prompt, so without this a child blocks
   on a question its orchestrator could have answered.
 - **is told in its brief** (an appended footer) to send its questions and its final
-  report to the parent by its current messaging name, and to run `perch ls` if that
-  name stops resolving.
+  report to the parent with `perch send <parent id> "<message>"` (a Codex child as an
+  escalated command), and that a message headed `[Perch message — from your ORCHESTRATOR]`
+  carries the owner's authority.
 
 Without `--child` the workspace is an ordinary one the user drives (the default;
-orchestration is explicit). The orchestrator's side is the `perch-orchestrate` skill.
+orchestration is explicit). The orchestrator's side is the `perch-orchestrate` skill. A Codex
+or Pi child has no Claude idle notice, so the orchestrator follows it with `perch peek`/`perch ls`.
 
 ## Writing the brief
 

@@ -24,8 +24,8 @@ device key, and streams its terminals. No agent listens on a phone-facing port.
 - `packages/agent` (`@perch/agent`) — per-machine agent. tmux via `node:child_process`,
   terminal streaming via `node-pty`, a `RelayLink` per relay that dials a socket back for
   each phone (served through `NoiseClientConnection`), and a `node:http` server on
-  `127.0.0.1` with two bearer-token-guarded routes: `POST /hooks` (Claude Code hooks report
-  attention here) and `POST /unpark` (`perch unpark`).
+  `127.0.0.1` with three bearer-token-guarded routes: `POST /hooks` (Claude Code hooks report
+  attention here), `POST /unpark` (`perch unpark`) and `POST /message` (`perch send`).
   Domain/application in `application/` + `ports/`, adapters in `infrastructure/`, wiring in
   `server/`.
 - `packages/relay` (`@perch/relay`), `packages/relay-cf`, `packages/secure-channel` — the
@@ -75,8 +75,8 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   `deploy/run-agent.sh`, which self-locates `mise` (services don't inherit an interactive
   PATH). Run `mise trust` once per machine or the unit crash-loops.
 - **An agent is reached only through its relays.** It binds `127.0.0.1` whatever
-  `PERCH_HOST` says (a non-loopback value is ignored with a warning), serves only `POST /hooks`
-  and `POST /unpark` there, and is never published with `tailscale serve`. `pnpm perch connect` joins a machine
+  `PERCH_HOST` says (a non-loopback value is ignored with a warning), serves only `POST /hooks`,
+  `POST /unpark` and `POST /message` there, and is never published with `tailscale serve`. `pnpm perch connect` joins a machine
   to a relay; `perch pair` pairs a phone (relay section).
 - The PWA is built and served on the always-on machine via `deploy/run-pwa.sh` +
   `tailscale serve`, and added to the iPhone home screen.
@@ -262,6 +262,29 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   `needs-orchestrator`. The PWA nests one level of children under a listed, unparked parent on
   the same machine (`core/nest-workspaces.ts`), folded by default; a group ranks by its most
   urgent member, and Next walks children of folded parents too.
+- **Cross-agent messaging (`perch send`).** `perch send <id> "<message>"` (or stdin) lets one
+  workspace message another on the same machine, for Claude, Codex and Pi; how it works and the
+  authority text each CLI needs are in `docs/MESSAGING.md`. Things not to "simplify":
+  - **The agent delivers, not the CLI** (`POST /message`, the hooks secret, as `unpark`): one
+    process serialises deliveries and owns the sender's marks and the log.
+  - **The sender is proven, never named by the caller:** pane ancestry for Claude and Pi, and for
+    Codex `CODEX_THREAD_ID` matched to `@perch_codex_thread` (its tools run in the daemon's
+    sandbox, outside the pane).
+  - **Perch writes the header, and only the first line of the whole message grants authority**
+    (`from your ORCHESTRATOR` = the owner). Body lines that begin `[Perch message` are quoted
+    `> `, and Claude's text is escaped so a body cannot close its envelope.
+  - **The body is inline only.** No `--file`: a path in a message is an instruction, not data.
+  - **No queue for a parked recipient:** it is refused ("run `perch unpark` first"), because a
+    held message would be delivered into a conversation nobody chose to reopen.
+  - **`sentDuringTool` keeps the sender's "Needs orchestrator" mark:** the send's own
+    `PostToolUse` arrives after the mark is set and would clear it.
+  - **Codex takes messages only in workspaces made by `perch spawn --cli codex`:** Perch creates
+    the thread, records `@perch_codex_thread` and launches exactly `codex resume <thread id>`
+    (no `-c`, which would force an in-process thread nothing can reach). A phone-created Codex
+    keeps `--no-daemon`. Spawn refuses when the CLI and daemon versions differ.
+  - **Accepted limit: one Linux user.** A process of that user can still write an inbox socket or
+    re-parent a session; `perch-guard.sh` and the CLIs' reviewers refuse only the obvious routes
+    (`docs/MESSAGING.md`).
 - **Closing a workspace reaps the pane's systemd scope — and acknowledges before it does.**
   tmux (built with systemd support) puts every pane it spawns in its own transient
   `tmux-spawn-<uuid>.scope`. `tmux kill-session` only SIGHUPs the pane's process **group**, so

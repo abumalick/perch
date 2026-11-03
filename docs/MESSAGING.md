@@ -37,8 +37,13 @@
   orchestrator's authority by two routes, for all three CLIs (Claude's and Codex's sockets as
   well as this one): it can write an inbox socket directly with a forged header, or set
   `@perch_parent` on another tmux session so the agent itself writes `from your ORCHESTRATOR`.
-  The sender-side guards (`perch-guard.sh` and Pi's deny/hold rules, both still to come)
-  refuse only the obvious commands that would do either.
+  The sender-side guards refuse only the obvious commands that would do either: `perch-guard.sh`
+  (Claude Code and Codex) refuses `nc`, `ncat`, `socat` or `curl` naming a message socket
+  (`cc-socks/`, `.perch/inbox/`, `app-server-control/`) and `tmux set-option` of `@perch_parent`
+  or `@perch_codex_thread` on the default server, and reviewer rules configured for each CLI (not
+  shipped with Perch) can hold the same commands and judge a
+  `perch send` body as an instruction given on the owner's behalf. A script, a variable holding
+  the path, or any other client gets past all of them.
 - **Status:** an accepted message reports `UserPromptSubmit` through the Perch status hook
   before it reaches Pi, as a typed prompt does.
 

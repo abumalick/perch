@@ -66,6 +66,23 @@ expect deny 'sh -c "cd /; pkill -f x"'
 expect deny "bash -c 'true && killall node'"
 expect deny '"pkill" -f x'
 
+
+echo " refuses raw inbox posts and re-parenting"
+expect deny 'printf x | nc -U ~/.perch/inbox/perch-a.sock'
+expect deny 'nc -U /run/user/1000/cc-socks/123.sock'
+expect deny 'nc -NU "$HOME/.perch/inbox/perch-a.sock"'
+expect deny 'ncat -U ~/.codex/app-server-control/app-server-control.sock'
+expect deny 'socat - UNIX-CONNECT:$HOME/.perch/inbox/perch-a.sock'
+expect deny 'echo hi | socat - unix-client:/run/user/1000/cc-socks/9.sock'
+expect deny 'curl --unix-socket ~/.codex/app-server-control/app-server-control.sock http://x/'
+expect deny "sh -c 'printf x | nc -U ~/.perch/inbox/perch-a.sock'"
+expect deny 'tmux set-option -t perch-x @perch_parent perch-y'
+expect deny 'tmux set -t perch-x @perch_codex_thread abc'
+expect deny 'tmux set-option -u -t perch-x @perch_parent'
+expect deny 'tmux set -q -t perch-x "@perch_parent" perch-y'
+expect deny 'tmux ls \; set -t perch-x @perch_parent perch-y'
+expect deny 'sudo tmux set-option -t perch-x @perch_parent perch-y'
+
 echo " allows"
 expect allow 'kill 1234'
 expect allow 'kill -9 1234 5678'
@@ -88,6 +105,19 @@ expect allow 'git commit -m "a; pkill b"'
 expect allow 'for c in pkill killall; do type -a $c; done'
 expect allow "ssh host 'cd /srv && pkill -f x'"
 expect allow 'ls -la'
+expect allow 'rg "nc -U" packages/'
+expect allow 'git commit -m "refuse nc -U posts to ~/.perch/inbox/x.sock"'
+expect allow 'ls ~/.perch/inbox'
+expect allow 'perch send perch-x "hi"'
+expect allow 'nc -zv host 80'
+expect allow 'nc -U /var/run/docker.sock'
+expect allow 'curl --unix-socket /var/run/docker.sock http://x/'
+expect allow 'rg "@perch_parent" packages/'
+expect allow 'tmux show-option -t perch-x @perch_parent'
+expect allow 'tmux set-option -t perch-x @perch_foo 1'
+expect allow 'tmux set-option -t perch-x status off'
+expect allow 'tmux -L test set-option -t x @perch_parent y'
+expect allow 'perch spawn --child "fix the build"'
 
 echo " scope"
 code=0
@@ -98,6 +128,10 @@ if [ "$code" = 0 ]; then echo "  ok: allows anything outside a tmux pane"; else
 msg=$(payload 'pkill -f x' | TMUX_PANE=%1 bash "$GUARD" 2>&1 >/dev/null || true)
 if [[ $msg == *"pgrep -af"* && $msg == *"kill <pid>"* ]]; then echo "  ok: says what to do instead"; else
   echo "  FAIL: refusal does not suggest pgrep -af / kill <pid>: $msg"; fails=$((fails + 1)); fi
+
+msg=$(payload 'nc -U ~/.perch/inbox/perch-a.sock' | TMUX_PANE=%1 bash "$GUARD" 2>&1 >/dev/null || true)
+if [[ $msg == *"perch send <id>"* && $msg == *"perch spawn --child"* ]]; then echo "  ok: points a raw post or a re-parent at perch send / perch spawn --child"; else
+  echo "  FAIL: refusal does not suggest perch send / perch spawn --child: $msg"; fails=$((fails + 1)); fi
 
 code=0
 printf 'not json' | TMUX_PANE=%1 bash "$GUARD" >/dev/null 2>&1 || code=$?

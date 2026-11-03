@@ -12,7 +12,6 @@ export interface AgentConfig {
   recentStorePath: string;
   statusStorePath: string;
   hiddenFoldersPath: string;
-  commandsPath: string;
   launchersPath: string;
   keytermsPath: string;
   clientLogPath: string;
@@ -63,7 +62,6 @@ export function loadConfig(env: NodeJS.ProcessEnv, home: string): AgentConfig {
     recentStorePath: join(home, '.perch', 'recent.json'),
     statusStorePath: join(home, '.perch', 'status.json'),
     hiddenFoldersPath: join(home, '.perch', 'hidden-folders.json'),
-    commandsPath: join(home, '.perch', 'commands.json'),
     launchersPath: join(home, '.perch', 'launchers.json'),
     // Usually a symlink to a vocabulary kept with the user's own dotfiles, so one list can
     // serve every machine; PERCH_KEYTERMS_PATH points at it directly instead.

@@ -522,12 +522,12 @@ describe('NoiseClientConnection with device keys (IK)', () => {
     deliver(socket, phone, { type: 'auth', token: 't' });
     conn.send({ type: 'authResult', ok: true, credential: 'token' });
     deliver(socket, phone, { type: 'list' });
-    deliver(socket, phone, { type: 'listCommands' });
+    deliver(socket, phone, { type: 'listKeyterms' });
     await flush();
     expect(received).toEqual([{ type: 'auth', token: 't' }]);
     write(true);
     await flush();
-    expect(received).toEqual([{ type: 'auth', token: 't' }, { type: 'list' }, { type: 'listCommands' }]);
+    expect(received).toEqual([{ type: 'auth', token: 't' }, { type: 'list' }, { type: 'listKeyterms' }]);
   });
 
   it('drops what the phone sent behind its auth when the roster declines the enrolment', async () => {

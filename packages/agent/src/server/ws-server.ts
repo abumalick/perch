@@ -22,7 +22,6 @@ import type { BrowserDiscoveryPort } from '../ports/browser-discovery-port';
 import type { BrowserCommandPort } from '../ports/browser-command-port';
 import type { ConnectUpstream } from '../ports/browser-stream-port';
 import type { HiddenFoldersPort } from '../ports/hidden-folders-port';
-import type { CommandsPort } from '../ports/commands-port';
 import type { LaunchersPort } from '../ports/launchers-port';
 import type { KeytermsPort } from '../ports/keyterms-port';
 import type { ClientLogPort } from '../ports/client-log-port';
@@ -64,7 +63,6 @@ export interface WsServerDeps {
   browserDiscovery: BrowserDiscoveryPort;
   browserCommands: BrowserCommandPort;
   hiddenFolders: HiddenFoldersPort;
-  commands: CommandsPort;
   launchers: LaunchersPort;
   detectInstalled: (names: string[]) => Promise<string[]>;
   keyterms: KeytermsPort;

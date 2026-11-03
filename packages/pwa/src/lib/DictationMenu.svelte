@@ -1,6 +1,6 @@
 <script lang="ts">
   // The mic's long-press menu: pick the dictation preset the next recording uses. Positioned
-  // fixed against the viewport like CommandPicker, since the keyboard bar clips its overflow.
+  // fixed against the viewport, since the keyboard bar clips its overflow.
   // A preset whose provider has no key is shown but disabled; with no key at all there is no mic.
   import { needsKey, type DictationPreset, type DictationProvider } from '../core/dictation-presets';
 

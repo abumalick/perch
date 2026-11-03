@@ -95,16 +95,6 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   immediately with no agent restart. Missing or malformed file → empty list (opt-in;
   filtering only activates once the file exists). Manage it directly on each machine (there's
   no CLI/PWA UI to edit it), and set it up separately per machine — nothing syncs it.
-- **Command shortcuts are per-machine, file-based config too — but they cross the wire.** A
-  gitignored `~/.perch/commands.json` (JSON array of `{command, submit?}`) on each agent
-  machine fills the keyboard bar's `/` drop-down. Unlike hidden folders (agent-internal, only
-  the *effect* crosses the wire), the PWA needs the contents, so it follows the
-  `listRoots`/`roots` request/reply shape: `listCommands` → `commands`. The PWA asks on every
-  (re)connect and keys the result by connection id (`store.machineCommands`), so **an edit
-  takes effect on the next reconnect, not immediately** — that's the one property this gives
-  up versus hidden folders. Missing/malformed file → empty list → the `/` button doesn't
-  render at all. `parse-commands.ts` degrades entry-by-entry (a bad `submit` costs the flag,
-  not the command) since the file is hand-edited. Set it up separately per machine.
 - **The Create Workspace command list is per machine: detected CLIs plus remembered ones.**
   The PWA sends `listLaunchers` each time the form opens (`askCreateData`) and the agent answers
   `launchers {detected, custom}`. `detected` is `claude`/`codex` resolved **through the login
@@ -688,7 +678,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
       reads back malformed fails with a way out, never a `TypeError` and never a silent new key.
   - **An enrolled phone with no credential is served at once, right behind message 2.** Its
     device hello carries `push`; when the agent finds the key enrolled it answers `authResult`
-    (`pushed`) and the opening replies (workspaces, commands, keyterms) without waiting for the
+    (`pushed`) and the opening replies (workspaces, keyterms) without waiting for the
     phone's `auth`, which saves the two round trips that followed the handshake (on Cloudflare,
     the list came ~480 ms after the handshake, now ~90). The phone still sends its `auth`; the
     handler answers it with nothing (a token is still refused as not needed). Things not to
@@ -801,7 +791,7 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   cover this.
 - **List on connect:** the agent sends workspaces in response to an explicit `list`, or pushes
   them right behind the handshake to a phone it serves at once (relay section). Otherwise the
-  PWA sends `list` (with `listCommands`, `listKeyterms`) once each relay session is
+  PWA sends `list` (with `listKeyterms`) once each relay session is
   authenticated, on every (re)connect (`openingRequests`). The e2e fake agent is faithful to both.
 - **Restarting the agent must NOT kill tmux sessions:** the agent spawns the tmux server
   as a child, so it lives in the systemd unit's cgroup. The default
@@ -974,9 +964,8 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   value when one axis scrolls — `overflow-y: visible` is impossible there. So an
   absolutely-positioned menu inside the bar renders in the DOM but is invisibly clipped
   (jsdom has no layout, so unit tests happily pass; only the Playwright e2e caught it).
-  `CommandPicker` measures its trigger's rect on open and positions the menu fixed against
-  the viewport, which also keeps it anchored as the bar scrolls and the soft keyboard
-  resizes the viewport. Don't "simplify" it back to `absolute`.
+  `DictationMenu` is positioned fixed against the viewport from the mic's rect, measured
+  when it opens. Don't "simplify" it back to `absolute`.
 - **A keyboard-bar key commits on release, never on `pointerdown`.** The bar is a horizontal
   scroller, so a drag that starts on a key is usually the user scrolling it — and firing on
   `pointerdown` typed a space / submitted the line / sent an Escape before the gesture could

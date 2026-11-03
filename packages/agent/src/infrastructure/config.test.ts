@@ -15,7 +15,6 @@ describe('loadConfig', () => {
       recentStorePath: '/home/u/.perch/recent.json',
       statusStorePath: '/home/u/.perch/status.json',
       hiddenFoldersPath: '/home/u/.perch/hidden-folders.json',
-      commandsPath: '/home/u/.perch/commands.json',
       launchersPath: '/home/u/.perch/launchers.json',
       keytermsPath: '/home/u/.perch/keyterms.txt',
       clientLogPath: '/home/u/.perch/client-log.jsonl',

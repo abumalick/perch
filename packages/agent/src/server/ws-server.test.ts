@@ -2299,6 +2299,7 @@ describe('WsServer POST /message', () => {
       hasSession: async () => true,
       sessionOfPane: async (pane) => (pane === '%3' ? 'perch-child-1' : null),
       panePid: async () => 4000,
+      pidOfPane: async (pane) => (pane === '%3' ? 4000 : null),
     };
     const status = new InMemoryStatusStore();
     status.set('perch-child-1', 'working');
@@ -2339,7 +2340,13 @@ describe('WsServer POST /message', () => {
     await new Promise((r) => socket.once('open', r));
     socket.send(JSON.stringify({ type: 'auth', token: 'secret' }));
     await nextMessage(socket);
-    const pushed = nextMessage(socket);
+    // Not simply the next frame: a poll tick may broadcast another workspace first.
+    const pushed = new Promise<AgentMessage>((resolve) => {
+      socket.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString()) as AgentMessage;
+        if (msg.type === 'workspaceUpdated' && msg.workspace.id === 'perch-child-1') resolve(msg);
+      });
+    });
 
     const res = await post('/message', send);
     expect(res.status).toBe(200);
@@ -2357,6 +2364,16 @@ describe('WsServer POST /message', () => {
     let list = await nextMessage(socket);
     while (list.type !== 'workspaces') list = await nextMessage(socket);
     expect(list.workspaces.find((w) => w.id === 'perch-child-1')).toMatchObject({ waitingOn: 'parent' });
+  });
+
+  // Ids are reused: a send's pending mark must not reach the next workspace that takes the id.
+  it('drops the send-during-tool mark with the rest of a gone workspace', async () => {
+    const { post } = await messagingServer(true);
+    expect(await (await post('/message', send)).json()).toEqual({ result: 'delivered' });
+    const marks = (server as unknown as { sentDuringTool: Set<string> }).sentDuringTool;
+    expect(marks.has('perch-child-1')).toBe(true);
+    server!.dropWorkspaceState('perch-child-1');
+    expect(marks.has('perch-child-1')).toBe(false);
   });
 
   it('refuses a pane the pid does not descend from', async () => {

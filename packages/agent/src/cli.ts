@@ -38,7 +38,8 @@ import { FileParkedStore } from './infrastructure/file-parked-store';
 import { FsFileWriter } from './infrastructure/fs-file-writer';
 import { fsResolveDirectory } from './infrastructure/fs-directory-checker';
 import { spawnWorkspace } from './application/spawn-workspace';
-import type { AgentCli } from './application/agent-message';
+import { sessionOfCodexThread, type AgentCli } from './application/agent-message';
+import { loginShellResolver } from './infrastructure/installed-detector';
 import type { CodexSpawnPort } from './ports/codex-spawn-port';
 import { CodexAppServer } from './infrastructure/codex-app-server';
 import { codexVersions } from './infrastructure/codex-versions';
@@ -66,6 +67,8 @@ export interface CliIo {
   sleep?: (ms: number) => Promise<void>;
   fetch?: typeof fetch;
   codex?: CodexSpawnPort;
+  // Whether a command resolves through the login shell, as tmux will run it.
+  resolveCommand?: (name: string) => Promise<boolean>;
 }
 
 export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo = {}): Promise<string> {
@@ -270,6 +273,10 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rena
       const cwd = io.cwd ?? process.cwd();
       const resolveDirectory = fsResolveDirectory(cwd);
       if (!(await resolveDirectory(projectPath))) throw new Error(`not a directory: ${resolvePath(cwd, projectPath)}`);
+      // Without it the pane's command fails at once and the workspace vanishes with no trace.
+      if (cli === 'pi' && !(await (io.resolveCommand ?? loginShellResolver())('pi-reviewed'))) {
+        throw new Error('perch spawn --cli pi needs pi-reviewed on PATH');
+      }
       const parentId = child ? await callerWorkspace(env, tmux, config.sessionPrefix) : undefined;
       const brief = await (io.stdin ?? (() => readStdin("pass the brief on stdin, e.g. perch spawn <path> <<'EOF'")))();
       return spawnWorkspace(
@@ -412,8 +419,15 @@ function agentPost(port: number, home: string, fetchFn: typeof fetch) {
 }
 
 // The workspace the caller's own pane belongs to. Targeted at $TMUX_PANE: an untargeted
-// display-message answers for whichever session was most recently active.
+// display-message answers for whichever session was most recently active. Codex under its daemon
+// runs tools outside the pane with a stale TMUX_PANE, so its thread names the caller instead.
 async function callerWorkspace(env: NodeJS.ProcessEnv, tmux: TmuxPort, sessionPrefix: string): Promise<string> {
+  const thread = env.CODEX_THREAD_ID;
+  if (thread) {
+    const session = sessionOfCodexThread(await tmux.listSessions(sessionPrefix), thread);
+    if (!session) throw new Error(`not inside a Perch workspace: no workspace records Codex thread ${thread}`);
+    return session.name;
+  }
   const pane = env.TMUX_PANE;
   if (!pane) throw new Error('not inside a Perch workspace: $TMUX_PANE is unset');
   const session = tmux.sessionOfPane ? await tmux.sessionOfPane(pane) : null;

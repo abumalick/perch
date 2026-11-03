@@ -126,7 +126,7 @@ async function main(): Promise<void> {
     messaging: {
       ancestry: new ProcAncestry(),
       delivery: new CompositeDelivery({
-        claude: new ClaudeInboxDelivery(claudeSessions),
+        claude: new ClaudeInboxDelivery(claudeSessions, async (id) => (await tmux.firstPaneId?.(id)) ?? null),
         pi: new PiInboxDelivery(config.inboxDir),
         codex: new CodexDelivery(new CodexAppServer()),
       }),

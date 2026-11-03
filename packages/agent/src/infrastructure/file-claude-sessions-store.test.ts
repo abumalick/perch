@@ -100,6 +100,27 @@ describe('FileClaudeSessionsStore.inboxOf', () => {
     expect(await new FileClaudeSessionsStore(join(dir, 'absent')).inboxOf('perch-aaa111')).toBeNull();
   });
 
+  // pid 1 always exists (EPERM counts as alive), so three records can be live at once.
+  it("prefers, among several live records, the one on the session's first pane", async () => {
+    await entry(process.pid, 'perch-aaa111:@1.%1');
+    await entry(process.ppid, 'perch-aaa111:@1.%7');
+    expect(await new FileClaudeSessionsStore(dir).inboxOf('perch-aaa111', '%7')).toEqual({ socketPath: sock(process.ppid), peerProtocol: 1 });
+  });
+
+  it('refuses to pick when several live records name the session and none, or more than one, is on its first pane', async () => {
+    await entry(process.pid, 'perch-aaa111:@1.%1');
+    await entry(process.ppid, 'perch-aaa111:@2.%2');
+    expect(await new FileClaudeSessionsStore(dir).inboxOf('perch-aaa111', '%9')).toBe('ambiguous');
+    expect(await new FileClaudeSessionsStore(dir).inboxOf('perch-aaa111', null)).toBe('ambiguous');
+    await entry(1, 'perch-aaa111:@1.%1');
+    expect(await new FileClaudeSessionsStore(dir).inboxOf('perch-aaa111', '%1')).toBe('ambiguous');
+  });
+
+  it('takes a single live record whatever pane it is on', async () => {
+    await entry(process.pid, 'perch-aaa111:@2.%5');
+    expect(await new FileClaudeSessionsStore(dir).inboxOf('perch-aaa111', '%1')).toEqual({ socketPath: sock(process.pid), peerProtocol: 1 });
+  });
+
   it('does not match a session whose name merely starts with the id', async () => {
     await entry(process.pid, 'perch-aaa1110:@1.%1');
     expect(await new FileClaudeSessionsStore(dir).inboxOf('perch-aaa111')).toBeNull();

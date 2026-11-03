@@ -53,4 +53,8 @@ export interface TmuxPort {
   capturePane?(name: string, historyLines: number): Promise<string>;
   // The session holding a pane (e.g. `$TMUX_PANE`), or null when tmux cannot find it.
   sessionOfPane?(paneId: string): Promise<string | null>;
+  // The pid of the pane with that id (`%N`), or null when tmux cannot find it.
+  pidOfPane?(paneId: string): Promise<number | null>;
+  // The id (`%N`) of the session's first pane, or null when the session is gone.
+  firstPaneId?(name: string): Promise<string | null>;
 }

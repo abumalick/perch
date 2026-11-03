@@ -12,7 +12,9 @@ const session = (o: Partial<TmuxSessionInfo> & { name: string }): TmuxSessionInf
   ...o,
 });
 
-function setup(opts: { sessions?: TmuxSessionInfo[]; parked?: string[]; ancestor?: boolean; logThrows?: boolean; deliver?: { ok: false; reason: string } } = {}) {
+function setup(
+  opts: { sessions?: TmuxSessionInfo[]; parked?: string[]; ancestor?: boolean | ((ancestor: number) => boolean); logThrows?: boolean; deliver?: { ok: false; reason: string } } = {},
+) {
   const sessions = opts.sessions ?? [
     session({ name: 'perch-p', title: '✳ planner' }),
     session({ name: 'perch-c', command: 'codex', parent: 'perch-p' }),
@@ -21,8 +23,10 @@ function setup(opts: { sessions?: TmuxSessionInfo[]; parked?: string[]; ancestor
   ];
   const tmux = {
     listSessions: async () => sessions,
-    sessionOfPane: async (pane: string) => (pane === '%1' ? 'perch-p' : null),
+    sessionOfPane: async (pane: string) => ({ '%1': 'perch-p', '%2': 'perch-p', '%3': 'perch-b' })[pane] ?? null,
+    // The first pane of each session; `%2` is perch-p's pane in a second window.
     panePid: async () => 100,
+    pidOfPane: async (pane: string) => ({ '%1': 100, '%2': 300, '%3': 500 })[pane] ?? null,
   } as unknown as TmuxPort;
   const delivered: Array<{ target: unknown; text: string }> = [];
   const logged: MessageLogEntry[] = [];
@@ -35,7 +39,7 @@ function setup(opts: { sessions?: TmuxSessionInfo[]; parked?: string[]; ancestor
       add: async () => {},
       remove: async () => {},
     },
-    ancestry: { isAncestor: async () => opts.ancestor ?? true },
+    ancestry: { isAncestor: async (ancestor) => (typeof opts.ancestor === 'function' ? opts.ancestor(ancestor) : (opts.ancestor ?? true)) },
     delivery: {
       deliver: async (target, text) => {
         delivered.push({ target, text });
@@ -51,6 +55,7 @@ function setup(opts: { sessions?: TmuxSessionInfo[]; parked?: string[]; ancestor
     machineId: 'dev',
     sessionPrefix: 'perch-',
     now: () => 42,
+    messageId: () => '0a1b2c3d',
     onSent,
   };
   const send = (to: string, body = 'hello', pane = '%1') => sendMessage(deps, { pane, pid: 200, to, body });
@@ -58,6 +63,24 @@ function setup(opts: { sessions?: TmuxSessionInfo[]; parked?: string[]; ancestor
 }
 
 describe('sendMessage', () => {
+  it('accepts a send from a second pane of the sender, proven against that pane', async () => {
+    const t = setup({ ancestor: (ancestor) => ancestor === 300 });
+    expect(await t.send('perch-c', 'hi', '%2')).toEqual({ result: 'delivered' });
+    expect(t.delivered[0]!.target).toMatchObject({ from: 'perch-p' });
+  });
+
+  it('gives each message its own id in the from line, so equal bodies differ', async () => {
+    const t = setup();
+    await t.send('perch-c');
+    expect(t.delivered[0]!.text.split('\n')[1]).toMatch(/· msg 0a1b2c3d$/);
+  });
+
+  it('labels a sender that runs no agent CLI as a shell', async () => {
+    const t = setup();
+    await t.send('perch-c', 'hi', '%3');
+    expect(t.delivered[0]!.text.split('\n')[1]).toContain('(shell)');
+  });
+
   it('delivers to a child with an orchestrator header and calls onSent(sender)', async () => {
     const t = setup();
     expect(await t.send('perch-c')).toEqual({ result: 'delivered' });

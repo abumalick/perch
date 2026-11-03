@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { MessageDelivery } from '../ports/message-delivery-port.js';
 import type { MessageLog } from '../ports/message-log-port.js';
 import type { ParkedStorePort } from '../ports/parked-store-port.js';
@@ -33,6 +34,8 @@ export interface SendMessageDeps {
   machineId: string;
   sessionPrefix: string;
   now: () => number;
+  // The id in each message's from line; random outside tests.
+  messageId?: () => string;
   onSent: (senderId: string) => void;
 }
 
@@ -105,10 +108,11 @@ export async function sendMessage(
     from: {
       id: sender.name,
       name: headerSafe(deriveWorkspaceName(sender.title, sender.startPath, sender.command, sender.name)),
-      cli: cliOfCommand(sender.command) ?? 'claude',
+      cli: cliOfCommand(sender.command) ?? 'shell',
     },
     relation,
     machineId: deps.machineId,
+    msgId: (deps.messageId ?? (() => randomBytes(4).toString('hex')))(),
     body: req.body,
   });
   const delivered = await deps.delivery.deliver(
@@ -128,13 +132,15 @@ export async function sendMessage(
   return { result: 'delivered' };
 }
 
+// Proven against the pane $TMUX_PANE names, not the session's first one: a send from a second
+// window descends from its own pane only.
 async function resolveSender(deps: SendMessageDeps, pane: string, pid: number): Promise<TmuxSessionInfo | null> {
-  if (!deps.tmux.sessionOfPane || !deps.tmux.panePid) return null;
+  if (!deps.tmux.sessionOfPane || !deps.tmux.pidOfPane) return null;
   const name = await deps.tmux.sessionOfPane(pane);
   if (!name) return null;
   const session = (await deps.tmux.listSessions(deps.sessionPrefix)).find((s) => s.name === name);
   if (!session) return null;
-  const panePid = await deps.tmux.panePid(name);
+  const panePid = await deps.tmux.pidOfPane(pane);
   if (panePid === null || !(await deps.ancestry.isAncestor(panePid, pid))) return null;
   return session;
 }

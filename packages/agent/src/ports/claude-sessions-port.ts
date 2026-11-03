@@ -9,5 +9,7 @@ export interface ClaudeSessionsPort {
   // a Perch workspace id). Empty when the registry is absent — the PWA then shows no badge.
   addressesByTmuxSession(): Promise<Record<string, string>>;
   // The messaging socket of the live Claude session running in that tmux session, or null.
-  inboxOf(tmuxSession: string): Promise<ClaudeInbox | null>;
+  // Several live sessions there: the one on `firstPane` (the session's first pane id, `%N`),
+  // else 'ambiguous', since a guess could hand the message to the wrong conversation.
+  inboxOf(tmuxSession: string, firstPane?: string | null): Promise<ClaudeInbox | null | 'ambiguous'>;
 }

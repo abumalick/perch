@@ -301,12 +301,12 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     { name: 'perch-hhhhhh', startPath: '/w/secret/x', command: 'claude', createdAt: NOW, title: '✳ Hidden' },
   ];
 
-  function fakeTmux(pane: Record<string, string> = {}) {
+  function fakeTmux(pane: Record<string, string> = {}, extra: TmuxSessionInfo[] = []) {
     const created: Array<{ name: string; cwd: string; command: string; parent?: string; storedCommand?: string; codexThread?: string }> = [];
     const locked: string[] = [];
     const titles: string[] = [];
     const tmux: TmuxPort = {
-      listSessions: async (prefix) => live.filter((s) => s.name.startsWith(prefix)),
+      listSessions: async (prefix) => [...live, ...extra].filter((s) => s.name.startsWith(prefix)),
       createSession: async (input) => {
         created.push(input);
       },
@@ -591,11 +591,49 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     expect(created[0]).toMatchObject({ command: 'codex resume th-9', parent: 'perch-aaaaaa', codexThread: 'th-9' });
   });
 
+  // Codex under its daemon runs tools outside the pane, with the TMUX_PANE of whichever pane
+  // started the daemon: the thread names the caller.
+  const codexCaller = { name: 'perch-cccccc', startPath: '/w/foo', command: 'codex resume th-1', codexThread: 'th-1', createdAt: NOW, title: '' };
+
+  it('names a Codex caller by its thread, not by a stale TMUX_PANE', async () => {
+    const { home, env } = await machine();
+    const { tmux, created } = fakeTmux({ '%7': 'perch-aaaaaa' }, [codexCaller]);
+    const codexEnv = { ...env, TMUX_PANE: '%7', CODEX_THREAD_ID: 'th-1' };
+    await run(['spawn', '--child', home], codexEnv, home, io(tmux, { stdin: async () => 'b' }));
+    expect(created[0]!.parent).toBe('perch-cccccc');
+    const mine = JSON.parse(await run(['ls', '--json', '--mine'], codexEnv, home, io(tmux))) as Workspace[];
+    expect(mine).toEqual([]);
+  });
+
+  it('refuses a Codex caller whose thread no workspace records', async () => {
+    const { home, env } = await machine();
+    const { tmux, created } = fakeTmux({ '%7': 'perch-aaaaaa' }, [codexCaller]);
+    const codexEnv = { ...env, TMUX_PANE: '%7', CODEX_THREAD_ID: 'zz' };
+    const refusal = 'not inside a Perch workspace: no workspace records Codex thread zz';
+    await expect(run(['spawn', '--child', home], codexEnv, home, io(tmux, { stdin: async () => 'b' }))).rejects.toThrow(refusal);
+    await expect(run(['rename', 'x'], codexEnv, home, io(tmux))).rejects.toThrow(refusal);
+    await expect(run(['ls', '--mine'], codexEnv, home, io(tmux))).rejects.toThrow(refusal);
+    expect(created).toEqual([]);
+  });
+
   it('spawns pi through pi-reviewed', async () => {
     const { home, env } = await machine();
     const { tmux, created } = fakeTmux();
-    await run(['spawn', '--cli', 'pi', home], env, home, io(tmux, { stdin: async () => 'b' }));
+    const asked: string[] = [];
+    const resolveCommand = async (name: string) => (asked.push(name), true);
+    await run(['spawn', '--cli', 'pi', home], env, home, io(tmux, { stdin: async () => 'b', resolveCommand }));
     expect(created[0]!.storedCommand).toBe('pi-reviewed');
+    expect(asked).toEqual(['pi-reviewed']);
+  });
+
+  it('refuses a pi spawn when pi-reviewed is not on the login PATH', async () => {
+    const { home, env } = await machine();
+    const { tmux, created } = fakeTmux();
+    const resolveCommand = async () => false;
+    await expect(run(['spawn', '--cli', 'pi', home], env, home, io(tmux, { stdin: async () => 'b', resolveCommand }))).rejects.toThrow(
+      'perch spawn --cli pi needs pi-reviewed on PATH',
+    );
+    expect(created).toEqual([]);
   });
 
   it('rejects --cli bash', async () => {

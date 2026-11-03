@@ -184,6 +184,7 @@ export class WsServer {
     this.deps.status.forget(id);
     this.deferred.delete(id);
     this.questionPending.delete(id);
+    this.sentDuringTool.delete(id);
     this.oscTurnEnded.delete(id);
     this.programSeen.delete(id);
   }

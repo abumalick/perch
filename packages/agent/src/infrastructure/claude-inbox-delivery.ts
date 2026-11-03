@@ -14,11 +14,16 @@ type Result = { ok: true } | { ok: false; reason: string };
 // uses. Claude answers nothing, so a dropped or held message is invisible: "ok" means the
 // frame was written and the socket closed cleanly, never that the session read it.
 export class ClaudeInboxDelivery implements MessageDelivery {
-  constructor(private readonly sessions: ClaudeSessionsPort) {}
+  constructor(
+    private readonly sessions: ClaudeSessionsPort,
+    // The id (`%N`) of a tmux session's first pane, which picks among several live Claude sessions.
+    private readonly firstPane: (id: string) => Promise<string | null> = async () => null,
+  ) {}
 
   async deliver(target: DeliveryTarget, text: string): Promise<Result> {
-    const inbox = await this.sessions.inboxOf(target.id);
+    const inbox = await this.sessions.inboxOf(target.id, await this.firstPane(target.id));
     if (!inbox) return { ok: false, reason: `no live Claude session in ${target.id}` };
+    if (inbox === 'ambiguous') return { ok: false, reason: `several Claude sessions in ${target.id}` };
     if (inbox.peerProtocol !== PINNED_PEER_PROTOCOL) {
       return {
         ok: false,
@@ -32,9 +37,9 @@ export class ClaudeInboxDelivery implements MessageDelivery {
       type: 'user',
       message: {
         role: 'user',
-        // A closing tag inside the text would end the envelope early and let the rest pose as a
-        // second message from another sender.
-        content: `<cross-session-message from-name="${fromName}">\n${text.replace(/<\/cross-session-message/gi, '&lt;/cross-session-message')}\n</cross-session-message>`,
+        // A closing tag inside the text would end the envelope early, and an opening one would
+        // let the rest pose as a second message from another sender: both are escaped.
+        content: `<cross-session-message from-name="${fromName}">\n${text.replace(/<(\/?cross-session-message)/gi, '&lt;$1')}\n</cross-session-message>`,
       },
       priority: 'next',
     });

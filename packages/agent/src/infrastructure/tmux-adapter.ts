@@ -224,6 +224,27 @@ export class TmuxAdapter implements TmuxPort {
     return stdout;
   }
 
+  // A pane id (`%N`) is already exact, so it takes no `exactTarget`.
+  async pidOfPane(paneId: string): Promise<number | null> {
+    try {
+      const { stdout } = await this.tmux(['display-message', '-p', '-t', paneId, '#{pane_pid}']);
+      const pid = Number(stdout.trim());
+      return Number.isInteger(pid) && pid > 0 ? pid : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // `-s`: every window's panes, in window then pane order.
+  async firstPaneId(name: string): Promise<string | null> {
+    try {
+      const { stdout } = await this.tmux(['list-panes', '-s', '-t', exactTarget(name), '-F', '#{pane_id}']);
+      return stdout.split('\n')[0]?.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
   async sessionOfPane(paneId: string): Promise<string | null> {
     try {
       // Targeted: an untargeted display-message answers for the most recently active session.

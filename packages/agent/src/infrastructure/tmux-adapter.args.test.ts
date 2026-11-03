@@ -125,6 +125,18 @@ describe('TmuxAdapter (spawn and peek arguments)', () => {
     expect(calls).toEqual([['display-message', '-p', '-t', '%12', '#S']]);
   });
 
+  it('reads the pid of a pane by its id, targeted at that pane', async () => {
+    stdout = '4321\n';
+    expect(await new TmuxAdapter().pidOfPane('%12')).toBe(4321);
+    expect(calls).toEqual([['display-message', '-p', '-t', '%12', '#{pane_pid}']]);
+  });
+
+  it("names a session's first pane across all its windows", async () => {
+    stdout = '%4\n%9\n';
+    expect(await new TmuxAdapter().firstPaneId('perch-c')).toBe('%4');
+    expect(calls).toEqual([['list-panes', '-s', '-t', '=perch-c:', '-F', '#{pane_id}']]);
+  });
+
   it('prepends -S <socket> to every call when given a socket', async () => {
     const adapter = new TmuxAdapter({ socket: '/s/sock' });
     await adapter.listSessions('perch-');

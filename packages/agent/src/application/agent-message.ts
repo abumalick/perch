@@ -44,20 +44,25 @@ const RELATION_LABEL: Record<Relation, string> = {
 };
 
 // Receivers take authority only from the message's first line; a body line that starts like a
-// header is quoted so no reader can take it for one.
+// header is quoted so no reader can take it for one. A reader may well ignore case, Unicode
+// spaces and a fullwidth bracket, so the match does too; `[^\S\r\n]` keeps it from reaching back
+// across a blank line.
 function quoteHeaderLines(body: string): string {
-  return body.replace(/^([ \t]*\[Perch message)/gm, '> $1');
+  return body.replace(/^([^\S\r\n]*[\[［]perch message)/gimu, '> $1');
 }
 
 export function formatAgentMessage(m: {
-  from: { id: string; name: string; cli: AgentCli };
+  // 'shell': a sender workspace running none of the agent CLIs.
+  from: { id: string; name: string; cli: AgentCli | 'shell' };
   relation: Relation;
   machineId: string;
+  // Unique per send: Claude drops a body equal to one the same sender sent in the last 30 s.
+  msgId: string;
   body: string;
 }): string {
   return [
     `[Perch message — from ${RELATION_LABEL[m.relation]}]`,
-    `from: ${m.from.id} "${m.from.name}" (${m.from.cli}) · relation: ${m.relation} · machine: ${m.machineId}`,
+    `from: ${m.from.id} "${m.from.name}" (${m.from.cli}) · relation: ${m.relation} · machine: ${m.machineId} · msg ${m.msgId}`,
     `reply with: perch send ${m.from.id} "<your reply>"`,
     '---',
     quoteHeaderLines(m.body),

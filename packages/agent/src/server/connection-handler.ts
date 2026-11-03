@@ -448,6 +448,11 @@ export class ConnectionHandler {
           this.conn.send(error ? { type: 'voiceClipDone', workspaceId, ok: false, error } : { type: 'voiceClipDone', workspaceId, ok: true });
         if (!this.deps.claudeVoice) return done('Claude voice needs a Linux machine with the voice loopback set up');
         if (this.attachment?.workspaceId !== workspaceId) return done('Open the workspace before dictating');
+        // Anywhere but Claude's prompt the held spaces would be typed.
+        const session = (await this.deps.tmux.listSessions(this.deps.config.sessionPrefix)).find((s) => s.name === workspaceId);
+        if (!session || !/(^|[\s/])claude(\s|$)/.test(session.command)) {
+          return done('Claude voice works only in a Claude Code workspace');
+        }
         const error = await this.deps.claudeVoice.dictate(new Uint8Array(Buffer.from(message.data, 'base64')), () => {
           if (this.attachment?.workspaceId === workspaceId) this.attachment.session.write(' ');
         });

@@ -69,8 +69,10 @@ const GRACE_MS = 4000;
 // offline, agent down) still surfaces the relay hint + Reconnect button so the user can act.
 const RECONNECT_GRACE_MS = 25_000;
 // How long a Claude voice dictation may take before the agent is taken not to support it: the
-// clip's playback (a byte per 4 µs is ample for the browsers' compressed audio) plus Claude's warm-up.
+// clip's playback, which runs at real speed, plus Claude's warm-up. A millisecond per byte
+// covers audio down to 8 kbps; the browsers record at 32 kbps or more.
 export const VOICE_REPLY_BASE_MS = 20_000;
+export const VOICE_REPLY_MS_PER_BYTE = 1;
 
 // Why a media preview could not be shown (a file over the cap is shown as truncated instead).
 const MEDIA_ERRORS: Record<Exclude<MediaResult, 'ok' | 'too-large'>, string> = {
@@ -705,8 +707,10 @@ export class PerchStore {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.voiceWaiter = null;
+        // The agent may still be dictating, so the line is no longer the field's.
+        this.onInjectedInput?.();
         reject(new Error('This machine’s agent does not support Claude voice'));
-      }, VOICE_REPLY_BASE_MS + bytes.byteLength / 4);
+      }, VOICE_REPLY_BASE_MS + bytes.byteLength * VOICE_REPLY_MS_PER_BYTE);
       const settle = () => {
         clearTimeout(timer);
         this.voiceWaiter = null;

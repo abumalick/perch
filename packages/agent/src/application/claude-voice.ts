@@ -11,12 +11,15 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 // Why the held spaces would not be read as voice, or null. In tap mode every space toggles
 // recording and submits the prompt, and with voice off they would be typed: both would spray
-// the conversation. Unreadable settings are not a refusal (Claude's defaults are hold mode).
+// the conversation. Voice is off until /voice turns it on, so only an explicit `true` counts;
+// a missing mode is Claude's default, hold.
 export function voiceSettingsProblem(settings: unknown): string | null {
-  if (typeof settings !== 'object' || settings === null) return null;
-  const s = settings as { voiceEnabled?: unknown; voice?: { enabled?: unknown; mode?: unknown } };
+  const s = (typeof settings === 'object' && settings !== null ? settings : {}) as {
+    voiceEnabled?: unknown;
+    voice?: { enabled?: unknown; mode?: unknown };
+  };
   const enabled = s.voice?.enabled ?? s.voiceEnabled;
-  if (enabled === false) return 'Voice is off in Claude Code on this machine: run /voice in a workspace first';
+  if (enabled !== true) return 'Voice is off in Claude Code on this machine: run /voice in a workspace first';
   if (s.voice?.mode !== undefined && s.voice.mode !== 'hold') {
     return 'Claude voice needs Claude Code’s voice mode set to hold (/config)';
   }
@@ -38,8 +41,15 @@ export class ClaudeVoice {
     try {
       const problem = voiceSettingsProblem(await this.deps.settings.read().catch(() => null));
       if (problem) return problem;
-      const hold = setInterval(pressSpace, HOLD_REPEAT_MS);
-      pressSpace();
+      const press = () => {
+        try {
+          pressSpace();
+        } catch {
+          // A dead pty must not throw out of the interval and take the agent down.
+        }
+      };
+      const hold = setInterval(press, HOLD_REPEAT_MS);
+      press();
       try {
         await sleep(LEAD_MS);
         const failure = await this.deps.player.play(audio).then(

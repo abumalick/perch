@@ -1073,6 +1073,42 @@ describe('ConnectionHandler voiceClip', () => {
     expect(conn.sent).toContainEqual({ type: 'voiceClipDone', workspaceId: 'perch-aa', ok: false, error: 'busy' });
   });
 
+  it('refuses a workspace that does not run Claude Code', async () => {
+    const dictate = vi.fn(async () => null);
+    const conn = fakeConn();
+    const deps = baseDeps();
+    const [only] = await deps.tmux.listSessions('perch-');
+    deps.tmux = { ...deps.tmux, listSessions: async () => [{ ...only!, command: 'codex --no-daemon' }] };
+    new ConnectionHandler(conn.conn, { ...deps, pty: fakePty().pty, claudeVoice: { dictate } });
+    conn.emit({ type: 'auth', token: 'secret' });
+    conn.emit({ type: 'attach', workspaceId: 'perch-aa', cols: 80, rows: 24 });
+    await tick();
+    conn.emit({ type: 'voiceClip', workspaceId: 'perch-aa', data: 'AAAA' });
+    await tick();
+    expect(dictate).not.toHaveBeenCalled();
+    expect(conn.sent).toContainEqual(expect.objectContaining({ type: 'voiceClipDone', ok: false, error: expect.stringMatching(/Claude Code workspace/) }));
+  });
+
+  it('stops typing once the workspace is no longer attached', async () => {
+    const fp = fakePty();
+    const conn = fakeConn();
+    let press: () => void = () => undefined;
+    const dictate = vi.fn(async (_audio: Uint8Array, p: () => void) => {
+      press = p;
+      return null;
+    });
+    new ConnectionHandler(conn.conn, { ...baseDeps(), pty: fp.pty, claudeVoice: { dictate } });
+    conn.emit({ type: 'auth', token: 'secret' });
+    conn.emit({ type: 'attach', workspaceId: 'perch-aa', cols: 80, rows: 24 });
+    await tick();
+    conn.emit({ type: 'voiceClip', workspaceId: 'perch-aa', data: 'AAAA' });
+    await tick();
+    conn.emit({ type: 'detach', workspaceId: 'perch-aa' });
+    await tick();
+    press();
+    expect(fp.sessions[0]!.written).toEqual([]);
+  });
+
   it('refuses a workspace that is not attached, and a machine without voice', async () => {
     const dictate = vi.fn(async () => null);
     const conn = fakeConn();

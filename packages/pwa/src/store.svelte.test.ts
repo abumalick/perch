@@ -362,10 +362,15 @@ describe('PerchStore', () => {
       vi.useFakeTimers();
       try {
         const { store } = opened();
+        let injected = 0;
+        store.onInjectedInput = () => injected++;
         const done = store.sendVoiceClip(clip());
         const caught = done.catch((e: Error) => e);
-        await vi.advanceTimersByTimeAsync(VOICE_REPLY_BASE_MS + 10);
+        await vi.advanceTimersByTimeAsync(VOICE_REPLY_BASE_MS);
+        expect(injected).toBe(0);
+        await vi.advanceTimersByTimeAsync(10);
         expect(String(await caught)).toMatch(/does not support Claude voice/);
+        expect(injected).toBe(1);
       } finally {
         vi.useRealTimers();
       }

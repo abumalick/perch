@@ -12,15 +12,17 @@ function deferred() {
 }
 
 describe('voiceSettingsProblem', () => {
-  it('accepts voice on in hold mode, or settings it cannot read', () => {
+  it('accepts voice on in hold mode, the default mode', () => {
     expect(voiceSettingsProblem({ voice: { enabled: true, mode: 'hold' } })).toBeNull();
     expect(voiceSettingsProblem({ voiceEnabled: true })).toBeNull();
-    expect(voiceSettingsProblem(null)).toBeNull();
   });
 
-  it('refuses voice turned off', () => {
+  it('refuses voice turned off, never turned on, or settings it cannot read', () => {
     expect(voiceSettingsProblem({ voice: { enabled: false } })).toMatch(/\/voice/);
     expect(voiceSettingsProblem({ voiceEnabled: false })).toMatch(/\/voice/);
+    expect(voiceSettingsProblem({ voice: { mode: 'hold' } })).toMatch(/\/voice/);
+    expect(voiceSettingsProblem({})).toMatch(/\/voice/);
+    expect(voiceSettingsProblem(null)).toMatch(/\/voice/);
   });
 
   it('refuses tap mode, where each held space would submit', () => {
@@ -83,6 +85,20 @@ describe('ClaudeVoice', () => {
     const count = presses.length;
     await vi.advanceTimersByTimeAsync(1000);
     expect(presses.length).toBe(count);
+  });
+
+  it('keeps going when a press throws', async () => {
+    const { voice, playing } = setup();
+    let presses = 0;
+    const done = voice.dictate(new Uint8Array([1]), () => {
+      presses++;
+      throw new Error('pty gone');
+    });
+    await vi.advanceTimersByTimeAsync(LEAD_MS);
+    playing.resolve();
+    await vi.advanceTimersByTimeAsync(TAIL_MS);
+    await expect(done).resolves.toBeNull();
+    expect(presses).toBeGreaterThan(1);
   });
 
   it('presses nothing when the settings refuse', async () => {

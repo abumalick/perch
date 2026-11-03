@@ -1125,9 +1125,9 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   checks a `sh -c` script as its own command line. It also refuses the two plain routes to
   another session's authority (docs/MESSAGING.md): a raw socket client (`nc`, `ncat`, `socat`,
   `curl`) whose command names a message socket (`cc-socks/`, `.perch/inbox/`,
-  `app-server-control/`; a client on any other socket passes), and `tmux set`/`set-option` of
-  `@perch_parent` or `@perch_codex_thread` on the default server; it points at `perch send` and
-  `perch spawn --child`. It parses the JSON without `jq`, like
+  `app-server-control/`; a client on any other socket passes), and `tmux set`/`set-option`/
+  `setw`/`set-window-option` of `@perch_parent` or `@perch_codex_thread` on the default server;
+  it points at `perch send` and `perch spawn --child`. It parses the JSON without `jq`, like
   `perch-hook.sh`. Table-tested in `perch-guard.test.sh`; re-run `install-hooks` per machine,
   and re-trust the Codex hooks in `/hooks`.
 - **Codex reports status through the same hook script, with `codex` as a third argument.**

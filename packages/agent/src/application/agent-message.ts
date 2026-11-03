@@ -43,6 +43,12 @@ const RELATION_LABEL: Record<Relation, string> = {
   peer: 'a PEER',
 };
 
+// Receivers take authority only from the message's first line; a body line that starts like a
+// header is quoted so no reader can take it for one.
+function quoteHeaderLines(body: string): string {
+  return body.replace(/^([ \t]*\[Perch message)/gm, '> $1');
+}
+
 export function formatAgentMessage(m: {
   from: { id: string; name: string; cli: AgentCli };
   relation: Relation;
@@ -54,6 +60,6 @@ export function formatAgentMessage(m: {
     `from: ${m.from.id} "${m.from.name}" (${m.from.cli}) · relation: ${m.relation} · machine: ${m.machineId}`,
     `reply with: perch send ${m.from.id} "<your reply>"`,
     '---',
-    m.body,
+    quoteHeaderLines(m.body),
   ].join('\n');
 }

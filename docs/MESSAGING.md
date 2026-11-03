@@ -29,9 +29,12 @@
     error) → `the Pi inbox of <id> failed: <message>`.
 - **The header's first line is wire format.** The extension and Pi's reviewer read
   `[Perch message — from your ORCHESTRATOR]` (em dash) at the start of `text` as the owner's
-  own instruction; `from your CHILD` and `from a PEER` grant nothing. The agent always writes
-  the header first, so a body sent through `perch send` cannot forge it. Change the wording on
-  both sides together.
+  own instruction; `from your CHILD` and `from a PEER` grant nothing. Only the first line of
+  the whole message counts. The agent always writes the header first and quotes (`> `) every
+  body line that begins with `[Perch message`, so a body sent through `perch send` cannot forge
+  one; for Claude it also escapes `</cross-session-message` in the text, so a body cannot close
+  the envelope and open a second one under another sender's name. Change the wording on both
+  sides together.
 - **Accepted limit: this is a guard against accidents and prompt injection, not a security
   boundary.** Every workspace runs as the same user, so any process of that user can claim the
   orchestrator's authority by two routes, for all three CLIs (Claude's and Codex's sockets as
@@ -39,11 +42,14 @@
   `@perch_parent` on another tmux session so the agent itself writes `from your ORCHESTRATOR`.
   The sender-side guards refuse only the obvious commands that would do either: `perch-guard.sh`
   (Claude Code and Codex) refuses `nc`, `ncat`, `socat` or `curl` naming a message socket
-  (`cc-socks/`, `.perch/inbox/`, `app-server-control/`) and `tmux set-option` of `@perch_parent`
-  or `@perch_codex_thread` on the default server, and reviewer rules configured for each CLI (not
-  shipped with Perch) can hold the same commands and judge a
-  `perch send` body as an instruction given on the owner's behalf. A script, a variable holding
-  the path, or any other client gets past all of them.
+  (`cc-socks/`, `.perch/inbox/`, `app-server-control/`) and `tmux set`/`setw` (any form) of
+  `@perch_parent` or `@perch_codex_thread` on the default server. Beyond that it is up to each
+  CLI's own configuration, which Perch does not ship: Claude Code's auto-mode rules and Pi's
+  reviewer can hold these commands and judge a `perch send` body as an instruction given on the
+  owner's behalf; Codex's `[auto_review]` reviewer takes no extra rules from `config.toml`
+  (`extra_policy` has no effect on its verdicts), so for Codex it is the model's own
+  instructions (`AGENTS.md`) and `perch-guard.sh`. A script, a path reached through `cd` or a
+  variable, or any other client gets past the guard.
 - **Status:** an accepted message reports `UserPromptSubmit` through the Perch status hook
   before it reaches Pi, as a typed prompt does.
 

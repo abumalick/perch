@@ -82,6 +82,10 @@ expect deny 'tmux set-option -u -t perch-x @perch_parent'
 expect deny 'tmux set -q -t perch-x "@perch_parent" perch-y'
 expect deny 'tmux ls \; set -t perch-x @perch_parent perch-y'
 expect deny 'sudo tmux set-option -t perch-x @perch_parent perch-y'
+expect deny 'tmux setw -t a @perch_parent b'
+expect deny 'tmux set-window-option -t a:1 @perch_codex_thread abc'
+expect deny 'tmux setw -g @perch_parent b'
+expect deny 'tmux set-window-opt -q -t a "@perch_parent" b'
 
 echo " allows"
 expect allow 'kill 1234'
@@ -118,6 +122,10 @@ expect allow 'tmux set-option -t perch-x @perch_foo 1'
 expect allow 'tmux set-option -t perch-x status off'
 expect allow 'tmux -L test set-option -t x @perch_parent y'
 expect allow 'perch spawn --child "fix the build"'
+# Accepted limit: a path relative to a cd is not seen; the CLIs' reviewers cover it.
+expect allow 'cd ~/.perch/inbox && nc -U x.sock'
+expect allow 'tmux setw -t a @perch_foo 1'
+expect allow 'tmux set-environment -t a @perch_parent b'
 
 echo " scope"
 code=0

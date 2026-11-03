@@ -47,8 +47,9 @@ has_socket_flag() { [[ $1 =~ (^|[[:space:]])-[A-Za-z]*[SL]([[:space:]]|[^[:space
 
 # Another session's message socket: Claude Code's, the Perch inbox Pi reads, the Codex app server.
 inbox_re='(cc-socks/|\.perch/inbox/|app-server-control/)'
-# tmux takes `set` and any prefix of `set-option`.
-reparent_re='[[:space:]]set(-o[a-z]*)?[[:space:]].*@perch_(parent|codex_thread)([^[:alnum:]_]|$)'
+# tmux takes `set`, `setw` and any prefix of `set-option` or `set-window-option`; a window option
+# answers `#{@perch_parent}` as well as a session option does.
+reparent_re='[[:space:]](set|setw|set-o[a-z]*|set-w[a-z-]*)[[:space:]].*@perch_(parent|codex_thread)([^[:alnum:]_]|$)'
 
 # A pid list computed from a name is a kill by name.
 pgrep_kill_re='(^|[^[:alnum:]_-])kill[[:space:]][^;&|]*(\$\(|`)[[:space:]]*(pgrep|pidof)([[:space:]]|$)'

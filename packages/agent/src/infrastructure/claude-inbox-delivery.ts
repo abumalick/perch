@@ -32,7 +32,9 @@ export class ClaudeInboxDelivery implements MessageDelivery {
       type: 'user',
       message: {
         role: 'user',
-        content: `<cross-session-message from-name="${fromName}">\n${text}\n</cross-session-message>`,
+        // A closing tag inside the text would end the envelope early and let the rest pose as a
+        // second message from another sender.
+        content: `<cross-session-message from-name="${fromName}">\n${text.replace(/<\/cross-session-message/gi, '&lt;/cross-session-message')}\n</cross-session-message>`,
       },
       priority: 'next',
     });

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { FileClaudeSessionsStore } from './file-claude-sessions-store';
 
 let dir: string;
@@ -57,5 +58,50 @@ describe('FileClaudeSessionsStore', () => {
     expect(await new FileClaudeSessionsStore(dir).addressesByTmuxSession()).toEqual({
       'perch-aaa111': 'foo-cc',
     });
+  });
+});
+
+describe('FileClaudeSessionsStore.inboxOf', () => {
+  const sock = (pid: number) => `/run/user/1000/cc-socks/${pid}.sock`;
+  const keyFile = (pid: number) =>
+    join(dir, `${pid}.${createHash('sha256').update(sock(pid)).digest('hex')}.key`);
+  const entry = (pid: number, tmux: string, extra: object = {}) =>
+    write(String(pid), { pid, name: `n${pid}`, tmux, messagingSocketPath: sock(pid), peerProtocol: 1, ...extra });
+  // Far above Linux's pid_max, so never alive.
+  const DEAD = 99_999_999;
+
+  it('picks the live pid whose tmux field names the session and reads its token', async () => {
+    const live = process.pid;
+    await entry(DEAD, 'perch-aaa111:@1.%1');
+    await entry(live, 'perch-aaa111:@3.%3');
+    await entry(live + 1, 'perch-bbb222:@2.%2');
+    await writeFile(keyFile(live), JSON.stringify({ peerToken: 'abc123', procStart: '1', pidDomain: 'x' }), 'utf8');
+    expect(await new FileClaudeSessionsStore(dir).inboxOf('perch-aaa111')).toEqual({
+      socketPath: sock(live),
+      peerProtocol: 1,
+      token: 'abc123',
+    });
+  });
+
+  it('returns the inbox without a token when the key file is missing', async () => {
+    await entry(process.pid, 'perch-aaa111:@1.%1', { peerProtocol: 2 });
+    expect(await new FileClaudeSessionsStore(dir).inboxOf('perch-aaa111')).toEqual({
+      socketPath: sock(process.pid),
+      peerProtocol: 2,
+    });
+  });
+
+  it('returns null when only a dead session names the workspace', async () => {
+    await entry(DEAD, 'perch-aaa111:@1.%1');
+    expect(await new FileClaudeSessionsStore(dir).inboxOf('perch-aaa111')).toBeNull();
+  });
+
+  it('returns null when the directory is missing', async () => {
+    expect(await new FileClaudeSessionsStore(join(dir, 'absent')).inboxOf('perch-aaa111')).toBeNull();
+  });
+
+  it('does not match a session whose name merely starts with the id', async () => {
+    await entry(process.pid, 'perch-aaa1110:@1.%1');
+    expect(await new FileClaudeSessionsStore(dir).inboxOf('perch-aaa111')).toBeNull();
   });
 });

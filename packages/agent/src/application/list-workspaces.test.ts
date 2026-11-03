@@ -294,7 +294,7 @@ describe('listWorkspaces agent address', () => {
     const result = await listWorkspaces({
       ...baseDeps,
       tmux: twoSessions,
-      claudeSessions: { addressesByTmuxSession: async () => ({ 'perch-cc': 'perch-be' }) },
+      claudeSessions: { addressesByTmuxSession: async () => ({ 'perch-cc': 'perch-be' }), inboxOf: async () => null },
     });
     expect(result.find((w) => w.id === 'perch-cc')?.agentAddress).toBe('perch-be');
   });
@@ -305,7 +305,7 @@ describe('listWorkspaces agent address', () => {
     const result = await listWorkspaces({
       ...baseDeps,
       tmux: twoSessions,
-      claudeSessions: { addressesByTmuxSession: async () => ({ 'perch-cc': 'perch-be' }) },
+      claudeSessions: { addressesByTmuxSession: async () => ({ 'perch-cc': 'perch-be' }), inboxOf: async () => null },
     });
     expect(result.find((w) => w.id === 'perch-sh')).not.toHaveProperty('agentAddress');
   });
@@ -335,7 +335,7 @@ describe('listWorkspaces agent address', () => {
     const result = await listWorkspaces({
       ...baseDeps,
       parked,
-      claudeSessions: { addressesByTmuxSession: async () => ({ 'perch-parked': 'stale-address' }) },
+      claudeSessions: { addressesByTmuxSession: async () => ({ 'perch-parked': 'stale-address' }), inboxOf: async () => null },
     });
     expect(result.find((w) => w.id === 'perch-parked')).not.toHaveProperty('agentAddress');
   });

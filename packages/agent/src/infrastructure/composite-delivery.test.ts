@@ -12,13 +12,13 @@ describe('CompositeDelivery', () => {
       },
     };
     const delivery = new CompositeDelivery({ claude });
-    expect(await delivery.deliver({ id: 'perch-a-1', cli: 'claude', command: 'claude' }, 'hi')).toEqual({ ok: true });
+    expect(await delivery.deliver({ id: 'perch-a-1', from: 'perch-b-2', cli: 'claude', command: 'claude' }, 'hi')).toEqual({ ok: true });
     expect(seen).toEqual(['perch-a-1 hi']);
   });
 
   it('refuses a CLI it has no adapter for', async () => {
     const delivery = new CompositeDelivery({});
-    expect(await delivery.deliver({ id: 'perch-a-1', cli: 'pi', command: 'pi' }, 'hi')).toEqual({
+    expect(await delivery.deliver({ id: 'perch-a-1', from: 'perch-b-2', cli: 'pi', command: 'pi' }, 'hi')).toEqual({
       ok: false,
       reason: 'no delivery for pi on this agent yet',
     });
@@ -28,7 +28,7 @@ describe('CompositeDelivery', () => {
     const delivery = new CompositeDelivery({
       codex: { deliver: async () => { throw new Error('socket closed'); } },
     });
-    expect(await delivery.deliver({ id: 'perch-a-1', cli: 'codex', command: 'codex' }, 'hi')).toEqual({
+    expect(await delivery.deliver({ id: 'perch-a-1', from: 'perch-b-2', cli: 'codex', command: 'codex' }, 'hi')).toEqual({
       ok: false,
       reason: 'socket closed',
     });

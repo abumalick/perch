@@ -105,7 +105,10 @@ export async function sendMessage(
     machineId: deps.machineId,
     body: req.body,
   });
-  const delivered = await deps.delivery.deliver({ id: recipient.name, cli, command: recipient.command }, text);
+  const delivered = await deps.delivery.deliver(
+    { id: recipient.name, from: sender.name, cli, command: recipient.command },
+    text,
+  );
   if (!delivered.ok) return refuse(`delivery failed: ${delivered.reason}`);
 
   await record('delivered');

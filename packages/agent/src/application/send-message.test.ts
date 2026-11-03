@@ -61,7 +61,7 @@ describe('sendMessage', () => {
   it('delivers to a child with an orchestrator header and calls onSent(sender)', async () => {
     const t = setup();
     expect(await t.send('perch-c')).toEqual({ result: 'delivered' });
-    expect(t.delivered[0]!.target).toMatchObject({ id: 'perch-c', cli: 'codex' });
+    expect(t.delivered[0]!.target).toMatchObject({ id: 'perch-c', cli: 'codex', from: 'perch-p' });
     expect(t.delivered[0]!.text).toMatch(/from your ORCHESTRATOR/);
     expect(t.onSent).toHaveBeenCalledWith('perch-p');
   });

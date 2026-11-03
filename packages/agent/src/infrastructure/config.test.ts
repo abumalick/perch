@@ -28,6 +28,7 @@ describe('loadConfig', () => {
       devicesPath: '/home/u/.perch/devices.json',
       pairingPath: '/home/u/.perch/pairing.json',
       claudeSessionsDir: '/home/u/.claude/sessions',
+      inboxDir: '/home/u/.perch/inbox',
       sessionPrefix: 'perch-',
     });
   });

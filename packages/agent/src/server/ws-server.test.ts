@@ -203,6 +203,7 @@ function testConfig(home: string, overrides: Partial<AgentConfig> = {}): AgentCo
     devicesPath: join(home, 'devices.json'),
     pairingPath: join(home, 'pairing.json'),
     claudeSessionsDir: join(home, 'claude-sessions'),
+    inboxDir: join(home, 'inbox'),
     sessionPrefix: 'perch-',
     ...overrides,
   };

@@ -18,6 +18,7 @@ import { FileMessageLog } from './infrastructure/file-message-log';
 import { ProcAncestry } from './infrastructure/proc-ancestry';
 import { CompositeDelivery } from './infrastructure/composite-delivery';
 import { ClaudeInboxDelivery } from './infrastructure/claude-inbox-delivery';
+import { PiInboxDelivery } from './infrastructure/pi-inbox-delivery';
 import { FileWorkspaceLogStore } from './infrastructure/file-workspace-log-store';
 import { FileParkedStore } from './infrastructure/file-parked-store';
 import { reconcileParked } from './application/reconcile-parked';
@@ -122,7 +123,10 @@ async function main(): Promise<void> {
     hookEventLog: new FileHookEventLog(config.hookEventLogPath),
     messaging: {
       ancestry: new ProcAncestry(),
-      delivery: new CompositeDelivery({ claude: new ClaudeInboxDelivery(claudeSessions) }),
+      delivery: new CompositeDelivery({
+        claude: new ClaudeInboxDelivery(claudeSessions),
+        pi: new PiInboxDelivery(config.inboxDir),
+      }),
       log: new FileMessageLog(config.messageLogPath),
     },
     workspaceLog,

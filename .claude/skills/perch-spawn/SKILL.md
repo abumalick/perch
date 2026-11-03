@@ -64,7 +64,8 @@ Other sessions message it with `perch send <id> "<message>"`, using the id this 
 `--cli claude|codex|pi` picks the CLI (default `claude`). A Codex workspace takes and sends
 messages only because spawn creates its thread and starts it bound to the Codex daemon; spawn
 refuses when `codex --version` and the daemon's version differ. Pi needs the Perch extension
-(`pi-reviewed`) for its inbox. `--model` becomes `claude --model '<m>'` for Claude, the
+(`pi-reviewed`) for its inbox, and spawn refuses (`perch spawn --cli pi needs pi-reviewed on
+PATH`) when the login shell cannot find `pi-reviewed`. `--model` becomes `claude --model '<m>'` for Claude, the
 thread's model for Codex, and `pi-reviewed --model '<m>'` for Pi; only Claude has a default
 (`opus[1m]`).
 

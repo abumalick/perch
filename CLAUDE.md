@@ -271,13 +271,18 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     Codex `CODEX_THREAD_ID` matched to `@perch_codex_thread` (its tools run in the daemon's
     sandbox, outside the pane).
   - **Perch writes the header, and only the first line of the whole message grants authority**
-    (`from your ORCHESTRATOR` = the owner). Body lines that begin `[Perch message` are quoted
-    `> `, and Claude's text is escaped so a body cannot close its envelope.
+    (`from your ORCHESTRATOR` = the owner). Body lines that begin `[Perch message` (after any
+    whitespace, any case, `[` or `［`) are quoted `> `, and Claude's text has both envelope tags
+    escaped so a body cannot close its envelope or open another.
+  - **Each message carries a random `msg` id on its `from:` line:** Claude's inbox drops a body
+    equal to one the same peer sent within 30 s, and every Perch delivery is the same peer.
   - **The body is inline only.** No `--file`: a path in a message is an instruction, not data.
   - **No queue for a parked recipient:** it is refused ("run `perch unpark` first"), because a
     held message would be delivered into a conversation nobody chose to reopen.
   - **`sentDuringTool` keeps the sender's "Needs orchestrator" mark:** the send's own
     `PostToolUse` arrives after the mark is set and would clear it.
+    Accepted edge: a `perch send` run by a subagent marks the parent workspace too, since the
+    sender is proven by pane and the subagent's Bash runs in the parent's pane.
   - **Codex takes messages only in workspaces made by `perch spawn --cli codex`:** Perch creates
     the thread, records `@perch_codex_thread` and launches exactly `codex resume <thread id>`
     (no `-c`, which would force an in-process thread nothing can reach). A phone-created Codex

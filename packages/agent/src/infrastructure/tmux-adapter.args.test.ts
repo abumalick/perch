@@ -90,6 +90,15 @@ describe('TmuxAdapter (arguments)', () => {
     await adapter.createSession({ name: 'perch-d', cwd: '/w', command: 'claude' });
     expect(calls.some((args) => args.includes('@perch_parent'))).toBe(false);
   });
+
+  it('sets @perch_codex_thread on a new session only when given one', async () => {
+    const adapter = new TmuxAdapter();
+    await adapter.createSession({ name: 'perch-c', cwd: '/w', command: 'codex resume th-1', codexThread: 'th-1' });
+    expect(calls).toContainEqual(['set-option', '-t', '=perch-c:', '@perch_codex_thread', 'th-1']);
+    calls.length = 0;
+    await adapter.createSession({ name: 'perch-d', cwd: '/w', command: 'claude' });
+    expect(calls.some((args) => args.includes('@perch_codex_thread'))).toBe(false);
+  });
 });
 
 describe('TmuxAdapter (spawn and peek arguments)', () => {

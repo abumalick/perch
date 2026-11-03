@@ -38,6 +38,10 @@ import { FileParkedStore } from './infrastructure/file-parked-store';
 import { FsFileWriter } from './infrastructure/fs-file-writer';
 import { fsResolveDirectory } from './infrastructure/fs-directory-checker';
 import { spawnWorkspace } from './application/spawn-workspace';
+import type { AgentCli } from './application/agent-message';
+import type { CodexSpawnPort } from './ports/codex-spawn-port';
+import { CodexAppServer } from './infrastructure/codex-app-server';
+import { codexVersions } from './infrastructure/codex-versions';
 import { formatWorkspaceTable } from './application/format-workspace-table';
 import { isUnderPath, WORKSPACE_ROLES, workspaceRole, type WorkspaceRole } from './application/workspace-role';
 import type { TmuxPort } from './ports/tmux-port';
@@ -61,6 +65,7 @@ export interface CliIo {
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   fetch?: typeof fetch;
+  codex?: CodexSpawnPort;
 }
 
 export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo = {}): Promise<string> {
@@ -196,7 +201,8 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, 
 }
 
 const LS_USAGE = `usage: perch ls [--json] [--mine] [--parent <workspace id>] [--role ${WORKSPACE_ROLES.join('|')}] [--path <project dir>]`;
-const SPAWN_USAGE = 'usage: perch spawn [--title <title>] [--child] [--model <model>] <projectPath>   (brief on stdin)';
+const SPAWN_USAGE = 'usage: perch spawn [--title <title>] [--child] [--model <model>] [--cli claude|codex|pi] <projectPath>   (brief on stdin)';
+const SPAWN_CLIS: readonly AgentCli[] = ['claude', 'codex', 'pi'];
 const PEEK_USAGE = 'usage: perch peek <workspace id> [-n <lines>]';
 const UNPARK_USAGE = 'usage: perch unpark <workspace id>...';
 const RENAME_USAGE = 'usage: perch rename [<workspace id>] <title>   (without an id: the workspace this runs in)';
@@ -257,13 +263,14 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rena
       const child = flag('--child');
       const title = takeOption(args, '--title', SPAWN_USAGE);
       const model = takeOption(args, '--model', SPAWN_USAGE);
+      const cli = takeOption(args, '--cli', SPAWN_USAGE) ?? 'claude';
       const [projectPath, ...extra] = args;
       if (!projectPath || extra.length > 0 || projectPath.startsWith('--')) throw new Error(SPAWN_USAGE);
+      if (!SPAWN_CLIS.includes(cli as AgentCli)) throw new Error(SPAWN_USAGE);
       const cwd = io.cwd ?? process.cwd();
       const resolveDirectory = fsResolveDirectory(cwd);
       if (!(await resolveDirectory(projectPath))) throw new Error(`not a directory: ${resolvePath(cwd, projectPath)}`);
       const parentId = child ? await callerWorkspace(env, tmux, config.sessionPrefix) : undefined;
-      const parent = parentId ? { id: parentId, name: (await claudeSessions.addressesByTmuxSession())[parentId] ?? parentId } : undefined;
       const brief = await (io.stdin ?? (() => readStdin("pass the brief on stdin, e.g. perch spawn <path> <<'EOF'")))();
       return spawnWorkspace(
         {
@@ -280,8 +287,16 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rena
           nonce: () => randomBytes(6).toString('hex'),
           sleep: io.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
           spawnDir: joinPath(home, '.perch', 'spawn'),
+          codex: io.codex ?? { versions: codexVersions(), createThread: (input) => new CodexAppServer().createThread(input) },
         },
-        { projectPath, brief, ...(model ? { model } : {}), ...(title ? { title } : {}), ...(parent ? { parent } : {}) },
+        {
+          projectPath,
+          brief,
+          cli: cli as AgentCli,
+          ...(model ? { model } : {}),
+          ...(title ? { title } : {}),
+          ...(parentId ? { parent: { id: parentId } } : {}),
+        },
       );
     }
     case 'peek': {

@@ -95,7 +95,7 @@ describe('spawnWorkspace (real tmux, sandbox socket)', () => {
         spawnDir: join(sandbox, 'spawn'),
         launcher,
       },
-      { projectPath: 'project', brief, title: 'story 9', parent: { id: 'perch-p00001', name: 'orch' } },
+      { projectPath: 'project', brief, title: 'story 9', parent: { id: 'perch-p00001' } },
     );
 
     // Before anything else: the session is on the sandbox server, or the isolation failed.

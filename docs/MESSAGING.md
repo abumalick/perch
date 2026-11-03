@@ -65,3 +65,10 @@ through the pane. The agent's side is `CodexDelivery` over `CodexAppServer`
   takes the workspace recording that thread as the sender, with no ancestry check (the same
   accepted limit as above). Its hooks run in the daemon too: `perch-hook.sh` posts the payload's
   `session_id` as `thread`, and `/hooks` applies the event to the workspace recording it.
+  Either way a thread names a workspace only when exactly one session running `codex` records
+  it, and a hook by thread must say `agent: codex`; anything else names nobody. Hooks by thread
+  are applied in the order they arrive.
+- **`perch spawn --cli codex` makes the thread first.** It refuses when `codex --version` and the
+  daemon's `appServerVersion` differ (the CLI would open on an update chooser), creates the thread
+  with the brief as its first turn (`thread/start` + `turn/start`, and a child's orchestrator
+  note as `developerInstructions`), then launches exactly `codex resume <thread id>`.

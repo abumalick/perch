@@ -6,12 +6,17 @@ const DIR = '/home/u/.perch/spawn';
 function makeDeps(overrides: Partial<SpawnWorkspaceDeps> = {}) {
   const files = new Map<string, string>();
   const tmux = {
-    createSession: vi.fn(async (_input: { name: string; cwd: string; command: string; parent?: string; storedCommand?: string }) => {}),
+    createSession: vi.fn(async (_input: { name: string; cwd: string; command: string; parent?: string; storedCommand?: string; codexThread?: string }) => {}),
     setPaneTitle: vi.fn(async (_name: string, _title: string) => {}),
     hasSession: vi.fn(async (_name: string) => true),
   };
   const sleep = vi.fn(async (_ms: number) => {});
+  const codex = {
+    versions: vi.fn(async () => ({ cli: '0.166.0', appServer: '0.166.0' })),
+    createThread: vi.fn(async (_input: { cwd: string; model?: string; developerInstructions?: string; firstMessage: string }) => 'th-1'),
+  };
   const deps: SpawnWorkspaceDeps = {
+    codex,
     tmux,
     files: {
       ensureDir: vi.fn(async () => {}),
@@ -27,7 +32,7 @@ function makeDeps(overrides: Partial<SpawnWorkspaceDeps> = {}) {
     spawnDir: DIR,
     ...overrides,
   };
-  return { deps, tmux, files, sleep };
+  return { deps, tmux, files, sleep, codex };
 }
 
 const created = (tmux: ReturnType<typeof makeDeps>['tmux']) => tmux.createSession.mock.calls[0]![0];
@@ -127,7 +132,7 @@ describe('spawnWorkspace', () => {
   });
 
   describe('a child', () => {
-    const parent = { id: 'perch-p00001', name: 'relay "orchestrator"' };
+    const parent = { id: 'perch-p00001' };
     const settings = `${DIR}/n0nce.settings.json`;
 
     it('records its parent on the session', async () => {
@@ -160,19 +165,25 @@ describe('spawnWorkspace', () => {
       };
       expect(deny.hookSpecificOutput.hookEventName).toBe('PreToolUse');
       expect(deny.hookSpecificOutput.permissionDecision).toBe('deny');
-      expect(deny.hookSpecificOutput.permissionDecisionReason).toContain('perch-p00001');
-      expect(deny.hookSpecificOutput.permissionDecisionReason).toContain('relay "orchestrator"');
-      expect(deny.hookSpecificOutput.permissionDecisionReason).toContain('perch ls');
     });
 
-    it('appends a footer naming the parent id and its messaging name, with the perch ls fallback', async () => {
+    it('the deny reason names perch send and the parent id', async () => {
+      const { deps, files } = makeDeps();
+      await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', parent });
+      const reason = (JSON.parse(files.get(`${DIR}/n0nce.deny.json`)!) as { hookSpecificOutput: { permissionDecisionReason: string } })
+        .hookSpecificOutput.permissionDecisionReason;
+      expect(reason).toContain('perch send perch-p00001 "');
+      expect(reason).not.toContain('SendMessage');
+    });
+
+    it('appends a footer telling it to ask the parent with perch send', async () => {
       const { deps, files } = makeDeps();
       await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'Do the thing.', parent });
       const brief = files.get(`${DIR}/n0nce.md`)!;
       expect(brief.startsWith('Do the thing.\n\n---\n')).toBe(true);
       expect(brief).toContain('workspace perch-p00001');
-      expect(brief).toContain('SendMessage tool (to: "relay "orchestrator"")');
-      expect(brief).toMatch(/run `perch ls` and look for workspace perch-p00001/);
+      expect(brief).toContain('perch send perch-p00001 "');
+      expect(brief).not.toContain('SendMessage');
       expect(brief).toContain('A permission prompt is the exception');
       expect(brief).toContain('final report');
     });
@@ -180,7 +191,7 @@ describe('spawnWorkspace', () => {
     // The parent id lands unquoted in the child's hook files and brief.
     it('refuses a parent id with characters an id never has', async () => {
       const { deps } = makeDeps();
-      await expect(spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', parent: { id: 'main; x', name: 'x' } })).rejects.toThrow(/parent/);
+      await expect(spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', parent: { id: 'main; x' } })).rejects.toThrow(/parent/);
     });
 
     // The settings path lands unquoted in @perch_command, which unpark splits on whitespace.
@@ -218,5 +229,87 @@ describe('spawnWorkspace', () => {
     );
     expect(sleep).toHaveBeenCalledWith(2000);
     expect(sleep.mock.invocationCallOrder[0]!).toBeLessThan(tmux.hasSession.mock.invocationCallOrder[0]!);
+  });
+
+  describe('--cli codex', () => {
+    const parent = { id: 'perch-p00001' };
+
+    it('spawns a codex child with its thread recorded and @perch_parent set', async () => {
+      const { deps, tmux, codex } = makeDeps();
+      await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'Do $(it).', cli: 'codex', parent, model: 'gpt-5.5' });
+      const thread = codex.createThread.mock.calls[0]![0];
+      expect(thread.cwd).toBe('/w/proj');
+      expect(thread.model).toBe('gpt-5.5');
+      expect(thread.firstMessage).toBe('Do $(it).');
+      expect(thread.developerInstructions).toContain('orchestrator workspace perch-p00001');
+      expect(thread.developerInstructions).toContain('perch send perch-p00001 "');
+      expect(thread.developerInstructions).toContain('escalated');
+      expect(thread.developerInstructions).toContain('[Perch message — from your ORCHESTRATOR]');
+      expect(created(tmux)).toMatchObject({ name: 'perch-a1b2c3', cwd: '/w/proj', parent: 'perch-p00001', codexThread: 'th-1' });
+    });
+
+    // Any -c / --enable / --search / --no-daemon makes the TUI hold the thread itself.
+    it('launches and stores exactly codex resume <thread id>', async () => {
+      const { deps, tmux } = makeDeps();
+      await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', cli: 'codex', title: 'T' });
+      expect(created(tmux).command).toBe('codex resume th-1');
+      // No separate stored command: @perch_command records the launch itself.
+      expect(created(tmux).storedCommand ?? created(tmux).command).toBe('codex resume th-1');
+      expect(tmux.setPaneTitle).toHaveBeenCalledWith('perch-a1b2c3', '✳ T');
+    });
+
+    it('gives a codex spawn without a parent no developer instructions and no model of its own', async () => {
+      const { deps, tmux, codex, files } = makeDeps();
+      await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', cli: 'codex' });
+      expect(codex.createThread.mock.calls[0]![0]).toEqual({ cwd: '/w/proj', firstMessage: 'b' });
+      expect(created(tmux).parent).toBeUndefined();
+      // The brief travels over JSON-RPC, never through a file or the command line.
+      expect(files.size).toBe(0);
+    });
+
+    // An update chooser would block the TUI before it ever attaches to the thread.
+    it('refuses a CLI and app server of different versions before anything exists', async () => {
+      const { deps, tmux, codex, files } = makeDeps();
+      codex.versions.mockResolvedValue({ cli: '0.163.0', appServer: '0.166.0' });
+      await expect(spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', cli: 'codex', parent })).rejects.toThrow(
+        'the Codex CLI (0.163.0) and its app server (0.166.0) differ: update codex first',
+      );
+      expect(codex.createThread).not.toHaveBeenCalled();
+      expect(tmux.createSession).not.toHaveBeenCalled();
+      expect(files.size).toBe(0);
+    });
+
+    it('creates one thread even when the first id is taken', async () => {
+      const { deps, tmux, codex } = makeDeps();
+      const { DuplicateSessionError } = await import('../ports/tmux-port');
+      tmux.createSession.mockRejectedValueOnce(new DuplicateSessionError('perch-a1b2c3'));
+      let n = 0;
+      deps.ids = { next: async () => (n++ === 0 ? 'perch-a1b2c3' : 'perch-a1b2c4') };
+      await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', cli: 'codex' });
+      expect(codex.createThread).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('--cli pi', () => {
+    const parent = { id: 'perch-p00001' };
+
+    it('spawns a pi child through pi-reviewed', async () => {
+      const { deps, tmux, files } = makeDeps();
+      await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'Do it.', cli: 'pi', parent, model: 'anthropic/claude-sonnet-4:high' });
+      expect(created(tmux).command).toBe(`pi-reviewed --model 'anthropic/claude-sonnet-4:high' "$(cat '${DIR}/n0nce.md')"`);
+      expect(created(tmux).storedCommand).toBe("pi-reviewed --model 'anthropic/claude-sonnet-4:high'");
+      expect(created(tmux).parent).toBe('perch-p00001');
+      expect([...files.keys()]).toEqual([`${DIR}/n0nce.md`]);
+      const brief = files.get(`${DIR}/n0nce.md`)!;
+      expect(brief).toContain('perch send perch-p00001 "');
+      expect(brief).not.toContain('SendMessage');
+    });
+
+    it('runs pi-reviewed with no model of its own when none is given', async () => {
+      const { deps, tmux } = makeDeps();
+      await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', cli: 'pi', title: 'T' });
+      expect(created(tmux).command).toBe(`pi-reviewed "$(cat '${DIR}/n0nce.md')"`);
+      expect(created(tmux).storedCommand).toBe('pi-reviewed');
+    });
   });
 });

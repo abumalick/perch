@@ -302,7 +302,7 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
   ];
 
   function fakeTmux(pane: Record<string, string> = {}) {
-    const created: Array<{ name: string; cwd: string; command: string; parent?: string; storedCommand?: string }> = [];
+    const created: Array<{ name: string; cwd: string; command: string; parent?: string; storedCommand?: string; codexThread?: string }> = [];
     const locked: string[] = [];
     const titles: string[] = [];
     const tmux: TmuxPort = {
@@ -565,17 +565,46 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     expect(await spawnedBrief(home, created, id)).toBe('Do it.\n');
   });
 
-  it('spawns a child of the caller, naming the parent by its current messaging name', async () => {
+  it('spawns a child of the caller, telling it to ask the parent with perch send', async () => {
     const { home, env } = await machine();
-    await mkdir(join(home, '.claude', 'sessions'), { recursive: true });
-    await writeFile(join(home, '.claude', 'sessions', '1.json'), JSON.stringify({ name: 'orch-name', tmux: 'perch-aaaaaa:@1.%7' }));
     const { tmux, created } = fakeTmux({ '%7': 'perch-aaaaaa' });
     const id = await run(['spawn', '--child', '--model', 'sonnet[1m]', home], { ...env, TMUX_PANE: '%7' }, home, io(tmux, { stdin: async () => 'b' }));
     expect(created[0]!.parent).toBe('perch-aaaaaa');
     expect(created[0]!.storedCommand).toContain("--model 'sonnet[1m]'");
     const brief = await spawnedBrief(home, created, id);
-    expect(brief).toContain('(to: "orch-name")');
-    expect(brief).toContain('look for workspace perch-aaaaaa');
+    expect(brief).toContain('perch send perch-aaaaaa "');
+  });
+
+  it('spawns a codex child on a thread the app server creates', async () => {
+    const { home, env } = await machine();
+    const { tmux, created } = fakeTmux({ '%7': 'perch-aaaaaa' });
+    const threads: unknown[] = [];
+    const codex = {
+      versions: async () => ({ cli: '0.166.0', appServer: '0.166.0' }),
+      createThread: async (input: unknown) => {
+        threads.push(input);
+        return 'th-9';
+      },
+    };
+    await run(['spawn', '--child', '--cli', 'codex', home], { ...env, TMUX_PANE: '%7' }, home, io(tmux, { stdin: async () => 'b', codex }));
+    expect(threads).toMatchObject([{ firstMessage: 'b' }]);
+    expect(created[0]).toMatchObject({ command: 'codex resume th-9', parent: 'perch-aaaaaa', codexThread: 'th-9' });
+  });
+
+  it('spawns pi through pi-reviewed', async () => {
+    const { home, env } = await machine();
+    const { tmux, created } = fakeTmux();
+    await run(['spawn', '--cli', 'pi', home], env, home, io(tmux, { stdin: async () => 'b' }));
+    expect(created[0]!.storedCommand).toBe('pi-reviewed');
+  });
+
+  it('rejects --cli bash', async () => {
+    const { home, env } = await machine();
+    const { tmux, created } = fakeTmux();
+    await expect(run(['spawn', '--cli', 'bash', home], env, home, io(tmux, { stdin: async () => 'b' }))).rejects.toThrow(
+      'usage: perch spawn [--title <title>] [--child] [--model <model>] [--cli claude|codex|pi] <projectPath>',
+    );
+    expect(created).toEqual([]);
   });
 
   it('gives a spawn the smallest free id for its folder', async () => {

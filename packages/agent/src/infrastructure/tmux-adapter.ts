@@ -141,7 +141,7 @@ export class TmuxAdapter implements TmuxPort {
       .filter((s): s is TmuxSessionInfo => s !== null && (s.command !== '' || s.name.startsWith(prefix)));
   }
 
-  async createSession(input: { name: string; cwd: string; command: string; parent?: string; storedCommand?: string }): Promise<void> {
+  async createSession(input: { name: string; cwd: string; command: string; parent?: string; storedCommand?: string; codexThread?: string }): Promise<void> {
     try {
       await this.tmux(['new-session', '-d', '-s', input.name, '-c', input.cwd, input.command]);
     } catch (err) {
@@ -150,6 +150,7 @@ export class TmuxAdapter implements TmuxPort {
     }
     await this.tmux(['set-option', '-t', exactTarget(input.name), '@perch_command', input.storedCommand ?? input.command]);
     if (input.parent) await this.tmux(['set-option', '-t', exactTarget(input.name), '@perch_parent', input.parent]);
+    if (input.codexThread) await this.tmux(['set-option', '-t', exactTarget(input.name), '@perch_codex_thread', input.codexThread]);
   }
 
   async killSession(name: string): Promise<void> {

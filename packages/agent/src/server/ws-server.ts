@@ -137,6 +137,7 @@ export class WsServer {
     delete: (id: string) => this.deps.status.setMessagedLast(id, false),
   };
   // Codex sessions with a question waiting on the user — see applyHookEvent.
+  private readonly sentDuringTool = new Set<string>();
   private readonly questionPending = new Set<string>();
   // Sessions whose needs-feedback an OSC 7501 turn end set — see applyProgramStatus. In-memory:
   // losing it costs one race won by needs-feedback, never a hidden prompt.
@@ -345,6 +346,7 @@ export class WsServer {
             store: this.deps.status,
             deferred: this.deferred,
             messagedLast: this.messagedLast,
+            sentDuringTool: this.sentDuringTool,
             questionPending: this.questionPending,
             oscTurnEnded: this.oscTurnEnded,
             log: this.deps.hookEventLog,

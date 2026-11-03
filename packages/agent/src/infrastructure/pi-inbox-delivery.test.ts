@@ -62,7 +62,7 @@ describe('PiInboxDelivery', () => {
     await listen('perch-c', () => {});
     await new Promise<void>((done) => server!.close(() => done()));
     server = undefined;
-    await writeFile(join(dir, 'perch-c.sock'), '').catch(() => {});
+    await writeFile(join(dir, 'perch-c.sock'), '');
     expect(await new PiInboxDelivery(dir).deliver(target, 'hi')).toEqual({ ok: false, reason: 'Pi without the Perch inbox' });
   });
 
@@ -71,6 +71,19 @@ describe('PiInboxDelivery', () => {
     expect(await new PiInboxDelivery(dir).deliver(target, 'hi')).toEqual({
       ok: false,
       reason: 'the Pi inbox refused: malformed message',
+    });
+  });
+
+  it('reads an answer whose multibyte character is split across two writes', async () => {
+    await listen('perch-c', (_line, socket) => {
+      const bytes = Buffer.from('{"ok":false,"error":"refusé — non"}\n', 'utf8');
+      const cut = bytes.indexOf(Buffer.from('—', 'utf8')) + 1;
+      socket.write(bytes.subarray(0, cut));
+      setTimeout(() => socket.end(bytes.subarray(cut)), 20);
+    });
+    expect(await new PiInboxDelivery(dir).deliver(target, 'hi')).toEqual({
+      ok: false,
+      reason: 'the Pi inbox refused: refusé — non',
     });
   });
 

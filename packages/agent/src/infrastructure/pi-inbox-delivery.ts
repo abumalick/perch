@@ -25,6 +25,7 @@ function exchange(socketPath: string, line: string, id: string): Promise<Result>
     let answer = '';
     let settled = false;
     const socket = connect(socketPath, () => socket.write(line));
+    socket.setEncoding('utf8');
     const settle = (result: Result) => {
       if (settled) return;
       settled = true;
@@ -34,8 +35,8 @@ function exchange(socketPath: string, line: string, id: string): Promise<Result>
     };
     const failed = (message: string) => settle({ ok: false, reason: `the Pi inbox of ${id} failed: ${message}` });
     const timer = setTimeout(() => settle({ ok: false, reason: 'the Pi inbox did not answer in 5 s' }), TIMEOUT_MS);
-    socket.on('data', (d) => {
-      answer += String(d);
+    socket.on('data', (d: string) => {
+      answer += d;
       const end = answer.indexOf('\n');
       if (end < 0) return;
       let reply: unknown;

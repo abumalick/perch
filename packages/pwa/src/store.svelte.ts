@@ -1,5 +1,5 @@
 import type { AgentMessage, BrowserSession, ClientMessage, CommandEntry, MachineStats, MediaResult, Workspace, WorkspaceStatus } from '@perch/contracts';
-import { imageMediaType, pdfMediaType, audioMediaType } from '@perch/contracts';
+import { imageMediaType, pdfMediaType, audioMediaType, runsClaude } from '@perch/contracts';
 import { SvelteSet } from 'svelte/reactivity';
 import type { ConnectionManager } from './core/connection-manager';
 import type { WorkspaceAggregator } from './core/workspace-aggregator';
@@ -30,7 +30,7 @@ export interface DeviceKeyInfo {
 }
 import { SpeechToText, type DictationState } from './core/speech-to-text';
 import { mergeKeyterms } from './core/keyterms';
-import { DEFAULT_PRESETS, currentPreset, type DictationPreset, type DictationProvider } from './core/dictation-presets';
+import { DEFAULT_PRESETS, currentPreset, type DictationPreset, type PresetKeys } from './core/dictation-presets';
 import type { AudioRecorder } from './core/ports/audio-recorder';
 import type { Transcriber } from './core/ports/transcriber';
 import type { VoiceLink } from './core/claude-voice';
@@ -268,7 +268,8 @@ export class PerchStore {
   // Called before the store types into the terminal on its own (a stored file's path, a
   // dictation transcript), so the view can drop input state that assumed it owned the line.
   onInjectedInput: (() => void) | null = null;
-  private voice: { workspaceId: string; machineId: string; outcome: Promise<void>; settled: boolean; settle: (e: Error | null) => void } | null = null;
+  private voice: { id: string; machineId: string; outcome: Promise<void>; settled: boolean; settle: (e: Error | null) => void } | null = null;
+  private voiceSeq = 0;
   // Called when the active terminal's machine recovers from a drop, so the view re-attaches
   // (clear stale rows + resend `attach`) and self-heals instead of staying frozen on the last
   // frame. Wired by TerminalView, which owns the terminal dimensions.
@@ -390,6 +391,8 @@ export class PerchStore {
     }
     if (status === 'offline') {
       this.sessionChannels.get(machineId)?.offline();
+      // The agent ends a dictation whose session dropped, but can no longer say so.
+      if (this.voice?.machineId === machineId) this.failVoice(this.voice, 'Dictation stopped: the connection dropped');
       this.disconnected.add(machineId);
       const { [machineId]: _dropped, ...rest } = this.machineStats;
       this.machineStats = rest;
@@ -521,14 +524,8 @@ export class PerchStore {
         return;
       case 'voiceDone': {
         const voice = this.voice;
-        if (voice?.workspaceId !== message.workspaceId || voice.settled) return;
-        if (!message.ok) {
-          const error = message.error ?? 'Claude voice failed';
-          voice.settle(new Error(error));
-          // A refusal can come while the user is still talking: stop them at once.
-          this.stt?.abort(error);
-          return;
-        }
+        if (voice?.id !== message.id || voice.settled) return;
+        if (!message.ok) return this.failVoice(voice, message.error ?? 'Claude voice failed');
         // Claude writes the transcript into the line behind the input field's back.
         this.onInjectedInput?.();
         return voice.settle(null);
@@ -708,11 +705,12 @@ export class PerchStore {
       const active = this.active;
       if (!active) throw new Error('Open a workspace first');
       this.voice?.settle(new Error('Superseded by a newer dictation'));
+      const id = `voice-${Date.now().toString(36)}-${++this.voiceSeq}`;
       let settleOutcome!: (e: Error | null) => void;
       const outcome = new Promise<void>((resolve, reject) => (settleOutcome = (e) => (e ? reject(e) : resolve())));
       outcome.catch(() => undefined);
       const voice = {
-        workspaceId: active.id,
+        id,
         machineId: active.machineId,
         outcome,
         settled: false,
@@ -723,16 +721,16 @@ export class PerchStore {
         },
       };
       this.voice = voice;
-      this.send(active.machineId, { type: 'voiceStart', workspaceId: active.id });
+      this.send(active.machineId, { type: 'voiceStart', workspaceId: active.id, id });
     },
     chunk: (pcm) => {
       const voice = this.voice;
-      if (voice && !voice.settled) this.send(voice.machineId, { type: 'voiceChunk', workspaceId: voice.workspaceId, data: encodeBytes(pcm) });
+      if (voice && !voice.settled) this.send(voice.machineId, { type: 'voiceChunk', id: voice.id, data: encodeBytes(pcm) });
     },
     finish: async () => {
       const voice = this.voice;
       if (!voice) throw new Error('No dictation in progress');
-      if (!voice.settled) this.send(voice.machineId, { type: 'voiceEnd', workspaceId: voice.workspaceId });
+      if (!voice.settled) this.send(voice.machineId, { type: 'voiceEnd', id: voice.id });
       const timer = setTimeout(() => {
         // The agent may still be dictating, so the line is no longer the field's.
         this.onInjectedInput?.();
@@ -746,6 +744,13 @@ export class PerchStore {
       }
     },
   };
+
+  // A failure can come while the user is still talking: stop the recording at once.
+  private failVoice(voice: NonNullable<PerchStore['voice']>, error: string): void {
+    if (voice.settled) return;
+    voice.settle(new Error(error));
+    this.stt?.abort(error);
+  }
 
   // Toggle dictation: first tap records, second stops and transcribes; the transcript is
   // inserted at the terminal via the normal input path (no auto-submit). No-op when the
@@ -1084,8 +1089,9 @@ export class PerchStore {
     this.deps.settings.setOpenRouterApiKey(key);
   }
 
-  get presetKeys(): Record<DictationProvider, boolean> {
-    return { elevenlabs: !!this.elevenLabsApiKey, openrouter: !!this.openRouterApiKey };
+  get presetKeys(): PresetKeys {
+    const keys = { elevenlabs: !!this.elevenLabsApiKey, openrouter: !!this.openRouterApiKey };
+    return this.active ? { ...keys, claude: runsClaude(this.active.command) } : keys;
   }
 
   get currentPreset(): DictationPreset {

@@ -1,8 +1,9 @@
 <script lang="ts">
   // The mic's long-press menu: pick the dictation preset the next recording uses. Positioned
   // fixed against the viewport like CommandPicker, since the keyboard bar clips its overflow.
-  // A preset whose provider has no key is shown but disabled; with no key at all there is no mic.
-  import { needsKey, type DictationPreset, type DictationProvider } from '../core/dictation-presets';
+  // A preset that cannot be used here (no key; Claude voice outside Claude Code) is shown but
+  // disabled; with none usable there is no mic.
+  import { unavailableHint, type DictationPreset, type PresetKeys } from '../core/dictation-presets';
 
   let {
     presets,
@@ -15,7 +16,7 @@
   }: {
     presets: DictationPreset[];
     currentId: string;
-    keys: Record<DictationProvider, boolean>;
+    keys: PresetKeys;
     anchor: { bottom: number; right: number };
     onSelect: (id: string) => void;
     onClose: () => void;
@@ -36,19 +37,19 @@
 <div class="menu" style="bottom: {anchor.bottom}px; right: {anchor.right}px">
   <ul role="listbox" aria-label="Dictation presets">
     {#each presets as preset (preset.id)}
-      {@const missing = needsKey(preset, keys)}
+      {@const missing = unavailableHint(preset, keys)}
       <li>
         <button
           type="button"
           role="option"
           aria-selected={preset.id === currentId}
-        disabled={missing}
+        disabled={!!missing}
           onpointerdown={keepFocus}
           onclick={() => choose(preset.id)}
         >
           <span class="badge">{preset.badge}</span>
           <span class="name">{preset.name}</span>
-          {#if missing}<span class="hint">needs key</span>{:else if preset.id === currentId}<span class="hint">✓</span>{/if}
+          {#if missing}<span class="hint">{missing}</span>{:else if preset.id === currentId}<span class="hint">✓</span>{/if}
         </button>
       </li>
     {/each}

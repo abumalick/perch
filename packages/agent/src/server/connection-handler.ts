@@ -41,6 +41,7 @@ import { makeDir } from '../application/make-dir';
 import { readFile } from '../application/read-file';
 import { storePastedFile } from '../application/store-pasted-file';
 import type { ClaudeVoice, VoiceSession } from '../application/claude-voice';
+import { runsClaude } from '@perch/contracts';
 import type { FileWriterPort } from '../ports/file-writer-port';
 import type { ClientLogPort } from '../ports/client-log-port';
 import type { ConnectUpstream } from '../ports/browser-stream-port';
@@ -92,7 +93,8 @@ export interface ConnectionHandlerDeps {
   claudeVoice?: Pick<ClaudeVoice, 'start'>;
 }
 
-type PendingVoice = { workspaceId: string; session: VoiceSession | null; queue: Uint8Array[]; ended: boolean };
+// `cancelled` stops a dictation still in its checks, before it has a session to abort.
+type PendingVoice = { id: string; workspaceId: string; session: VoiceSession | null; queue: Uint8Array[]; ended: boolean; cancelled: string | null };
 
 export class ConnectionHandler {
   private authed = false;
@@ -155,8 +157,7 @@ export class ConnectionHandler {
   }
 
   protected onClose(): void {
-    this.voice?.session?.abort('The phone disconnected');
-    this.voice = null;
+    this.cancelVoice('The phone disconnected');
     this.media.stop();
     this.browsers.closeAll();
     const att = this.attachment;
@@ -420,7 +421,6 @@ export class ConnectionHandler {
         return;
       }
       case 'detach': {
-        if (this.voice?.workspaceId === message.workspaceId) this.voice.session?.abort('The workspace was closed');
         if (this.attachment?.workspaceId === message.workspaceId) {
           this.teardownAttachment('closed');
         }
@@ -450,37 +450,32 @@ export class ConnectionHandler {
         return;
       }
       case 'voiceStart': {
-        this.voice?.session?.abort('Superseded by a newer dictation');
-        const { workspaceId } = message;
-        const voice: PendingVoice = { workspaceId, session: null, queue: [], ended: false };
+        const { workspaceId, id } = message;
+        this.cancelVoice('Superseded by a newer dictation');
+        const voice: PendingVoice = { id, workspaceId, session: null, queue: [], ended: false, cancelled: null };
         this.voice = voice;
-        const refuse = (error: string) => {
+        const reply = (error: string | null) => {
           if (this.voice === voice) this.voice = null;
-          this.conn.send({ type: 'voiceDone', workspaceId, ok: false, error });
+          this.conn.send(error ? { type: 'voiceDone', id, ok: false, error } : { type: 'voiceDone', id, ok: true });
         };
-        if (!this.deps.claudeVoice) return refuse('Claude voice needs a Linux machine with the voice loopback set up');
-        if (this.attachment?.workspaceId !== workspaceId) return refuse('Open the workspace before dictating');
+        if (!this.deps.claudeVoice) return reply('Claude voice needs a Linux machine with the voice loopback set up');
+        if (this.attachment?.workspaceId !== workspaceId) return reply('Open the workspace before dictating');
         // Anywhere but Claude's prompt the held spaces would be typed.
         const tmuxSession = (await this.deps.tmux.listSessions(this.deps.config.sessionPrefix)).find((s) => s.name === workspaceId);
-        if (!tmuxSession || !/(^|[\s/])claude(\s|$)/.test(tmuxSession.command)) {
-          return refuse('Claude voice works only in a Claude Code workspace');
-        }
-        if (this.voice !== voice) return;
+        if (!tmuxSession || !runsClaude(tmuxSession.command)) return reply('Claude voice works only in a Claude Code workspace');
+        if (voice.cancelled) return reply(voice.cancelled);
         const session = this.deps.claudeVoice.start(() => {
           if (this.attachment?.workspaceId === workspaceId) this.attachment.session.write(' ');
         });
         voice.session = session;
         for (const pcm of voice.queue.splice(0)) session.write(pcm);
         if (voice.ended) session.end();
-        void session.done.then((error) => {
-          if (this.voice === voice) this.voice = null;
-          this.conn.send(error ? { type: 'voiceDone', workspaceId, ok: false, error } : { type: 'voiceDone', workspaceId, ok: true });
-        });
+        void session.done.then(reply);
         return;
       }
       case 'voiceChunk': {
         const voice = this.voice;
-        if (voice?.workspaceId !== message.workspaceId || voice.ended) return;
+        if (voice?.id !== message.id || voice.ended) return;
         const pcm = new Uint8Array(Buffer.from(message.data, 'base64'));
         if (voice.session) voice.session.write(pcm);
         else voice.queue.push(pcm);
@@ -488,7 +483,7 @@ export class ConnectionHandler {
       }
       case 'voiceEnd': {
         const voice = this.voice;
-        if (voice?.workspaceId !== message.workspaceId) return;
+        if (voice?.id !== message.id) return;
         voice.ended = true;
         voice.session?.end();
         return;
@@ -628,6 +623,7 @@ export class ConnectionHandler {
     const viewer: Viewer = {
       detach: () => {
         if (this.attachment?.session !== session) return;
+        this.cancelVoice('The workspace was opened on another device');
         this.attachment.terminated = true;
         session.kill();
         this.attachment = null;
@@ -648,6 +644,7 @@ export class ConnectionHandler {
     session.onExit(() => {
       if (att.terminated) return;
       if (this.attachment === att) {
+        this.cancelVoice('The workspace closed');
         this.attachment = null;
       }
       this.deps.registry.release(workspaceId, viewer);
@@ -657,9 +654,20 @@ export class ConnectionHandler {
     this.conn.send({ type: 'attached', workspaceId });
   }
 
+  // A dictation lives only as long as its attachment: without one the held spaces go nowhere,
+  // and the machine's one dictation slot would stay taken.
+  private cancelVoice(reason: string): void {
+    const voice = this.voice;
+    if (!voice) return;
+    this.voice = null;
+    voice.cancelled = reason;
+    voice.session?.abort(reason);
+  }
+
   private teardownAttachment(reason: 'closed'): void {
     const att = this.attachment;
     if (!att) return;
+    this.cancelVoice('The workspace was closed');
     att.terminated = true;
     att.session.kill();
     this.deps.registry.release(att.workspaceId, att.viewer);

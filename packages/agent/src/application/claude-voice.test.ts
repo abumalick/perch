@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ClaudeVoice, HOLD_REPEAT_MS, IDLE_MS, LEAD_MS, MAX_MS, TAIL_MS, voiceSettingsProblem } from './claude-voice';
+import { ClaudeVoice, DRAIN_MS, HOLD_REPEAT_MS, IDLE_MS, LEAD_MS, MAX_MS, TAIL_MS, voiceSettingsProblem } from './claude-voice';
 
 function deferred() {
   let resolve!: () => void;
@@ -37,7 +37,7 @@ describe('ClaudeVoice', () => {
   function setup(settings: unknown = { voice: { enabled: true, mode: 'hold' } }) {
     const playing = deferred();
     const written: number[] = [];
-    const stream = { write: vi.fn((pcm: Uint8Array) => void written.push(...pcm)), end: vi.fn(() => playing.promise), abort: vi.fn() };
+    const stream = { played: playing.promise, write: vi.fn((pcm: Uint8Array) => void written.push(...pcm)), end: vi.fn(() => playing.promise), abort: vi.fn() };
     const open = vi.fn(() => stream);
     const voice = new ClaudeVoice({ player: { open }, settings: { read: async () => settings } });
     const presses: number[] = [];
@@ -117,6 +117,27 @@ describe('ClaudeVoice', () => {
     const count = presses.length;
     await vi.advanceTimersByTimeAsync(1000);
     expect(presses.length).toBe(count);
+  });
+
+  it('ends at once when the player dies mid-stream', async () => {
+    const { voice, playing, presses, press } = setup();
+    const session = voice.start(press);
+    await vi.advanceTimersByTimeAsync(LEAD_MS + 500);
+    playing.reject(new Error('aplay: no such device'));
+    await expect(session.done).resolves.toMatch(/no such device/);
+    const count = presses.length;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(presses.length).toBe(count);
+  });
+
+  it('stops a player that does not finish after the end', async () => {
+    const { voice, stream, press } = setup();
+    const session = voice.start(press);
+    await vi.advanceTimersByTimeAsync(LEAD_MS);
+    session.end();
+    await vi.advanceTimersByTimeAsync(DRAIN_MS);
+    await expect(session.done).resolves.toMatch(/did not finish/);
+    expect(stream.abort).toHaveBeenCalled();
   });
 
   it('gives up when the phone stops sending, and stops the player', async () => {

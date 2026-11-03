@@ -6,6 +6,7 @@ import {
   hasUsablePreset,
   needsKey,
   parsePresets,
+  unavailableHint,
   presetError,
   type DictationPreset,
 } from './dictation-presets';
@@ -53,6 +54,16 @@ describe('parsePresets', () => {
     const claude = { id: 'cv', name: 'Claude voice', badge: 'CV', provider: 'claude' };
     expect(parsePresets(JSON.stringify([claude]))).toEqual([claude]);
     expect(needsKey(claude as never, { elevenlabs: false, openrouter: false })).toBe(false);
+  });
+
+  it('offers a Claude voice preset only in a workspace running Claude Code', () => {
+    const claude: DictationPreset = { id: 'cv', name: 'Claude voice', badge: 'CV', provider: 'claude' };
+    const keys = { elevenlabs: true, openrouter: false };
+    expect(unavailableHint(claude, { ...keys, claude: true })).toBeNull();
+    expect(unavailableHint(claude, { ...keys, claude: false })).toBe('Claude Code only');
+    expect(unavailableHint(DEFAULT_PRESETS[1]!, keys)).toBe('needs key');
+    expect(currentPreset([claude, DEFAULT_PRESETS[0]!], 'cv', { ...keys, claude: false }).id).toBe('scribe');
+    expect(hasUsablePreset([claude], { elevenlabs: false, openrouter: false, claude: false })).toBe(false);
   });
 
   it('returns null when nothing valid is left', () => {

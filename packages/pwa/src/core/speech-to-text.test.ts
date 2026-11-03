@@ -73,11 +73,30 @@ describe('SpeechToText', () => {
   });
 
   it('goes to error with a friendly message when the mic is blocked', async () => {
-    const recorder = fakeRecorder({ start: vi.fn().mockRejectedValue(new Error('NotAllowed')) });
+    const recorder = fakeRecorder({ start: vi.fn().mockRejectedValue(new DOMException('denied', 'NotAllowedError')) });
     const { stt } = setup({ recorder });
     await stt.toggle();
     expect(stt.state).toBe('error');
     expect(stt.error).toBe('Microphone blocked');
+  });
+
+  it('shows why a start failed for any other reason', async () => {
+    const recorder = fakeRecorder({ start: vi.fn().mockRejectedValue(new Error('Open a workspace first')) });
+    const { stt } = setup({ recorder });
+    await stt.toggle();
+    expect(stt.error).toBe('Open a workspace first');
+  });
+
+  it('ignores a second tap while the first is still starting', async () => {
+    const start = deferred<void>();
+    const recorder = fakeRecorder({ start: vi.fn(() => start.promise) });
+    const { stt } = setup({ recorder });
+    const first = stt.toggle();
+    await stt.toggle();
+    expect(recorder.start).toHaveBeenCalledOnce();
+    start.resolve();
+    await first;
+    expect(stt.state).toBe('recording');
   });
 
   it('surfaces the transcriber error message', async () => {

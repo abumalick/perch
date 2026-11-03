@@ -12,7 +12,9 @@ describe('PresetRecorder', () => {
     const r = new PresetRecorder(() => preset, { clip, claude });
     await r.start();
     preset = { id: 'scribe', name: 'Scribe', badge: 'EL', provider: 'elevenlabs' };
+    expect(r.startedWith?.id).toBe('cv');
     await r.stop();
+    expect(r.startedWith?.id).toBe('cv');
     expect(claude.start).toHaveBeenCalled();
     expect(claude.stop).toHaveBeenCalled();
     expect(clip.stop).not.toHaveBeenCalled();

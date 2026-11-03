@@ -2,9 +2,11 @@ import type { DictationPreset } from './dictation-presets';
 import type { AudioRecorder } from './ports/audio-recorder';
 
 // The recorder the mic uses: a Claude voice preset streams, every other provider records a
-// clip. Chosen at `start`, and kept until `stop`, so the pair always matches.
+// clip. Chosen at `start`; `startedWith` keeps that preset until the next start, so the
+// transcriber of the same dictation uses it too even if another preset was picked meanwhile.
 export class PresetRecorder implements AudioRecorder {
   private recording: AudioRecorder | null = null;
+  startedWith: DictationPreset | null = null;
 
   constructor(
     private readonly current: () => DictationPreset,
@@ -12,7 +14,9 @@ export class PresetRecorder implements AudioRecorder {
   ) {}
 
   async start(): Promise<void> {
-    const recorder = this.current().provider === 'claude' ? this.recorders.claude : this.recorders.clip;
+    const preset = this.current();
+    const recorder = preset.provider === 'claude' ? this.recorders.claude : this.recorders.clip;
+    this.startedWith = preset;
     await recorder.start();
     this.recording = recorder;
   }

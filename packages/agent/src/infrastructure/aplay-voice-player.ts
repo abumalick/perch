@@ -33,6 +33,7 @@ export class AplayVoicePlayer implements VoicePlayerPort {
     // Writing after aplay died raises EPIPE here; its exit says why, through `end`.
     child.stdin.on('error', () => undefined);
     return {
+      played,
       write: (pcm) => {
         if (child.stdin.writable) child.stdin.write(pcm);
       },

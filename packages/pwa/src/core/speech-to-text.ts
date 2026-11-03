@@ -10,6 +10,9 @@ export type DictationState = 'idle' | 'recording' | 'transcribing' | 'error';
 export class SpeechToText {
   private _state: DictationState = 'idle';
   private _error: string | null = null;
+  // A start in flight (the mic permission prompt, a machine to reach): the state is still idle,
+  // and a second tap then would open a second microphone.
+  private starting = false;
 
   constructor(
     private readonly recorder: AudioRecorder,
@@ -30,7 +33,7 @@ export class SpeechToText {
   // transcribe. A toggle while transcribing is ignored (the button is disabled anyway).
   async toggle(): Promise<void> {
     if (this._state === 'recording') return this.stopAndTranscribe();
-    if (this._state === 'transcribing') return;
+    if (this._state === 'transcribing' || this.starting) return;
     return this.startRecording();
   }
 
@@ -54,11 +57,15 @@ export class SpeechToText {
   }
 
   private async startRecording(): Promise<void> {
+    this.starting = true;
     try {
       await this.recorder.start();
       this.set('recording');
-    } catch {
-      this.set('error', 'Microphone blocked');
+    } catch (e) {
+      // The browser refuses the mic with a DOMException; anything else says what went wrong.
+      this.set('error', e instanceof Error && !(e instanceof DOMException) ? e.message : 'Microphone blocked');
+    } finally {
+      this.starting = false;
     }
   }
 

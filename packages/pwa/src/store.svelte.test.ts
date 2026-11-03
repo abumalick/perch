@@ -344,12 +344,16 @@ describe('PerchStore', () => {
       store.voiceLink.begin();
       store.voiceLink.chunk(new Uint8Array([1, 2, 3]));
       const done = store.voiceLink.finish();
-      expect(sentVoice(sockets)).toEqual([
-        { type: 'voiceStart', workspaceId: 'perch-a' },
-        { type: 'voiceChunk', workspaceId: 'perch-a', data: btoa(String.fromCharCode(1, 2, 3)) },
-        { type: 'voiceEnd', workspaceId: 'perch-a' },
+      const [start, ...rest] = sentVoice(sockets);
+      const id = start.id as string;
+      expect(start).toEqual({ type: 'voiceStart', workspaceId: 'perch-a', id });
+      expect(rest).toEqual([
+        { type: 'voiceChunk', id, data: btoa(String.fromCharCode(1, 2, 3)) },
+        { type: 'voiceEnd', id },
       ]);
-      store.handleMessage('mac', { type: 'voiceDone', workspaceId: 'perch-a', ok: true });
+      store.handleMessage('mac', { type: 'voiceDone', id: 'some-older-one', ok: true });
+      expect(injected).toBe(0);
+      store.handleMessage('mac', { type: 'voiceDone', id, ok: true });
       await expect(done).resolves.toBeUndefined();
       expect(injected).toBe(1);
     });
@@ -362,10 +366,11 @@ describe('PerchStore', () => {
     it('rejects with the agent’s reason, even one that came before the end, and stops sending', async () => {
       const { store, sockets } = opened();
       store.voiceLink.begin();
-      store.handleMessage('mac', { type: 'voiceDone', workspaceId: 'perch-a', ok: false, error: 'Voice is off' });
+      const id = sentVoice(sockets)[0].id as string;
+      store.handleMessage('mac', { type: 'voiceDone', id, ok: false, error: 'Voice is off' });
       store.voiceLink.chunk(new Uint8Array([1]));
       await expect(store.voiceLink.finish()).rejects.toThrow('Voice is off');
-      expect(sentVoice(sockets)).toEqual([{ type: 'voiceStart', workspaceId: 'perch-a' }]);
+      expect(sentVoice(sockets)).toHaveLength(1);
     });
 
     it('gives up on an agent that never answers, and starts the input field over', async () => {
@@ -384,6 +389,20 @@ describe('PerchStore', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it('fails a dictation whose machine drops', async () => {
+      const { store } = opened();
+      store.voiceLink.begin();
+      store.setStatus('mac', 'offline');
+      await expect(store.voiceLink.finish()).rejects.toThrow('connection dropped');
+    });
+
+    it('offers Claude voice only in a workspace running Claude Code', () => {
+      const { store } = opened();
+      expect(store.presetKeys.claude).toBe(true);
+      store.open({ machineId: 'mac', id: 'perch-b', name: 'b', projectPath: '/b', command: 'codex --no-daemon', createdAt: 0, lastActivityAt: 0, status: 'idle' as const });
+      expect(store.presetKeys.claude).toBe(false);
     });
 
     it('supersedes an older dictation', async () => {

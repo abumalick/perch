@@ -8,8 +8,12 @@ import { AUDIO_CONSTRAINTS } from './media-recorder-audio';
 // ScriptProcessorNode is deprecated but needs no worklet module, which the CSP would have to allow.
 export class WebAudioPcm implements PcmSource {
   private stopCapture: (() => void) | null = null;
+  // Bumped by every start and stop, so a start that a stop overtook releases what it opened.
+  private generation = 0;
 
   async start(onPcm: (pcm: Uint8Array) => void): Promise<void> {
+    this.stop();
+    const generation = this.generation;
     const ctx = new AudioContext();
     let stream: MediaStream;
     try {
@@ -18,6 +22,11 @@ export class WebAudioPcm implements PcmSource {
     } catch (e) {
       void ctx.close();
       throw e;
+    }
+    if (generation !== this.generation) {
+      stream.getTracks().forEach((track) => track.stop());
+      void ctx.close();
+      throw new Error('Dictation was stopped');
     }
     const source = ctx.createMediaStreamSource(stream);
     const processor = ctx.createScriptProcessor(4096, 1, 1);
@@ -35,6 +44,7 @@ export class WebAudioPcm implements PcmSource {
   }
 
   stop(): void {
+    this.generation++;
     this.stopCapture?.();
     this.stopCapture = null;
   }

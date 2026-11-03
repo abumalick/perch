@@ -121,9 +121,9 @@ describe('clientMessageSchema', () => {
 
   it('parses the voice stream messages', () => {
     for (const msg of [
-      { type: 'voiceStart', workspaceId: 'perch-a' },
-      { type: 'voiceChunk', workspaceId: 'perch-a', data: 'AAAA' },
-      { type: 'voiceEnd', workspaceId: 'perch-a' },
+      { type: 'voiceStart', workspaceId: 'perch-a', id: 'v1' },
+      { type: 'voiceChunk', id: 'v1', data: 'AAAA' },
+      { type: 'voiceEnd', id: 'v1' },
     ]) {
       expect(parseClientMessage(msg)).toEqual(msg);
     }
@@ -155,8 +155,8 @@ describe('agentMessageSchema', () => {
   });
 
   it('parses voiceDone, with and without an error', () => {
-    const ok = { type: 'voiceDone', workspaceId: 'perch-a', ok: true };
-    const failed = { type: 'voiceDone', workspaceId: 'perch-a', ok: false, error: 'busy' };
+    const ok = { type: 'voiceDone', id: 'v1', ok: true };
+    const failed = { type: 'voiceDone', id: 'v1', ok: false, error: 'busy' };
     expect(parseAgentMessage(ok)).toEqual(ok);
     expect(parseAgentMessage(failed)).toEqual(failed);
   });

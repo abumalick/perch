@@ -10,6 +10,9 @@ export const TAIL_MS = 500;
 // The hold must end even when the phone vanishes mid-sentence.
 export const IDLE_MS = 5000;
 export const MAX_MS = 5 * 60_000;
+// After the end, what is left to play is about LEAD_MS of lag; a player still going well past
+// that is stuck.
+export const DRAIN_MS = LEAD_MS + 10_000;
 
 // Why the held spaces would not be read as voice, or null. In tap mode every space toggles
 // recording and submits the prompt, and with voice off they would be typed: both would spray
@@ -51,6 +54,7 @@ class Dictation implements VoiceSession {
   private hold: ReturnType<typeof setInterval> | undefined;
   private lead: ReturnType<typeof setTimeout> | undefined;
   private idle: ReturnType<typeof setTimeout> | undefined;
+  private draining: ReturnType<typeof setTimeout> | undefined;
   private readonly max: ReturnType<typeof setTimeout>;
 
   constructor(
@@ -108,11 +112,14 @@ class Dictation implements VoiceSession {
       return this.finish(errorText(e));
     }
     this.stream = stream;
+    // A player that dies mid-stream (no loopback, say) ends the dictation now, not at the end.
+    stream.played.catch((e: unknown) => this.finish(errorText(e)));
     for (const pcm of this.queue.splice(0)) stream.write(pcm);
     if (this.ended) this.drain(stream);
   }
 
   private drain(stream: VoiceStream): void {
+    this.draining = setTimeout(() => this.abort('Dictation stopped: playback did not finish'), DRAIN_MS);
     void stream.end().then(
       () => setTimeout(() => this.finish(null), TAIL_MS),
       (e: unknown) => this.finish(errorText(e)),
@@ -130,6 +137,7 @@ class Dictation implements VoiceSession {
     clearInterval(this.hold);
     clearTimeout(this.lead);
     clearTimeout(this.idle);
+    clearTimeout(this.draining);
     clearTimeout(this.max);
     this.queue = [];
     this.release();

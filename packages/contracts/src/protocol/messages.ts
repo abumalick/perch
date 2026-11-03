@@ -105,10 +105,11 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('putFile'), workspaceId: z.string(), name: z.string(), data: z.string() }),
   // A dictation streamed as it is spoken: 16 kHz mono s16le PCM (base64) the agent plays into
   // the machine's virtual mic while holding space in the workspace, so Claude Code's /voice
-  // transcribes it. Answered with one `voiceDone`; an older agent answers `bad_message`.
-  z.object({ type: z.literal('voiceStart'), workspaceId: z.string() }),
-  z.object({ type: z.literal('voiceChunk'), workspaceId: z.string(), data: z.string() }),
-  z.object({ type: z.literal('voiceEnd'), workspaceId: z.string() }),
+  // transcribes it. `id` names the dictation, so a late reply to an older one is never taken for
+  // the current one's. Answered with one `voiceDone`; an older agent answers `bad_message`.
+  z.object({ type: z.literal('voiceStart'), workspaceId: z.string(), id: z.string() }),
+  z.object({ type: z.literal('voiceChunk'), id: z.string(), data: z.string() }),
+  z.object({ type: z.literal('voiceEnd'), id: z.string() }),
   z.object({ type: z.literal('resize'), workspaceId: z.string(), cols: dim, rows: dim }),
   // `remember` is set only when the command came from the Custom field: the agent then adds it
   // to the machine's launcher list. Additive, so an older agent just ignores it.
@@ -181,7 +182,7 @@ export const agentMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('attached'), workspaceId: z.string() }),
   z.object({ type: z.literal('output'), workspaceId: z.string(), data: z.string() }),
   z.object({ type: z.literal('fileStored'), workspaceId: z.string(), path: z.string() }),
-  z.object({ type: z.literal('voiceDone'), workspaceId: z.string(), ok: z.boolean(), error: z.string().optional() }),
+  z.object({ type: z.literal('voiceDone'), id: z.string(), ok: z.boolean(), error: z.string().optional() }),
   z.object({ type: z.literal('detached'), workspaceId: z.string(), reason: detachReasonSchema }),
   z.object({ type: z.literal('closed'), workspaceId: z.string() }),
   z.object({ type: z.literal('error'), code: z.string(), message: z.string() }),

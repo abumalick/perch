@@ -386,6 +386,11 @@ describe('workspaceSchema', () => {
     expect(workspaceSchema.parse(child)).toEqual(child);
   });
 
+  it('keeps the asking flag', () => {
+    const asking = { ...sampleWorkspace, asking: true };
+    expect(workspaceSchema.parse(asking)).toEqual(asking);
+  });
+
   it('rejects an unknown waitingOn value', () => {
     expect(() => workspaceSchema.parse({ ...sampleWorkspace, waitingOn: 'user' })).toThrow();
   });

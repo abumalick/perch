@@ -62,6 +62,7 @@ export async function listWorkspaces(deps: ListWorkspacesDeps): Promise<Workspac
           ...(agentAddress ? { agentAddress } : {}),
           ...(s.parent ? { parentId: s.parent } : {}),
           ...(waiting ? { waitingOn: 'parent' as const } : {}),
+          ...(s.program?.state === 'blocked' ? { asking: true } : {}),
         };
       }),
   );

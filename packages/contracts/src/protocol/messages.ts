@@ -30,6 +30,7 @@ export const workspaceSchema = z.object({
   agentAddress: z.string().optional(),
   parentId: z.string().optional(),
   waitingOn: z.literal('parent').optional(),
+  asking: z.boolean().optional(),
 });
 
 // Compile-time guarantee that the schema and the domain type stay in sync.

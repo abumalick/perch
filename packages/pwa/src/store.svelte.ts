@@ -1091,7 +1091,8 @@ export class PerchStore {
 
   get presetKeys(): PresetKeys {
     const keys = { elevenlabs: !!this.elevenLabsApiKey, openrouter: !!this.openRouterApiKey };
-    return this.active ? { ...keys, claude: runsClaude(this.active.command) } : keys;
+    if (!this.active) return keys;
+    return { ...keys, claude: !runsClaude(this.active.command) ? 'not-claude' : this.active.asking ? 'asking' : 'ok' };
   }
 
   get currentPreset(): DictationPreset {

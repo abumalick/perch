@@ -1155,6 +1155,19 @@ describe('ConnectionHandler voice stream', () => {
     expect(second.voice.session.abort).toHaveBeenCalledWith('The phone disconnected');
   });
 
+  it('refuses while Claude shows a question or a permission menu', async () => {
+    const deps = baseDeps();
+    const [only] = await deps.tmux.listSessions('perch-');
+    const { conn, voice } = attached({
+      tmux: { ...deps.tmux, listSessions: async () => [{ ...only!, program: { state: 'blocked', changedAt: 1 } }] },
+    });
+    await tick();
+    conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    await tick();
+    expect(voice.start).not.toHaveBeenCalled();
+    expect(conn.sent).toContainEqual({ type: 'voiceDone', id: 'v1', ok: false, error: 'Answer Claude’s question first, then dictate' });
+  });
+
   it('answers a superseded dictation under its own id', async () => {
     const { conn, voice } = attached();
     await tick();

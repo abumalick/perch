@@ -171,6 +171,13 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     Codex or shell workspace the preset is disabled ("Claude Code only") and the mic falls back to
     another preset, through the `claude` flag of `PresetKeys`. A shell where `claude` was started
     by hand does not count.
+  - **Not while Claude shows a question or a permission menu.** There space is a menu key, not
+    /voice: measured, the held spaces were typed into an AskUserQuestion's text answer. The agent
+    refuses when the pane's OSC 7501 state is `blocked` (read live at `voiceStart`), and marks
+    such a workspace `asking`, pushing it from the program-status poll whenever it flips, since the
+    status alone does not change (needs-feedback either way). The phone then disables the preset
+    ("question open"), so the mic falls back to another preset for answering by voice, and comes
+    back once the question closes. Needs the patched tmux; a stock tmux reports neither.
   - **One dictation's recorder and transcriber use the preset it started with**
     (`PresetRecorder.startedWith`): picking another mid-recording would hand a stream to a
     clip transcriber.

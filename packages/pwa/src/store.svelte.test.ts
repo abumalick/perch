@@ -400,9 +400,11 @@ describe('PerchStore', () => {
 
     it('offers Claude voice only in a workspace running Claude Code', () => {
       const { store } = opened();
-      expect(store.presetKeys.claude).toBe(true);
+      expect(store.presetKeys.claude).toBe('ok');
+      store.open({ machineId: 'mac', id: 'perch-c', name: 'c', projectPath: '/c', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'needs-feedback' as const, asking: true });
+      expect(store.presetKeys.claude).toBe('asking');
       store.open({ machineId: 'mac', id: 'perch-b', name: 'b', projectPath: '/b', command: 'codex --no-daemon', createdAt: 0, lastActivityAt: 0, status: 'idle' as const });
-      expect(store.presetKeys.claude).toBe(false);
+      expect(store.presetKeys.claude).toBe('not-claude');
     });
 
     it('supersedes an older dictation', async () => {

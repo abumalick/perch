@@ -463,6 +463,9 @@ export class ConnectionHandler {
         // Anywhere but Claude's prompt the held spaces would be typed.
         const tmuxSession = (await this.deps.tmux.listSessions(this.deps.config.sessionPrefix)).find((s) => s.name === workspaceId);
         if (!tmuxSession || !runsClaude(tmuxSession.command)) return reply('Claude voice works only in a Claude Code workspace');
+        // A question or permission menu takes space as a key (into its text field, or toggling a
+        // choice), not as /voice. Only a tmux patched for OSC 7501 can tell; elsewhere this passes.
+        if (tmuxSession.program?.state === 'blocked') return reply('Answer Claude’s question first, then dictate');
         if (voice.cancelled) return reply(voice.cancelled);
         const session = this.deps.claudeVoice.start(() => {
           if (this.attachment?.workspaceId === workspaceId) this.attachment.session.write(' ');

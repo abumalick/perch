@@ -92,19 +92,23 @@ export function parsePresets(raw: string | null): DictationPreset[] | null {
   return presets.length ? presets : null;
 }
 
-// What each provider needs here: a key for the ones that call an API, and for Claude voice a
-// workspace running Claude Code (`claude` false), since anywhere else its held spaces are typed.
-// `claude` is absent where there is no workspace to judge, as in Settings.
-export type PresetKeys = Record<DictationProvider, boolean> & { claude?: boolean };
+// What each provider needs here: a key for the ones that call an API, and for Claude voice
+// Claude Code's prompt, since its held spaces are typed anywhere else: a workspace running
+// something else (`not-claude`) or a question or menu on screen (`asking`) rules it out, and
+// the mic falls back to another preset. `claude` is absent where there is no workspace to
+// judge, as in Settings.
+export type ClaudeVoiceHere = 'ok' | 'not-claude' | 'asking';
+export type PresetKeys = Record<DictationProvider, boolean> & { claude?: ClaudeVoiceHere };
 
 export function needsKey(p: DictationPreset, keys: PresetKeys): boolean {
-  return p.provider === 'claude' ? keys.claude === false : !keys[p.provider];
+  return p.provider === 'claude' ? keys.claude !== undefined && keys.claude !== 'ok' : !keys[p.provider];
 }
 
 // Why the mic menu cannot offer a preset here, or null.
 export function unavailableHint(p: DictationPreset, keys: PresetKeys): string | null {
   if (!needsKey(p, keys)) return null;
-  return p.provider === 'claude' ? 'Claude Code only' : 'needs key';
+  if (p.provider !== 'claude') return 'needs key';
+  return keys.claude === 'asking' ? 'question open' : 'Claude Code only';
 }
 
 export function hasUsablePreset(presets: readonly DictationPreset[], keys: PresetKeys): boolean {

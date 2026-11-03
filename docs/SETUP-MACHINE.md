@@ -292,13 +292,13 @@ is the simple path:
 
 ## 11. Optional: dictate through Claude Code's own `/voice` (Linux)
 
-The "Claude Code /voice" dictation preset sends the phone's recording to the agent, which plays
-it into a virtual microphone while holding space in the open workspace, so Claude Code transcribes
-it into the prompt, unsent, for you to review. It needs no speech-to-text key, but each machine
+The "Claude Code /voice" dictation preset streams what you say to the agent, which plays it into
+a virtual microphone while holding space in the open workspace, so Claude Code transcribes it into
+the prompt, unsent, for you to review. It needs no speech-to-text key, but each machine
 must be set up once by hand:
 
 ```bash
-sudo apt install -y ffmpeg alsa-utils
+sudo apt install -y alsa-utils
 sudo usermod -aG audio <user>       # the agent's service has no seat, so it needs the group
 echo snd-aloop | sudo tee /etc/modules-load.d/snd-aloop.conf   # load the loopback at boot
 sudo modprobe snd-aloop                                         # and now
@@ -314,7 +314,7 @@ EOF
 ```
 
 Then run `/voice` once in any Claude workspace and keep **hold** mode, the default. The setting
-is global to Claude Code on the machine, and the agent refuses a clip while voice is off or in tap
+is global to Claude Code on the machine, and the agent refuses a dictation while voice is off or in tap
 mode (tap mode would submit the prompt). If you had to add the group, reboot: the user services
 run under a user manager that keeps the groups it started with, and restarting that manager
 would take every workspace down with it. On the phone: Settings →
@@ -325,8 +325,8 @@ Add preset → Provider "Claude Code /voice".
 - **This is meant for a headless server.** `~/.asoundrc` replaces the default device for every
   ALSA program of that user, playback included, so on a desktop with PipeWire or PulseAudio it
   would take the real microphone and speakers away. That case is untested.
-- One clip plays at a time per machine, at real speed, so the text arrives about the length of
-  the clip plus 1.5 s after you stop. Not available on macOS.
+- One dictation at a time per machine. The text arrives about 1.5 s after you stop speaking.
+  Not available on macOS.
 
 ## 12. Optional: a Claude Code setup that works well here
 

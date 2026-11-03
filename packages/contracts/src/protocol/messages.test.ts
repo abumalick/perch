@@ -119,9 +119,14 @@ describe('clientMessageSchema', () => {
     expect(parseClientMessage(msg)).toEqual(msg);
   });
 
-  it('parses a voiceClip message', () => {
-    const msg = { type: 'voiceClip', workspaceId: 'perch-a', data: 'AAAA' };
-    expect(parseClientMessage(msg)).toEqual(msg);
+  it('parses the voice stream messages', () => {
+    for (const msg of [
+      { type: 'voiceStart', workspaceId: 'perch-a' },
+      { type: 'voiceChunk', workspaceId: 'perch-a', data: 'AAAA' },
+      { type: 'voiceEnd', workspaceId: 'perch-a' },
+    ]) {
+      expect(parseClientMessage(msg)).toEqual(msg);
+    }
   });
 
   it('parses a ping message', () => {
@@ -149,9 +154,9 @@ describe('agentMessageSchema', () => {
     expect(parseAgentMessage(msg)).toEqual(msg);
   });
 
-  it('parses voiceClipDone, with and without an error', () => {
-    const ok = { type: 'voiceClipDone', workspaceId: 'perch-a', ok: true };
-    const failed = { type: 'voiceClipDone', workspaceId: 'perch-a', ok: false, error: 'busy' };
+  it('parses voiceDone, with and without an error', () => {
+    const ok = { type: 'voiceDone', workspaceId: 'perch-a', ok: true };
+    const failed = { type: 'voiceDone', workspaceId: 'perch-a', ok: false, error: 'busy' };
     expect(parseAgentMessage(ok)).toEqual(ok);
     expect(parseAgentMessage(failed)).toEqual(failed);
   });

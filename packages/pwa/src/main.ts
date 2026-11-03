@@ -18,7 +18,9 @@ import { MediaRecorderAudio } from './adapters/media-recorder-audio';
 import { ElevenLabsTranscriber } from './adapters/elevenlabs-transcriber';
 import { OpenRouterTranscriber } from './adapters/openrouter-transcriber';
 import { PresetTranscriber } from './core/preset-transcriber';
-import { ClaudeVoiceTranscriber } from './core/claude-voice-transcriber';
+import { ClaudeVoiceRecorder, ClaudeVoiceTranscriber } from './core/claude-voice';
+import { PresetRecorder } from './core/preset-recorder';
+import { WebAudioPcm } from './adapters/web-audio-pcm';
 import { VERSION_FILE, parseVersionJson } from './core/version-file';
 import { acceptPairingLink, outsideInstalledApp, takePairingFragment, type PairingPrompts } from './core/pairing';
 
@@ -127,7 +129,10 @@ store = new PerchStore({
   manager,
   aggregator,
   applyUpdate: () => void updateSW(true),
-  recorder: new MediaRecorderAudio(),
+  recorder: new PresetRecorder(() => store.currentPreset, {
+    clip: new MediaRecorderAudio(),
+    claude: new ClaudeVoiceRecorder(new WebAudioPcm(), { begin: () => store.voiceLink.begin(), chunk: (pcm) => store.voiceLink.chunk(pcm), finish: () => store.voiceLink.finish() }),
+  }),
   transcriber: new PresetTranscriber(() => store.currentPreset, {
     elevenlabs: new ElevenLabsTranscriber(
       () => settings.elevenLabsApiKey(),
@@ -141,7 +146,7 @@ store = new PerchStore({
       },
       () => store.keyterms(),
     ),
-    claude: new ClaudeVoiceTranscriber((bytes) => store.sendVoiceClip(bytes)),
+    claude: new ClaudeVoiceTranscriber({ begin: () => store.voiceLink.begin(), chunk: (pcm) => store.voiceLink.chunk(pcm), finish: () => store.voiceLink.finish() }),
   }),
   connectionLog,
   logMeta,

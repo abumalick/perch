@@ -33,6 +33,7 @@ import { mergeKeyterms } from './core/keyterms';
 import { DEFAULT_PRESETS, currentPreset, type DictationPreset, type DictationProvider } from './core/dictation-presets';
 import type { AudioRecorder } from './core/ports/audio-recorder';
 import type { Transcriber } from './core/ports/transcriber';
+import type { VoiceLink } from './core/claude-voice';
 
 type View = 'list' | 'terminal' | 'settings' | 'create' | 'newMachine' | 'browser' | 'viewer' | 'browserView';
 
@@ -68,11 +69,9 @@ const GRACE_MS = 4000;
 // brief blip (phone waking, backoff) shouldn't alarm, but a genuine extended outage (phone
 // offline, agent down) still surfaces the relay hint + Reconnect button so the user can act.
 const RECONNECT_GRACE_MS = 25_000;
-// How long a Claude voice dictation may take before the agent is taken not to support it: the
-// clip's playback, which runs at real speed, plus Claude's warm-up. A millisecond per byte
-// covers audio down to 8 kbps; the browsers record at 32 kbps or more.
-export const VOICE_REPLY_BASE_MS = 20_000;
-export const VOICE_REPLY_MS_PER_BYTE = 1;
+// How long after the end of a Claude voice dictation the agent may take to answer before it
+// is taken not to support it: the last second of playback, the release and Claude's transcription.
+export const VOICE_REPLY_MS = 20_000;
 
 // Why a media preview could not be shown (a file over the cap is shown as truncated instead).
 const MEDIA_ERRORS: Record<Exclude<MediaResult, 'ok' | 'too-large'>, string> = {
@@ -269,7 +268,7 @@ export class PerchStore {
   // Called before the store types into the terminal on its own (a stored file's path, a
   // dictation transcript), so the view can drop input state that assumed it owned the line.
   onInjectedInput: (() => void) | null = null;
-  private voiceWaiter: { workspaceId: string; resolve: () => void; reject: (e: Error) => void } | null = null;
+  private voice: { workspaceId: string; machineId: string; outcome: Promise<void>; settled: boolean; settle: (e: Error | null) => void } | null = null;
   // Called when the active terminal's machine recovers from a drop, so the view re-attaches
   // (clear stale rows + resend `attach`) and self-heals instead of staying frozen on the last
   // frame. Wired by TerminalView, which owns the terminal dimensions.
@@ -520,13 +519,19 @@ export class PerchStore {
         // into the terminal at the cursor, exactly like typed input.
         if (this.active?.id === message.workspaceId) this.injectInput(message.path);
         return;
-      case 'voiceClipDone': {
-        const waiter = this.voiceWaiter;
-        if (waiter?.workspaceId !== message.workspaceId) return;
-        if (!message.ok) return waiter.reject(new Error(message.error ?? 'Claude voice failed'));
+      case 'voiceDone': {
+        const voice = this.voice;
+        if (voice?.workspaceId !== message.workspaceId || voice.settled) return;
+        if (!message.ok) {
+          const error = message.error ?? 'Claude voice failed';
+          voice.settle(new Error(error));
+          // A refusal can come while the user is still talking: stop them at once.
+          this.stt?.abort(error);
+          return;
+        }
         // Claude writes the transcript into the line behind the input field's back.
         this.onInjectedInput?.();
-        return waiter.resolve();
+        return voice.settle(null);
       }
       case 'detached':
         if (this.active?.id === message.workspaceId && message.reason === 'opened-elsewhere') {
@@ -694,35 +699,53 @@ export class PerchStore {
     return true;
   }
 
-  // A Claude voice dictation: the agent plays the clip into the machine's virtual mic while
-  // holding space, and Claude Code itself writes the transcript into the prompt, so nothing is
-  // typed from here. Resolves when the agent is done. The wait is bounded because an agent
-  // that predates `voiceClip` answers `bad_message`, which is deliberately silent.
-  async sendVoiceClip(bytes: Uint8Array): Promise<void> {
-    const active = this.active;
-    if (!active) throw new Error('Open a workspace first');
-    const tooLarge = checkUploadSize(bytes.byteLength);
-    if (tooLarge) throw new Error(tooLarge);
-    this.voiceWaiter?.reject(new Error('Superseded by a newer dictation'));
-    return new Promise((resolve, reject) => {
+  // A Claude voice dictation, streamed as it is spoken: the agent plays the audio into the
+  // machine's virtual mic while holding space, and Claude Code itself writes the transcript into
+  // the prompt, so nothing is typed from here. The wait after the end is bounded because an
+  // agent that predates `voiceStart` answers `bad_message`, which is deliberately silent.
+  readonly voiceLink: VoiceLink = {
+    begin: () => {
+      const active = this.active;
+      if (!active) throw new Error('Open a workspace first');
+      this.voice?.settle(new Error('Superseded by a newer dictation'));
+      let settleOutcome!: (e: Error | null) => void;
+      const outcome = new Promise<void>((resolve, reject) => (settleOutcome = (e) => (e ? reject(e) : resolve())));
+      outcome.catch(() => undefined);
+      const voice = {
+        workspaceId: active.id,
+        machineId: active.machineId,
+        outcome,
+        settled: false,
+        settle: (e: Error | null) => {
+          if (voice.settled) return;
+          voice.settled = true;
+          settleOutcome(e);
+        },
+      };
+      this.voice = voice;
+      this.send(active.machineId, { type: 'voiceStart', workspaceId: active.id });
+    },
+    chunk: (pcm) => {
+      const voice = this.voice;
+      if (voice && !voice.settled) this.send(voice.machineId, { type: 'voiceChunk', workspaceId: voice.workspaceId, data: encodeBytes(pcm) });
+    },
+    finish: async () => {
+      const voice = this.voice;
+      if (!voice) throw new Error('No dictation in progress');
+      if (!voice.settled) this.send(voice.machineId, { type: 'voiceEnd', workspaceId: voice.workspaceId });
       const timer = setTimeout(() => {
-        this.voiceWaiter = null;
         // The agent may still be dictating, so the line is no longer the field's.
         this.onInjectedInput?.();
-        reject(new Error('This machine’s agent does not support Claude voice'));
-      }, VOICE_REPLY_BASE_MS + bytes.byteLength * VOICE_REPLY_MS_PER_BYTE);
-      const settle = () => {
+        voice.settle(new Error('This machine’s agent does not support Claude voice'));
+      }, VOICE_REPLY_MS);
+      try {
+        await voice.outcome;
+      } finally {
         clearTimeout(timer);
-        this.voiceWaiter = null;
-      };
-      this.voiceWaiter = {
-        workspaceId: active.id,
-        resolve: () => (settle(), resolve()),
-        reject: (e) => (settle(), reject(e)),
-      };
-      this.send(active.machineId, { type: 'voiceClip', workspaceId: active.id, data: encodeBytes(bytes) });
-    });
-  }
+        if (this.voice === voice) this.voice = null;
+      }
+    },
+  };
 
   // Toggle dictation: first tap records, second stops and transcribes; the transcript is
   // inserted at the terminal via the normal input path (no auto-submit). No-op when the

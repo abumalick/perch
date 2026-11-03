@@ -40,7 +40,7 @@ import { browseDir } from '../application/browse-dir';
 import { makeDir } from '../application/make-dir';
 import { readFile } from '../application/read-file';
 import { storePastedFile } from '../application/store-pasted-file';
-import type { ClaudeVoice } from '../application/claude-voice';
+import type { ClaudeVoice, VoiceSession } from '../application/claude-voice';
 import type { FileWriterPort } from '../ports/file-writer-port';
 import type { ClientLogPort } from '../ports/client-log-port';
 import type { ConnectUpstream } from '../ports/browser-stream-port';
@@ -89,11 +89,15 @@ export interface ConnectionHandlerDeps {
   claudeSessions?: ClaudeSessionsPort;
   scopes?: ProcessScopePort;
   // Shared by every connection (one virtual mic per machine); absent where it can't work.
-  claudeVoice?: Pick<ClaudeVoice, 'dictate'>;
+  claudeVoice?: Pick<ClaudeVoice, 'start'>;
 }
+
+type PendingVoice = { workspaceId: string; session: VoiceSession | null; queue: Uint8Array[]; ended: boolean };
 
 export class ConnectionHandler {
   private authed = false;
+  // The dictation this phone is streaming; chunks that arrive before its checks pass wait in `queue`.
+  private voice: PendingVoice | null = null;
   private attachment:
     | { workspaceId: string; session: PtySession; terminated: boolean; viewer: Viewer }
     | null = null;
@@ -151,6 +155,8 @@ export class ConnectionHandler {
   }
 
   protected onClose(): void {
+    this.voice?.session?.abort('The phone disconnected');
+    this.voice = null;
     this.media.stop();
     this.browsers.closeAll();
     const att = this.attachment;
@@ -414,6 +420,7 @@ export class ConnectionHandler {
         return;
       }
       case 'detach': {
+        if (this.voice?.workspaceId === message.workspaceId) this.voice.session?.abort('The workspace was closed');
         if (this.attachment?.workspaceId === message.workspaceId) {
           this.teardownAttachment('closed');
         }
@@ -442,21 +449,49 @@ export class ConnectionHandler {
         this.conn.send({ type: 'fileStored', workspaceId: message.workspaceId, path });
         return;
       }
-      case 'voiceClip': {
+      case 'voiceStart': {
+        this.voice?.session?.abort('Superseded by a newer dictation');
         const { workspaceId } = message;
-        const done = (error?: string) =>
-          this.conn.send(error ? { type: 'voiceClipDone', workspaceId, ok: false, error } : { type: 'voiceClipDone', workspaceId, ok: true });
-        if (!this.deps.claudeVoice) return done('Claude voice needs a Linux machine with the voice loopback set up');
-        if (this.attachment?.workspaceId !== workspaceId) return done('Open the workspace before dictating');
+        const voice: PendingVoice = { workspaceId, session: null, queue: [], ended: false };
+        this.voice = voice;
+        const refuse = (error: string) => {
+          if (this.voice === voice) this.voice = null;
+          this.conn.send({ type: 'voiceDone', workspaceId, ok: false, error });
+        };
+        if (!this.deps.claudeVoice) return refuse('Claude voice needs a Linux machine with the voice loopback set up');
+        if (this.attachment?.workspaceId !== workspaceId) return refuse('Open the workspace before dictating');
         // Anywhere but Claude's prompt the held spaces would be typed.
-        const session = (await this.deps.tmux.listSessions(this.deps.config.sessionPrefix)).find((s) => s.name === workspaceId);
-        if (!session || !/(^|[\s/])claude(\s|$)/.test(session.command)) {
-          return done('Claude voice works only in a Claude Code workspace');
+        const tmuxSession = (await this.deps.tmux.listSessions(this.deps.config.sessionPrefix)).find((s) => s.name === workspaceId);
+        if (!tmuxSession || !/(^|[\s/])claude(\s|$)/.test(tmuxSession.command)) {
+          return refuse('Claude voice works only in a Claude Code workspace');
         }
-        const error = await this.deps.claudeVoice.dictate(new Uint8Array(Buffer.from(message.data, 'base64')), () => {
+        if (this.voice !== voice) return;
+        const session = this.deps.claudeVoice.start(() => {
           if (this.attachment?.workspaceId === workspaceId) this.attachment.session.write(' ');
         });
-        return done(error ?? undefined);
+        voice.session = session;
+        for (const pcm of voice.queue.splice(0)) session.write(pcm);
+        if (voice.ended) session.end();
+        void session.done.then((error) => {
+          if (this.voice === voice) this.voice = null;
+          this.conn.send(error ? { type: 'voiceDone', workspaceId, ok: false, error } : { type: 'voiceDone', workspaceId, ok: true });
+        });
+        return;
+      }
+      case 'voiceChunk': {
+        const voice = this.voice;
+        if (voice?.workspaceId !== message.workspaceId || voice.ended) return;
+        const pcm = new Uint8Array(Buffer.from(message.data, 'base64'));
+        if (voice.session) voice.session.write(pcm);
+        else voice.queue.push(pcm);
+        return;
+      }
+      case 'voiceEnd': {
+        const voice = this.voice;
+        if (voice?.workspaceId !== message.workspaceId) return;
+        voice.ended = true;
+        voice.session?.end();
+        return;
       }
       case 'ping': {
         this.conn.send({ type: 'pong' });

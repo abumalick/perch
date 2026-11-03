@@ -36,6 +36,18 @@ describe('SpeechToText', () => {
     expect(setup().stt.state).toBe('idle');
   });
 
+  it('abort stops a recording with the reason, and does nothing otherwise', async () => {
+    const { stt, recorder, transcriber } = setup();
+    stt.abort('Voice is off');
+    expect(stt.state).toBe('idle');
+    await stt.toggle();
+    stt.abort('Voice is off');
+    expect(stt.state).toBe('error');
+    expect(stt.error).toBe('Voice is off');
+    expect(recorder.stop).toHaveBeenCalled();
+    expect(transcriber.transcribe).not.toHaveBeenCalled();
+  });
+
   it('starts recording on the first toggle', async () => {
     const { stt, recorder } = setup();
     await stt.toggle();

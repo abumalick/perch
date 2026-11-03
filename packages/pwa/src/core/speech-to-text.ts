@@ -40,6 +40,13 @@ export class SpeechToText {
     if (this._state === 'error') this.set('idle');
   }
 
+  // Stop a recording that can no longer succeed (the machine refused it mid-stream), showing why.
+  abort(error: string): void {
+    if (this._state !== 'recording') return;
+    this.set('error', error);
+    this.recorder.stop().catch(() => undefined);
+  }
+
   private set(state: DictationState, error: string | null = null): void {
     this._state = state;
     this._error = error;

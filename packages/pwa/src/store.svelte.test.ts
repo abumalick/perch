@@ -1,7 +1,7 @@
 import { generateAgentKeys, pairingLink } from '@perch/secure-channel';
 import { audioMediaType, imageMediaType, pdfMediaType } from '@perch/contracts';
 import { describe, it, expect, vi } from 'vitest';
-import { PerchStore, VOICE_REPLY_BASE_MS } from './store.svelte';
+import { PerchStore, VOICE_REPLY_MS } from './store.svelte';
 import { ConnectionManager } from './core/connection-manager';
 import { WorkspaceAggregator } from './core/workspace-aggregator';
 import { SettingsStore, type MachineConfig } from './core/settings-store';
@@ -325,7 +325,7 @@ describe('PerchStore', () => {
     expect(store.actionError).toBeNull();
   });
 
-  describe('sendVoiceClip', () => {
+  describe('voiceLink', () => {
     function opened() {
       const built = build([mac]);
       built.store.start();
@@ -334,46 +334,64 @@ describe('PerchStore', () => {
       built.store.open({ machineId: 'mac', id: 'perch-a', name: 'a', projectPath: '/a', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'idle' as const });
       return built;
     }
-    const clip = () => new Uint8Array([1, 2, 3]);
-    const flush = () => new Promise((r) => setTimeout(r, 0));
+    const sentVoice = (sockets: ReturnType<typeof opened>['sockets']) =>
+      sockets['wss://mac']!.sent.map((s) => JSON.parse(s)).filter((m: { type: string }) => m.type.startsWith('voice'));
 
-    it('sends the clip and resolves once the agent is done, restarting the input field', async () => {
+    it('streams start, chunks and end, and resolves once the agent is done, restarting the input field', async () => {
       const { store, sockets } = opened();
       let injected = 0;
       store.onInjectedInput = () => injected++;
-      const done = store.sendVoiceClip(clip());
-      await flush();
-      const sent = sockets['wss://mac']!.sent.map((s) => JSON.parse(s));
-      expect(sent).toContainEqual({ type: 'voiceClip', workspaceId: 'perch-a', data: btoa(String.fromCharCode(1, 2, 3)) });
-      store.handleMessage('mac', { type: 'voiceClipDone', workspaceId: 'perch-a', ok: true });
+      store.voiceLink.begin();
+      store.voiceLink.chunk(new Uint8Array([1, 2, 3]));
+      const done = store.voiceLink.finish();
+      expect(sentVoice(sockets)).toEqual([
+        { type: 'voiceStart', workspaceId: 'perch-a' },
+        { type: 'voiceChunk', workspaceId: 'perch-a', data: btoa(String.fromCharCode(1, 2, 3)) },
+        { type: 'voiceEnd', workspaceId: 'perch-a' },
+      ]);
+      store.handleMessage('mac', { type: 'voiceDone', workspaceId: 'perch-a', ok: true });
       await expect(done).resolves.toBeUndefined();
       expect(injected).toBe(1);
     });
 
-    it('rejects with the agent’s reason', async () => {
-      const { store } = opened();
-      const done = store.sendVoiceClip(clip());
-      await flush();
-      store.handleMessage('mac', { type: 'voiceClipDone', workspaceId: 'perch-a', ok: false, error: 'Voice is off' });
-      await expect(done).rejects.toThrow('Voice is off');
+    it('needs an open workspace', () => {
+      const { store } = build([mac]);
+      expect(() => store.voiceLink.begin()).toThrow('Open a workspace first');
     });
 
-    it('gives up on an agent that never answers', async () => {
+    it('rejects with the agent’s reason, even one that came before the end, and stops sending', async () => {
+      const { store, sockets } = opened();
+      store.voiceLink.begin();
+      store.handleMessage('mac', { type: 'voiceDone', workspaceId: 'perch-a', ok: false, error: 'Voice is off' });
+      store.voiceLink.chunk(new Uint8Array([1]));
+      await expect(store.voiceLink.finish()).rejects.toThrow('Voice is off');
+      expect(sentVoice(sockets)).toEqual([{ type: 'voiceStart', workspaceId: 'perch-a' }]);
+    });
+
+    it('gives up on an agent that never answers, and starts the input field over', async () => {
       vi.useFakeTimers();
       try {
         const { store } = opened();
         let injected = 0;
         store.onInjectedInput = () => injected++;
-        const done = store.sendVoiceClip(clip());
-        const caught = done.catch((e: Error) => e);
-        await vi.advanceTimersByTimeAsync(VOICE_REPLY_BASE_MS);
+        store.voiceLink.begin();
+        const caught = store.voiceLink.finish().catch((e: Error) => e);
+        await vi.advanceTimersByTimeAsync(VOICE_REPLY_MS - 1);
         expect(injected).toBe(0);
-        await vi.advanceTimersByTimeAsync(10);
+        await vi.advanceTimersByTimeAsync(1);
         expect(String(await caught)).toMatch(/does not support Claude voice/);
         expect(injected).toBe(1);
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it('supersedes an older dictation', async () => {
+      const { store } = opened();
+      store.voiceLink.begin();
+      const first = store.voiceLink.finish();
+      store.voiceLink.begin();
+      await expect(first).rejects.toThrow('Superseded');
     });
   });
 

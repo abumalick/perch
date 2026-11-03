@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ClaudeVoice, HOLD_REPEAT_MS, LEAD_MS, TAIL_MS, voiceSettingsProblem } from './claude-voice';
+import { ClaudeVoice, HOLD_REPEAT_MS, IDLE_MS, LEAD_MS, MAX_MS, TAIL_MS, voiceSettingsProblem } from './claude-voice';
 
 function deferred() {
   let resolve!: () => void;
@@ -36,75 +36,136 @@ describe('ClaudeVoice', () => {
 
   function setup(settings: unknown = { voice: { enabled: true, mode: 'hold' } }) {
     const playing = deferred();
-    const play = vi.fn(() => playing.promise);
-    const voice = new ClaudeVoice({ player: { play }, settings: { read: async () => settings } });
+    const written: number[] = [];
+    const stream = { write: vi.fn((pcm: Uint8Array) => void written.push(...pcm)), end: vi.fn(() => playing.promise), abort: vi.fn() };
+    const open = vi.fn(() => stream);
+    const voice = new ClaudeVoice({ player: { open }, settings: { read: async () => settings } });
     const presses: number[] = [];
-    const press = () => presses.push(Date.now());
-    return { voice, play, playing, presses, press };
+    const press = () => void presses.push(Date.now());
+    return { voice, open, stream, written, playing, presses, press };
   }
+  const pcm = (...bytes: number[]) => new Uint8Array(bytes);
 
-  it('holds space from before the clip starts until after it ends', async () => {
-    const { voice, play, playing, presses, press } = setup();
-    const start = Date.now();
-    const done = voice.dictate(new Uint8Array([1]), press);
-
+  it('holds space at once and plays the audio LEAD_MS later, with what arrived meanwhile', async () => {
+    const { voice, open, written, presses, press } = setup();
+    const session = voice.start(press);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(presses).toHaveLength(1);
+    session.write(pcm(1));
     await vi.advanceTimersByTimeAsync(LEAD_MS - 1);
-    expect(play).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
     expect(presses.length).toBeGreaterThan(LEAD_MS / HOLD_REPEAT_MS - 2);
+    session.write(pcm(2));
     await vi.advanceTimersByTimeAsync(1);
-    expect(play).toHaveBeenCalledOnce();
+    expect(written).toEqual([1, 2]);
+    session.write(pcm(3));
+    expect(written).toEqual([1, 2, 3]);
+  });
 
-    await vi.advanceTimersByTimeAsync(2000);
+  it('releases space TAIL_MS after the audio has played out', async () => {
+    const { voice, stream, playing, presses, press } = setup();
+    const session = voice.start(press);
+    await vi.advanceTimersByTimeAsync(LEAD_MS + 2000);
+    session.end();
+    expect(stream.end).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(800);
     playing.resolve();
-    await vi.advanceTimersByTimeAsync(TAIL_MS);
-    await expect(done).resolves.toBeNull();
-
-    const last = presses.at(-1)!;
-    expect(last - start).toBeGreaterThanOrEqual(LEAD_MS + 2000 + TAIL_MS - HOLD_REPEAT_MS);
+    await vi.advanceTimersByTimeAsync(TAIL_MS - HOLD_REPEAT_MS);
+    const held = presses.length;
+    await vi.advanceTimersByTimeAsync(HOLD_REPEAT_MS);
+    await expect(session.done).resolves.toBeNull();
     const count = presses.length;
+    expect(count).toBeGreaterThan(held - 1);
     await vi.advanceTimersByTimeAsync(1000);
     expect(presses.length).toBe(count);
   });
 
-  it('refuses a second clip while one plays, and takes the next once it is done', async () => {
-    const { voice, playing, press } = setup();
-    const first = voice.dictate(new Uint8Array([1]), press);
-    await expect(voice.dictate(new Uint8Array([2]), press)).resolves.toMatch(/already/);
-    playing.resolve();
-    await vi.advanceTimersByTimeAsync(LEAD_MS + TAIL_MS);
-    await expect(first).resolves.toBeNull();
-  });
-
-  it('stops holding and reports a failed playback', async () => {
-    const { voice, playing, presses, press } = setup();
-    const done = voice.dictate(new Uint8Array([1]), press);
+  it('plays and ends a dictation that ended before playback began', async () => {
+    const { voice, stream, written, playing, press } = setup();
+    const session = voice.start(press);
+    session.write(pcm(7));
+    session.end();
     await vi.advanceTimersByTimeAsync(LEAD_MS);
-    playing.reject(new Error('no loopback device'));
+    expect(written).toEqual([7]);
+    expect(stream.end).toHaveBeenCalledOnce();
+    playing.resolve();
     await vi.advanceTimersByTimeAsync(TAIL_MS);
-    await expect(done).resolves.toMatch(/no loopback device/);
+    await expect(session.done).resolves.toBeNull();
+  });
+
+  it('refuses a second dictation while one runs, and takes the next once it is done', async () => {
+    const { voice, playing, press } = setup();
+    const first = voice.start(press);
+    await expect(voice.start(press).done).resolves.toMatch(/already in use/);
+    first.end();
+    await vi.advanceTimersByTimeAsync(LEAD_MS);
+    playing.resolve();
+    await vi.advanceTimersByTimeAsync(TAIL_MS);
+    await expect(first.done).resolves.toBeNull();
+    const next = voice.start(press);
+    next.abort('done');
+    await expect(next.done).resolves.toBe('done');
+  });
+
+  it('reports a failed playback and stops holding', async () => {
+    const { voice, playing, presses, press } = setup();
+    const session = voice.start(press);
+    await vi.advanceTimersByTimeAsync(LEAD_MS);
+    session.end();
+    playing.reject(new Error('aplay: no loopback device'));
+    await expect(session.done).resolves.toMatch(/no loopback device/);
     const count = presses.length;
     await vi.advanceTimersByTimeAsync(1000);
     expect(presses.length).toBe(count);
+  });
+
+  it('gives up when the phone stops sending, and stops the player', async () => {
+    const { voice, stream, presses, press } = setup();
+    const session = voice.start(press);
+    await vi.advanceTimersByTimeAsync(IDLE_MS - 100);
+    session.write(pcm(1));
+    await vi.advanceTimersByTimeAsync(IDLE_MS - 1);
+    expect(stream.abort).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(session.done).resolves.toMatch(/stopped sending/);
+    expect(stream.abort).toHaveBeenCalled();
+    const count = presses.length;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(presses.length).toBe(count);
+  });
+
+  it('stops a dictation that runs past MAX_MS', async () => {
+    const { voice, press } = setup();
+    const session = voice.start(press);
+    for (let t = 0; t < MAX_MS; t += 1000) {
+      session.write(pcm(0));
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    await expect(session.done).resolves.toMatch(/5 minutes/);
   });
 
   it('keeps going when a press throws', async () => {
     const { voice, playing } = setup();
     let presses = 0;
-    const done = voice.dictate(new Uint8Array([1]), () => {
+    const session = voice.start(() => {
       presses++;
       throw new Error('pty gone');
     });
+    session.end();
     await vi.advanceTimersByTimeAsync(LEAD_MS);
     playing.resolve();
     await vi.advanceTimersByTimeAsync(TAIL_MS);
-    await expect(done).resolves.toBeNull();
+    await expect(session.done).resolves.toBeNull();
     expect(presses).toBeGreaterThan(1);
   });
 
-  it('presses nothing when the settings refuse', async () => {
-    const { voice, play, presses, press } = setup({ voice: { enabled: true, mode: 'tap' } });
-    await expect(voice.dictate(new Uint8Array([1]), press)).resolves.toMatch(/hold/);
-    expect(play).not.toHaveBeenCalled();
+  it('presses nothing and opens no player when the settings refuse', async () => {
+    const { voice, open, presses, press } = setup({ voice: { enabled: true, mode: 'tap' } });
+    const session = voice.start(press);
+    await expect(session.done).resolves.toMatch(/hold/);
+    await vi.advanceTimersByTimeAsync(LEAD_MS);
+    expect(open).not.toHaveBeenCalled();
     expect(presses).toEqual([]);
+    await expect(voice.start(press).done).resolves.toMatch(/hold/);
   });
 });

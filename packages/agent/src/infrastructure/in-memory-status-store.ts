@@ -82,6 +82,14 @@ export class InMemoryStatusStore implements StatusStorePort {
     this.statuses.set(workspaceId, { changedAt: this.now(), ...current, status, messagedLast: value });
   }
 
+  ids(): string[] {
+    return [...this.statuses.keys()];
+  }
+
+  forget(workspaceId: string): void {
+    this.statuses.delete(workspaceId);
+  }
+
   onChange(listener: (workspaceId: string, status: WorkspaceStatus) => void): void {
     this.listeners.push(listener);
   }

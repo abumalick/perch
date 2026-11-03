@@ -18,5 +18,10 @@ export interface StatusStorePort {
   // False for an unknown id; setting it never fires onChange.
   getMessagedLast(workspaceId: string): boolean;
   setMessagedLast(workspaceId: string, value: boolean): void;
-  onChange(listener: (workspaceId: string, status: WorkspaceStatus) => void): void;
+  // Every id with an entry. Ids are reused once a workspace is gone, so a new one must not
+  // take an id still listed here, and the entry of a workspace that stopped is forgotten.
+  ids(): string[];
+  // Drops the entry whole, never firing onChange.
+  forget(workspaceId: string): void;
+  onChange(listener:(workspaceId: string, status: WorkspaceStatus) => void): void;
 }

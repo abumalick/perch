@@ -7,9 +7,10 @@ description: Use when asked to launch, spawn, or open one or more new Perch work
 
 ## Overview
 
-A Perch workspace *is* a detached tmux session named `perch-<6 hex>`. The Perch
-agent discovers workspaces by running `tmux list-sessions` — nothing registers
-them. The `perch` CLI starts one (`perch spawn`); it needs no agent restart and no
+A Perch workspace *is* a detached tmux session named after its folder and a small
+number (`perch-3`, `eng-ops-1`; older ones are `perch-<6 hex>`). The Perch agent
+discovers workspaces by running `tmux list-sessions` — nothing registers them.
+`perch rename [<id>] <title>` changes a workspace's title, never its id. The `perch` CLI starts one (`perch spawn`); it needs no agent restart and no
 token. It is on PATH once `deploy/install-cli.sh` has run on the machine (see
 "Perch CLI" in the Perch repo's `docs/DEPLOY.md`).
 

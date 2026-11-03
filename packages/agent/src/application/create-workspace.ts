@@ -6,6 +6,7 @@ import type { PathResolver } from '../ports/path-resolver';
 import type { DirectoryChecker } from '../ports/directory-checker';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id-generator';
+import { createWithFreshId } from './short-workspace-ids';
 
 export interface CreateWorkspaceDeps {
   tmux: TmuxPort;
@@ -26,14 +27,15 @@ export async function createWorkspace(
   deps: CreateWorkspaceDeps,
   input: CreateWorkspaceInput,
 ): Promise<Workspace> {
-  const id = `perch-${deps.ids.next()}`;
   const projectPath = deps.resolvePath(input.projectPath);
   // tmux's `new-session -c` silently runs the command in $HOME when the cwd is missing,
   // so reject up front rather than create a workspace pointing at the wrong directory.
   if (!(await deps.isDirectory(projectPath))) {
     throw new Error(`directory does not exist: ${projectPath}`);
   }
-  await deps.tmux.createSession({ name: id, cwd: projectPath, command: input.command });
+  const id = await createWithFreshId(deps.ids, projectPath, (id) =>
+    deps.tmux.createSession({ name: id, cwd: projectPath, command: input.command }),
+  );
   await deps.recent.record(projectPath);
   const now = deps.clock.now();
   return {

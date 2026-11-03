@@ -21,7 +21,8 @@ function makeDeps(overrides: Partial<SpawnWorkspaceDeps> = {}) {
       },
     },
     resolveDirectory: async (path) => (path === '/w/proj' || path === 'proj' ? '/w/proj' : null),
-    ids: { next: () => 'a1b2c3' },
+    ids: { next: async () => 'perch-a1b2c3' },
+    nonce: () => 'n0nce',
     sleep,
     spawnDir: DIR,
     ...overrides,
@@ -52,18 +53,18 @@ describe('spawnWorkspace', () => {
     expect(tmux.createSession).not.toHaveBeenCalled();
   });
 
-  it('writes the brief to <spawnDir>/<id>.md, trailing newlines trimmed to one', async () => {
+  it('writes the brief to <spawnDir>/<nonce>.md, trailing newlines trimmed to one', async () => {
     const { deps, files } = makeDeps();
     await spawnWorkspace(deps, { projectPath: '/w/proj', brief: "don't `x` $y\nline 2\n\n" });
     expect(deps.files.ensureDir).toHaveBeenCalledWith(DIR);
-    expect(files.get(`${DIR}/perch-a1b2c3.md`)).toBe("don't `x` $y\nline 2\n");
+    expect(files.get(`${DIR}/n0nce.md`)).toBe("don't `x` $y\nline 2\n");
   });
 
   // The whole design: the brief never enters the command string, only a fixed path does.
   it('launches claude on the brief file, never on the brief text', async () => {
     const { deps, tmux } = makeDeps();
     await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'Hostile $(whoami) `id`' });
-    expect(created(tmux).command).toBe(`claude --model 'opus[1m]' --name perch-a1b2c3 "$(cat '${DIR}/perch-a1b2c3.md')"`);
+    expect(created(tmux).command).toBe(`claude --model 'opus[1m]' --name perch-a1b2c3 "$(cat '${DIR}/n0nce.md')"`);
     expect(created(tmux).command).not.toContain('whoami');
   });
 
@@ -127,7 +128,7 @@ describe('spawnWorkspace', () => {
 
   describe('a child', () => {
     const parent = { id: 'perch-p00001', name: 'relay "orchestrator"' };
-    const settings = `${DIR}/perch-a1b2c3.settings.json`;
+    const settings = `${DIR}/n0nce.settings.json`;
 
     it('records its parent on the session', async () => {
       const { deps, tmux } = makeDeps();
@@ -139,7 +140,7 @@ describe('spawnWorkspace', () => {
       const { deps, tmux } = makeDeps();
       await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', parent });
       expect(created(tmux).storedCommand).toBe(`claude --model 'opus[1m]' --name perch-a1b2c3 --settings ${settings}`);
-      expect(created(tmux).command).toBe(`claude --model 'opus[1m]' --name perch-a1b2c3 --settings ${settings} "$(cat '${DIR}/perch-a1b2c3.md')"`);
+      expect(created(tmux).command).toBe(`claude --model 'opus[1m]' --name perch-a1b2c3 --settings ${settings} "$(cat '${DIR}/n0nce.md')"`);
     });
 
     it('writes a hook that denies questions and plan mode, naming the parent', async () => {
@@ -151,10 +152,10 @@ describe('spawnWorkspace', () => {
       expect(hooks.hooks.PreToolUse).toEqual([
         {
           matcher: 'AskUserQuestion|EnterPlanMode|ExitPlanMode',
-          hooks: [{ type: 'command', command: `cat >/dev/null; cat ${DIR}/perch-a1b2c3.deny.json` }],
+          hooks: [{ type: 'command', command: `cat >/dev/null; cat ${DIR}/n0nce.deny.json` }],
         },
       ]);
-      const deny = JSON.parse(files.get(`${DIR}/perch-a1b2c3.deny.json`)!) as {
+      const deny = JSON.parse(files.get(`${DIR}/n0nce.deny.json`)!) as {
         hookSpecificOutput: { hookEventName: string; permissionDecision: string; permissionDecisionReason: string };
       };
       expect(deny.hookSpecificOutput.hookEventName).toBe('PreToolUse');
@@ -167,7 +168,7 @@ describe('spawnWorkspace', () => {
     it('appends a footer naming the parent id and its messaging name, with the perch ls fallback', async () => {
       const { deps, files } = makeDeps();
       await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'Do the thing.', parent });
-      const brief = files.get(`${DIR}/perch-a1b2c3.md`)!;
+      const brief = files.get(`${DIR}/n0nce.md`)!;
       expect(brief.startsWith('Do the thing.\n\n---\n')).toBe(true);
       expect(brief).toContain('workspace perch-p00001');
       expect(brief).toContain('SendMessage tool (to: "relay "orchestrator"")');
@@ -176,9 +177,10 @@ describe('spawnWorkspace', () => {
       expect(brief).toContain('final report');
     });
 
-    it('refuses a parent that is not a Perch workspace id', async () => {
+    // The parent id lands unquoted in the child's hook files and brief.
+    it('refuses a parent id with characters an id never has', async () => {
       const { deps } = makeDeps();
-      await expect(spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', parent: { id: 'main', name: 'x' } })).rejects.toThrow(/parent/);
+      await expect(spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', parent: { id: 'main; x', name: 'x' } })).rejects.toThrow(/parent/);
     });
 
     // The settings path lands unquoted in @perch_command, which unpark splits on whitespace.
@@ -191,8 +193,8 @@ describe('spawnWorkspace', () => {
     it('writes no settings and no footer for a workspace without a parent', async () => {
       const { deps, files, tmux } = makeDeps();
       await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b' });
-      expect([...files.keys()]).toEqual([`${DIR}/perch-a1b2c3.md`]);
-      expect(files.get(`${DIR}/perch-a1b2c3.md`)).toBe('b\n');
+      expect([...files.keys()]).toEqual([`${DIR}/n0nce.md`]);
+      expect(files.get(`${DIR}/n0nce.md`)).toBe('b\n');
       expect(created(tmux).parent).toBeUndefined();
     });
   });
@@ -212,7 +214,7 @@ describe('spawnWorkspace', () => {
     const { deps, tmux, sleep } = makeDeps();
     tmux.hasSession.mockResolvedValue(false);
     await expect(spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b' })).rejects.toThrow(
-      `workspace perch-a1b2c3 died on launch (brief kept at ${DIR}/perch-a1b2c3.md)`,
+      `workspace perch-a1b2c3 died on launch (brief kept at ${DIR}/n0nce.md)`,
     );
     expect(sleep).toHaveBeenCalledWith(2000);
     expect(sleep.mock.invocationCallOrder[0]!).toBeLessThan(tmux.hasSession.mock.invocationCallOrder[0]!);

@@ -11,7 +11,16 @@ export interface TmuxSessionInfo {
   title: string;
 }
 
+// createSession's refusal of a name some session already has.
+export class DuplicateSessionError extends Error {
+  constructor(name: string) {
+    super(`duplicate session: ${name}`);
+  }
+}
+
 export interface TmuxPort {
+  // Perch's sessions: every one it started (it sets `@perch_command` on each), and any whose
+  // name has the old id prefix, which a tmux-resurrect bare shell keeps without the marker.
   listSessions(prefix: string): Promise<TmuxSessionInfo[]>;
   // `storedCommand` is what `@perch_command` records when it differs from the command launched
   // (a spawn launches with its brief, but unpark must resume without it).

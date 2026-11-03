@@ -304,6 +304,7 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
   function fakeTmux(pane: Record<string, string> = {}) {
     const created: Array<{ name: string; cwd: string; command: string; parent?: string; storedCommand?: string }> = [];
     const locked: string[] = [];
+    const titles: string[] = [];
     const tmux: TmuxPort = {
       listSessions: async (prefix) => live.filter((s) => s.name.startsWith(prefix)),
       createSession: async (input) => {
@@ -312,8 +313,10 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
       killSession: async () => {
         throw new Error('ls/spawn/peek must never kill');
       },
-      hasSession: async () => true,
-      setPaneTitle: async () => {},
+      hasSession: async (name) => live.some((s) => s.name === name) || created.some((c) => c.name === name),
+      setPaneTitle: async (name, title) => {
+        titles.push(`${name} ${title}`);
+      },
       supportsTitleLock: async () => true,
       lockPaneTitle: async (name) => {
         locked.push(name);
@@ -321,7 +324,7 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
       capturePane: async () => 'old\n\nline 1\n   \nline 2\nline 3\n\n\n',
       sessionOfPane: async (id) => pane[id] ?? null,
     };
-    return { tmux, created, locked };
+    return { tmux, created, locked, titles };
   }
 
   async function machine() {
@@ -335,6 +338,13 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     const env = { PERCH_AGENT_ENV: join(home, 'no-such-agent.env') };
     return { home, env };
   }
+
+  // The brief file is named by a nonce; the launch command names it.
+  const spawnedBrief = (home: string, created: Array<{ name: string; command: string }>, id: string) => {
+    const path = /cat '([^']+)'/.exec(created.find((c) => c.name === id)!.command)![1]!;
+    expect(path.startsWith(join(home, '.perch', 'spawn'))).toBe(true);
+    return readFile(path, 'utf8');
+  };
 
   const io = (tmux: TmuxPort, extra: Partial<CliIo> = {}): CliIo => ({ tmux, now: () => NOW, sleep: async () => {}, ...extra });
 
@@ -471,13 +481,13 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     await mkdir(join(home, 'proj'));
     const { tmux, created, locked } = fakeTmux();
     const id = await run(['spawn', '--title', 'T', 'proj'], env, home, io(tmux, { cwd: home, stdin: async () => 'Do it.\n' }));
-    expect(id).toMatch(/^perch-[0-9a-f]{6}$/);
+    expect(id).toBe('proj-1');
     expect(created[0]!.cwd).toBe(await realpath(join(home, 'proj')));
     expect(created[0]!.storedCommand).toBe(`claude --model 'opus[1m]' --name ${id}`);
     // The title is held by tmux's lock, not by the env switch that also silences OSC 7501.
     expect(locked).toEqual([id]);
     expect(created[0]!.command).not.toContain('CLAUDE_CODE_DISABLE_TERMINAL_TITLE');
-    expect(await readFile(join(home, '.perch', 'spawn', `${id}.md`), 'utf8')).toBe('Do it.\n');
+    expect(await spawnedBrief(home, created, id)).toBe('Do it.\n');
   });
 
   it('spawns a child of the caller, naming the parent by its current messaging name', async () => {
@@ -488,9 +498,34 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     const id = await run(['spawn', '--child', '--model', 'sonnet[1m]', home], { ...env, TMUX_PANE: '%7' }, home, io(tmux, { stdin: async () => 'b' }));
     expect(created[0]!.parent).toBe('perch-aaaaaa');
     expect(created[0]!.storedCommand).toContain("--model 'sonnet[1m]'");
-    const brief = await readFile(join(home, '.perch', 'spawn', `${id}.md`), 'utf8');
+    const brief = await spawnedBrief(home, created, id);
     expect(brief).toContain('(to: "orch-name")');
     expect(brief).toContain('look for workspace perch-aaaaaa');
+  });
+
+  it('gives a spawn the smallest free id for its folder', async () => {
+    const { home, env } = await machine();
+    const project = join(home, 'My.App');
+    await mkdir(project);
+    const { tmux } = fakeTmux();
+    const first = await run(['spawn', project], env, home, io(tmux, { stdin: async () => 'b' }));
+    const second = await run(['spawn', project], env, home, io(tmux, { stdin: async () => 'b' }));
+    expect([first, second]).toEqual(['my-app-1', 'my-app-2']);
+  });
+
+  it('renames the caller, or the workspace a first word names, under a locked title', async () => {
+    const { home, env } = await machine();
+    const { tmux, locked, titles } = fakeTmux({ '%7': 'perch-aaaaaa' });
+    const pane = { ...env, TMUX_PANE: '%7' };
+    expect(await run(['rename', 'Invoice', 'PDF', 'fix'], pane, home, io(tmux))).toBe('perch-aaaaaa: renamed to "Invoice PDF fix"');
+    expect(await run(['rename', 'perch-bbbbbb', 'Child', 'two'], pane, home, io(tmux))).toBe('perch-bbbbbb: renamed to "Child two"');
+    // One word is always a title, even one that looks like an id.
+    expect(await run(['rename', 'perch-bbbbbb'], pane, home, io(tmux))).toBe('perch-aaaaaa: renamed to "perch-bbbbbb"');
+    expect(locked).toEqual(['perch-aaaaaa', 'perch-bbbbbb', 'perch-aaaaaa']);
+    expect(titles).toEqual(['perch-aaaaaa ✳ Invoice PDF fix', 'perch-bbbbbb ✳ Child two', 'perch-aaaaaa ✳ perch-bbbbbb']);
+    await expect(run(['rename', 'perch-9', 'x'], pane, home, io(tmux))).rejects.toThrow(/no workspace perch-9/);
+    await expect(run(['rename'], pane, home, io(tmux))).rejects.toThrow(/usage: perch rename/);
+    await expect(run(['rename', 'x'], env, home, io(tmux))).rejects.toThrow(/TMUX_PANE/);
   });
 
   it('refuses a child outside a Perch pane, and a spawn without a path', async () => {

@@ -1,5 +1,6 @@
-// Perch workspace ids as `perch ls` and `perch spawn` print them.
-const WORKSPACE_ID = /\bperch-[0-9a-f]{6}\b/g;
+// What a Perch workspace id looks like: `<folder>-<n>` (`perch-3`, `eng-ops-12`), or the old
+// `perch-<6 hex>`. Loose on purpose: only an id a listed workspace has becomes a link.
+const WORKSPACE_ID = /\b[a-z0-9_][a-z0-9_-]*-(?:\d+|[0-9a-f]{6})\b/g;
 
 export interface TerminalCell {
   chars: string;

@@ -134,7 +134,7 @@ function baseDeps() {
         startPath: '/home/u/workspace/api',
         command: 'claude',
         createdAt: 7000,
-        title: 'dev',
+        title: '',
       },
     ],
     createSession: async () => undefined,
@@ -160,7 +160,7 @@ function baseDeps() {
     resolvePath: (p: string) => p,
     isDirectory: (async () => true) as DirectoryChecker,
     clock: { now: () => 1000 },
-    ids: { next: () => 'zz' },
+    ids: { next: async () => 'perch-zz' },
     pty: noPty,
     registry: new ViewerRegistry(),
     status: {
@@ -173,6 +173,8 @@ function baseDeps() {
       setClaudeSessionId: () => undefined,
       getMessagedLast: () => false,
       setMessagedLast: () => undefined,
+      ids: () => [],
+      forget: () => undefined,
       onChange: () => undefined,
     } as StatusStorePort,
     writer: {
@@ -191,6 +193,7 @@ function baseDeps() {
     keyterms: { list: async (): Promise<string[]> => [] },
     workspaceLog: { append: async () => {} } as WorkspaceLogPort,
     forgetWorkspace: (_id: string): Workspace | undefined => undefined,
+    dropWorkspaceState: undefined as ((id: string) => void) | undefined,
     broadcastClosed: () => undefined,
     parked: fakeParkedStore(),
     scopes: undefined as ProcessScopePort | undefined,
@@ -427,6 +430,8 @@ describe('ConnectionHandler control routing', () => {
       setClaudeSessionId: () => undefined,
       getMessagedLast: () => false,
       setMessagedLast: () => undefined,
+      ids: () => [],
+      forget: () => undefined,
       onChange: () => undefined,
     };
     new ConnectionHandler(f.conn, deps);
@@ -451,6 +456,8 @@ describe('ConnectionHandler control routing', () => {
       setClaudeSessionId: () => undefined,
       getMessagedLast: () => false,
       setMessagedLast: () => undefined,
+      ids: () => [],
+      forget: () => undefined,
       onChange: () => undefined,
     };
     new ConnectionHandler(f.conn, deps);
@@ -765,6 +772,19 @@ describe('ConnectionHandler control routing', () => {
     ]);
   });
 
+  // The log entry reads the status entry, so it is dropped only after the entry is written.
+  it('drops the workspace state after logging an explicit close', async () => {
+    const deps = baseDeps();
+    const order: string[] = [];
+    deps.workspaceLog = { append: async () => void order.push('logged') };
+    deps.dropWorkspaceState = (id) => void order.push(`dropped ${id}`);
+    new ConnectionHandler(f.conn, deps);
+    f.emit({ type: 'auth', token: 'secret' });
+    f.emit({ type: 'close', workspaceId: 'perch-aa' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(order).toEqual(['logged', 'dropped perch-aa']);
+  });
+
   it('falls back to a fresh tmux lookup when closing a workspace the poll never observed', async () => {
     const deps = baseDeps();
     const logged: WorkspaceLogEntry[] = [];
@@ -1075,7 +1095,7 @@ describe('ConnectionHandler attach lifecycle', () => {
     await new Promise((r) => setTimeout(r, 0));
 
     const s = fp.sessions[0]!;
-    expect(s.spawnArgs).toEqual({ command: 'tmux', args: ['attach-session', '-t', 'perch-aa'], cols: 80, rows: 24 });
+    expect(s.spawnArgs).toEqual({ command: 'tmux', args: ['attach-session', '-t', '=perch-aa:'], cols: 80, rows: 24 });
     expect(f2.sent).toContainEqual({ type: 'attached', workspaceId: 'perch-aa' });
 
     s.dataListeners.forEach((l) => l('hello'));

@@ -77,7 +77,7 @@ export async function trackLiveWorkspaces(deps: TrackLiveWorkspacesDeps): Promis
         const claudeSessionId = deps.status.getClaudeSessionId(s.name);
         return {
           id: s.name,
-          name: deriveWorkspaceName(s.title, s.startPath, s.command),
+          name: deriveWorkspaceName(s.title, s.startPath, s.command, s.name),
           projectPath: s.startPath,
           command: s.command,
           machineId: deps.machineId,

@@ -78,6 +78,7 @@ expect allow 'git commit -m "refuse killall in workspaces"'
 expect allow 'tmux -S /tmp/test.sock kill-server'
 expect allow 'tmux -L test kill-server'
 expect allow 'tmux kill-session -t perch-abc'
+expect allow "tmux kill-session -t '=perch-1'"
 expect allow 'rg pkill packages/'
 expect allow 'rg "pkill|killall" packages/'
 expect allow "grep -E 'kill-server|pkill' notes.md"

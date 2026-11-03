@@ -1,3 +1,4 @@
+import { exactTarget } from '../infrastructure/tmux-adapter';
 import { REFUSAL, constantTimeEqual } from '@perch/secure-channel';
 import { parseClientMessage, isWorkspaceStatus, type BrowserSession, type ClientMessage, type Workspace, type MachineStats } from '@perch/contracts';
 import type { ClientConnection } from '../ports/client-connection';
@@ -82,6 +83,8 @@ export interface ConnectionHandlerDeps {
   browserViewers: ViewerRegistry;
   // `closing` is set by an explicit close only: see WsServer.forgetWorkspace.
   forgetWorkspace: (id: string, closing?: boolean) => Workspace | undefined;
+  // See WsServer.dropWorkspaceState. Optional so a test without it still closes.
+  dropWorkspaceState?: (id: string) => void;
   broadcastClosed: (id: string) => void;
   // WsServer's SendMessage mark, which listWorkspaces turns into `waitingOn`.
   messagedLast?: Pick<ReadonlySet<string>, 'has'>;
@@ -306,6 +309,10 @@ export class ConnectionHandler {
                 status: 'parked' as const,
               }
             : await this.snapshotWorkspace(message.workspaceId));
+        // Read first: once neither tmux nor parked.json holds the id, the poll may drop its
+        // status entry (WsServer.dropGoneWorkspaces) before the log entry below is written.
+        const lastStatus = this.deps.status.get(message.workspaceId);
+        const claudeSessionId = parkedRecord ? parkedRecord.claudeSessionId : this.deps.status.getClaudeSessionId(message.workspaceId);
         if (parkedRecord) {
           await this.deps.parked.remove(message.workspaceId);
         }
@@ -317,18 +324,14 @@ export class ConnectionHandler {
           await recordWorkspaceClosed(
             {
               workspaceLog: this.deps.workspaceLog,
-              status: parkedRecord
-                ? {
-                    get: (id: string) => this.deps.status.get(id),
-                    getClaudeSessionId: () => parkedRecord.claudeSessionId,
-                  }
-                : this.deps.status,
+              status: { get: () => lastStatus, getClaudeSessionId: () => claudeSessionId },
               clock: this.deps.clock,
             },
             workspace,
             'closed-by-user',
           );
         }
+        this.deps.dropWorkspaceState?.(message.workspaceId);
         // The tmux session is gone, so the workspace is closed as far as any device is
         // concerned — say so now. What remains (tearing down agent-browser sessions, which
         // waits on a Chrome shutdown, and stopping the pane's scope, which waits on
@@ -568,7 +571,7 @@ export class ConnectionHandler {
     }
     const session = this.deps.pty.spawn({
       command: 'tmux',
-      args: ['attach-session', '-t', workspaceId],
+      args: ['attach-session', '-t', exactTarget(workspaceId)],
       cols,
       rows,
     });

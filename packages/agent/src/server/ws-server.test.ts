@@ -1592,10 +1592,12 @@ describe('WsServer waiting-on-parent push', () => {
     const logged: string[] = [];
     const closed: string[] = [];
     const names: string[] = [];
+    const status = new InMemoryStatusStore();
     const s = new WsServer({
       ...makeServerDeps(testConfig(home), noClientLog),
       tmux,
       clock,
+      status,
       workspaceLog: { append: async (e) => void logged.push(`${e.id}:${e.reason}`) },
       titlePollMs: 20,
     });
@@ -1614,6 +1616,7 @@ describe('WsServer waiting-on-parent push', () => {
     await ticks();
     return {
       server: s,
+      status,
       clock,
       logged,
       closed,
@@ -1650,6 +1653,40 @@ describe('WsServer waiting-on-parent push', () => {
     await ticks();
     expect(s.logged).toEqual(['perch-x:exited']);
     expect(s.closed).toEqual(['perch-x']);
+  });
+
+  // Ids are reused, so the next workspace to take this one must not inherit its Claude session id.
+  it('forgets the status entry of a workspace that exited, once it is logged', async () => {
+    const s = await pollingServer();
+    s.status.set('perch-x', 'working');
+    s.status.setClaudeSessionId('perch-x', 'old-session');
+    s.setTitle(null);
+    await ticks();
+    expect(s.logged).toEqual(['perch-x:exited']);
+    expect(s.status.ids()).toEqual([]);
+  });
+
+  // The title poll runs only while a phone is connected; a number must still come free without one.
+  it('forgets the state of a gone workspace with no phone connected, and keeps live and parked ones', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-gone-'));
+    dirs.push(home);
+    const status = new InMemoryStatusStore();
+    status.set('perch-gone', 'working');
+    status.set('perch-live', 'working');
+    status.set('perch-parked', 'parked');
+    const tmux: TmuxPort = {
+      listSessions: async () => [{ name: 'perch-live', startPath: tmpdir(), command: 'claude', createdAt: 1, title: '' }],
+      createSession: async () => undefined,
+      killSession: async () => undefined,
+      hasSession: async (name) => name === 'perch-live',
+    };
+    const config = testConfig(home);
+    const parked = new FileParkedStore(config.parkedStorePath);
+    await parked.add({ id: 'perch-parked', name: 'p', projectPath: tmpdir(), command: 'claude', machineId: 'm', createdAt: 1, parkedAt: 2, claudeSessionId: 's' });
+    server = new WsServer({ ...makeServerDeps(config, noClientLog), tmux, status, parked, titlePollMs: 20 });
+    await server.start();
+    await ticks();
+    expect(status.ids().sort()).toEqual(['perch-live', 'perch-parked']);
   });
 
   // A kill that never lands leaves the session listed; the workspace must not vanish for good.

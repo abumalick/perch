@@ -157,6 +157,41 @@ export class WsServer {
     return workspace;
   }
 
+  // Called once a workspace has stopped and its close is logged. Ids are reused, so nothing
+  // keyed by this one may reach the next workspace that takes it: a stale `parked` status, an
+  // old Claude session id that unpark would resume, a deferral that would hide a "Needs you".
+  dropWorkspaceState(id: string): void {
+    // A close calls this once its kill has landed; the mark would hide a new workspace that
+    // takes the id from the poll for up to CLOSING_MS.
+    this.closing.delete(id);
+    this.deps.status.forget(id);
+    this.deferred.delete(id);
+    this.questionPending.delete(id);
+    this.oscTurnEnded.delete(id);
+    this.programSeen.delete(id);
+  }
+
+  // pollTitles logs and drops a workspace it saw go, but it runs only while a phone is connected
+  // and never follows a hidden folder. This drops the rest, so an exited workspace's number is
+  // free again without an agent restart. The ids are read before tmux is listed: an entry a hook
+  // writes in between belongs to a session that already exists.
+  private async dropGoneWorkspaces(): Promise<void> {
+    const known = new Set([...this.deps.status.ids(), ...this.deferred, ...this.questionPending, ...this.oscTurnEnded]);
+    if (known.size === 0) return;
+    let present: Set<string>;
+    try {
+      const sessions = await this.deps.tmux.listSessions(this.deps.config.sessionPrefix);
+      const parked = await this.deps.parked.list();
+      present = new Set([...sessions.map((s) => s.name), ...parked.map((p) => p.id)]);
+    } catch {
+      return;
+    }
+    for (const id of known) {
+      // Still owed its `exited` entry, which pollTitles writes once a phone is back.
+      if (!present.has(id) && !this.lastWorkspaces.has(id)) this.dropWorkspaceState(id);
+    }
+  }
+
   // Pushes a `closed` message to every connected device — used when a workspace is closed
   // explicitly, so devices other than the requester learn about it immediately instead of
   // waiting for the next title-poll tick (which no longer fires it for this id, since
@@ -194,7 +229,7 @@ export class WsServer {
     this.titlePoll = setInterval(() => {
       // Tracked first, so a workspace lost with its tmux server is already parked when the
       // title poll looks for it, rather than logged and pushed as closed.
-      void this.trackLive().then(() => this.pollTitles());
+      void this.trackLive().then(() => this.pollTitles()).then(() => this.dropGoneWorkspaces());
       void this.pollProgramStatus();
       void this.pollBrowserSessions();
     }, this.deps.titlePollMs ?? DEFAULT_TITLE_POLL_MS);
@@ -246,6 +281,7 @@ export class WsServer {
       registry: this.registry,
       browserViewers: this.browserViewers,
       forgetWorkspace: (id: string, closing?: boolean) => this.forgetWorkspace(id, closing),
+      dropWorkspaceState: (id: string) => this.dropWorkspaceState(id),
       broadcastClosed: (id: string) => this.broadcastClosed(id),
       messagedLast: this.messagedLast,
     });
@@ -337,7 +373,7 @@ export class WsServer {
     } catch {
       id = undefined;
     }
-    if (typeof id !== 'string' || !id.startsWith(this.deps.config.sessionPrefix)) {
+    if (typeof id !== 'string' || id === '') {
       res.writeHead(400).end();
       return;
     }
@@ -445,6 +481,7 @@ export class WsServer {
           workspace,
           'exited',
         );
+        this.dropWorkspaceState(id);
         // The inner process exited and tmux destroyed the session without a Perch `close`
         // message, so the connection-handler cascade never ran — close the workspace's
         // orphaned browser sessions here. Best-effort (never throws); pollBrowserSessions

@@ -10,8 +10,9 @@ export const systemClock: Clock = {
 
 export const systemPathResolver: PathResolver = (path) => resolve(path);
 
+// Ids of the old `perch-<hex>` shape; tests use it where the id's value does not matter.
 export class RandomIdGenerator implements IdGenerator {
-  next(): string {
-    return randomBytes(3).toString('hex');
+  async next(): Promise<string> {
+    return `perch-${randomBytes(3).toString('hex')}`;
   }
 }

@@ -1,6 +1,7 @@
 import type { TmuxPort } from '../ports/tmux-port';
 import type { FileWriterPort } from '../ports/file-writer-port';
 import type { IdGenerator } from '../ports/id-generator';
+import { createWithFreshId } from './short-workspace-ids';
 
 export interface SpawnWorkspaceDeps {
   tmux: Pick<TmuxPort, 'createSession' | 'hasSession' | 'supportsTitleLock' | 'lockPaneTitle'> &
@@ -9,6 +10,8 @@ export interface SpawnWorkspaceDeps {
   // The directory's absolute, symlink-free path, or null when it is not a directory.
   resolveDirectory: (path: string) => Promise<string | null>;
   ids: IdGenerator;
+  // A name nothing else uses, for this spawn's brief and hook files.
+  nonce: () => string;
   sleep: (ms: number) => Promise<void>;
   // Where briefs and a child's hook files go (~/.perch/spawn).
   spawnDir: string;
@@ -46,26 +49,28 @@ export async function spawnWorkspace(deps: SpawnWorkspaceDeps, input: SpawnWorks
   if (dir.includes("'") || (parent && !/^[A-Za-z0-9._/-]+$/.test(dir))) {
     throw new Error(`the spawn directory must have no spaces or quotes: ${dir}`);
   }
-  if (parent && !/^perch-[A-Za-z0-9_-]+$/.test(parent.id)) throw new Error(`not a Perch workspace id for the parent: ${parent.id}`);
+  if (parent && !/^[A-Za-z0-9_-]+$/.test(parent.id)) throw new Error(`not a Perch workspace id for the parent: ${parent.id}`);
 
-  const id = `perch-${deps.ids.next()}`;
-  const briefPath = `${dir}/${id}.md`;
+  // The files are named by a nonce, not the id: ids are reused, and two spawns into one folder
+  // can race for the same one, so a file named by it could be overwritten under the other's pane.
+  const stem = `${dir}/${deps.nonce()}`;
+  const briefPath = `${stem}.md`;
   const brief = input.brief.replace(/\n+$/, '') + (parent ? childFooter(parent) : '');
   await deps.files.ensureDir(dir);
   await write(deps.files, briefPath, `${brief}\n`);
 
-  let base = `${deps.launcher ?? 'claude'} --model '${model}' --name ${id}`;
+  let settings = '';
   if (parent) {
     // A child must not block on a question its orchestrator could answer: a peer message can
     // never answer a pending AskUserQuestion, and none can take a child out of plan mode. The
     // hook denies those tools, and its reason redirects the model to SendMessage. It lives in a
     // file rather than an env var because unpark runs `<base> --resume <sid> || exec <base>`,
     // where an env prefix breaks the `exec`.
-    const denyPath = `${dir}/${id}.deny.json`;
-    const settingsPath = `${dir}/${id}.settings.json`;
+    const denyPath = `${stem}.deny.json`;
+    const settingsPath = `${stem}.settings.json`;
     await write(deps.files, denyPath, `${JSON.stringify(denyHook(parent))}\n`);
     await write(deps.files, settingsPath, `${JSON.stringify(denySettings(denyPath))}\n`);
-    base = `${base} --settings ${settingsPath}`;
+    settings = ` --settings ${settingsPath}`;
   }
 
   // Without a title, Claude Code names the workspace itself through the pane title. With one, it
@@ -74,10 +79,13 @@ export async function spawnWorkspace(deps: SpawnWorkspaceDeps, input: SpawnWorks
   // title (3.5+) it does; elsewhere CLAUDE_CODE_DISABLE_TERMINAL_TITLE does it (an env prefix,
   // as tmux's `-e` wants tmux 3.2), which also turns off Claude's OSC 7501 status reports.
   const lockTitle = Boolean(title && deps.tmux.lockPaneTitle && (await deps.tmux.supportsTitleLock?.()));
-  const launch = `${title && !lockTitle ? 'CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 ' : ''}${base} "$(cat '${briefPath}')"`;
-  // The stored command omits the brief: unpark builds `<base> --resume <sid> || exec <base>`
-  // from it, and the brief would be re-submitted into the conversation on every unpark.
-  await deps.tmux.createSession({ name: id, cwd, command: launch, storedCommand: base, ...(parent ? { parent: parent.id } : {}) });
+  const id = await createWithFreshId(deps.ids, cwd, async (id) => {
+    const base = `${deps.launcher ?? 'claude'} --model '${model}' --name ${id}${settings}`;
+    const launch = `${title && !lockTitle ? 'CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 ' : ''}${base} "$(cat '${briefPath}')"`;
+    // The stored command omits the brief: unpark builds `<base> --resume <sid> || exec <base>`
+    // from it, and the brief would be re-submitted into the conversation on every unpark.
+    await deps.tmux.createSession({ name: id, cwd, command: launch, storedCommand: base, ...(parent ? { parent: parent.id } : {}) });
+  });
   if (lockTitle) await deps.tmux.lockPaneTitle!(id);
   if (title) await deps.tmux.setPaneTitle(id, `✳ ${title}`);
 

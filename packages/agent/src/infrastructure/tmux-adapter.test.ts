@@ -153,15 +153,33 @@ describe('TmuxAdapter (real tmux)', () => {
     expect(await adapter.serverId()).toBe(id);
   });
 
-  it('returns sessions filtered by prefix', async () => {
+  // tmux matches a `-t` name as a prefix when nothing has it exactly, and `<folder>-1` is a
+  // prefix of `<folder>-10`: closing a gone `-1` must never kill the live `-10`.
+  it('acts on the exact session only, never on one its name is a prefix of', async () => {
     const adapter = new TmuxAdapter();
-    const name = `${PREFIX}${Date.now()}-x`;
-    created.push(name);
-    await adapter.createSession({ name, cwd: tmpdir(), command: 'sleep 30' });
+    const base = `${PREFIX}${Date.now()}`;
+    const live = `${base}-10`;
+    created.push(live);
+    await adapter.createSession({ name: live, cwd: tmpdir(), command: 'sleep 30' });
 
-    const sessions = await adapter.listSessions('perch-nonexistent-');
-    expect(sessions.every((s) => s.name.startsWith('perch-nonexistent-'))).toBe(true);
-    expect(sessions.find((s) => s.name === name)).toBeUndefined();
+    expect(await adapter.hasSession(`${base}-1`)).toBe(false);
+    expect(await adapter.panePid(`${base}-1`)).toBeNull();
+    await adapter.killSession(`${base}-1`);
+    expect(await adapter.hasSession(live)).toBe(true);
+    await expect(adapter.setPaneTitle(`${base}-1`, 'x')).rejects.toThrow();
+  });
+
+  it("lists the sessions it started under any name, and nobody else's", async () => {
+    const adapter = new TmuxAdapter();
+    const ours = `short-${Date.now()}-1`;
+    const theirs = `other-${Date.now()}`;
+    created.push(ours, theirs);
+    await adapter.createSession({ name: ours, cwd: tmpdir(), command: 'sleep 30' });
+    await exec('tmux', ['new-session', '-d', '-s', theirs, '-c', tmpdir(), 'sleep 30']);
+
+    const names = (await adapter.listSessions('perch-nonexistent-')).map((s) => s.name);
+    expect(names).toContain(ours);
+    expect(names).not.toContain(theirs);
   });
 });
 

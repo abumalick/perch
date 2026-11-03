@@ -233,10 +233,34 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   with its last session, that last workspace exiting on its own comes back parked; close it.
   Nothing reopens on its own: starting every lost `claude` at once is a real memory cost.
 
+- **Workspace ids are `<folder>-<n>`, the smallest free n** (`short-workspace-ids.ts`), so one
+  is easy to say aloud; older workspaces keep their `perch-<6 hex>`. Three things follow, don't
+  undo any: **Perch finds its sessions by the `@perch_command` it sets on each**, not by name
+  (`listSessions` also takes the old prefix, for a tmux-resurrect shell, which has no marker;
+  `reconcileParked` looks parked ids up by name for the same reason; such a shell under a new id
+  whose workspace had no Claude session id to park stays invisible, holding its name). **tmux
+  matches a `-t` name as a prefix** when none has it exactly, and `perch-1` is a prefix of
+  `perch-10`, so every target goes through `exactTarget` (`=name:`); a bare `-t <id>` once
+  killed the wrong workspace. **An id is claimed by creating its session**
+  (`createWithFreshId` retries on tmux's "duplicate session"), and a spawn's brief and hook files
+  are named by a nonce, never the id, since two spawns into one folder race for the same number. **A number is reused, so
+  nothing keyed by an id may outlive its workspace:** a close or exit calls
+  `WsServer.dropWorkspaceState` (the status entry with its Claude session id, and the in-memory
+  marks; `dropGoneWorkspaces` on every tick catches exits with no phone connected), and the
+  allocator also skips any id still in `status.json` or `parked.json`, any tmux
+  session at all, and any live Claude session's name (Claude names an unnamed session
+  `<folder>-<2 hex>`, a valid id). **A Create-form workspace gets no `--name`:** measured on
+  Claude Code 2.1.316, a named session writes its name as its title and never a summary, so the
+  messaging address stays Claude's own and `perch spawn`'s explicit `--name <id>` is the
+  exception. Claude's `/rename` writes a title with no glyph, which `deriveWorkspaceName` takes
+  for a `claude` pane (but not `Claude Code` or the id; the adapter reads tmux's host-name
+  default as no title).
+
 - **The `perch` CLI and the orchestrator → child link.** `deploy/install-cli.sh` links
   `deploy/perch-cli.sh` to `~/.local/bin/perch` on each machine, so any session in any repo can
-  run `perch spawn [--child]`, `perch ls [--mine|--role|--path]`, `perch peek <id>` and `perch unpark <id>...`.
-  The first three read tmux and the `~/.perch` stores directly (read-only, no agent.env needed)
+  run `perch spawn [--child]`, `perch ls [--mine|--role|--path]`, `perch peek <id>`, `perch unpark <id>...`
+  and `perch rename [<id>] <title>`. `rename` sets `✳ <title>` locked, as unpark does, so Claude
+  stops renaming that workspace; without an id it renames the caller's own. The first three read tmux and the `~/.perch` stores directly (read-only, no agent.env needed)
   and skip the GitHub lookup, so `ls` answers in a fraction of a second; `unpark` asks the
   running agent (parking section). **Orchestration is explicit:** a plain
   `perch spawn` is an ordinary workspace; `--child` records the caller's **workspace id** (never

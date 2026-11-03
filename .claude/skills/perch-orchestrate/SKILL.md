@@ -88,7 +88,8 @@ A subagent review of a workspace's branch is a cheap way to check. Do not relay 
 
 ## When state is lost
 
-Claude subscriptions live in memory and expire after 12 h; a `perch send` is delivered at once or refused, never queued. The parent link does
+Claude subscriptions live in memory and expire after 12 h; a `perch send` is
+delivered at once or refused, never queued. The parent link does
 not: it survives park/unpark and the tmux server's loss. After your own restart, a park, or a
 long wait:
 - `perch ls --mine` recovers your children, their current names and their states

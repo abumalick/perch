@@ -66,6 +66,20 @@ describe('sendMessage', () => {
     expect(t.onSent).toHaveBeenCalledWith('perch-p');
   });
 
+  it("hands the recipient's recorded Codex thread to the delivery", async () => {
+    const t = setup({
+      sessions: [session({ name: 'perch-p' }), session({ name: 'perch-x', command: 'codex resume t1', codexThread: 't1' })],
+    });
+    expect(await t.send('perch-x')).toEqual({ result: 'delivered' });
+    expect(t.delivered[0]!.target).toEqual({ id: 'perch-x', from: 'perch-p', cli: 'codex', command: 'codex resume t1', codexThread: 't1' });
+  });
+
+  it('refuses codex --no-daemon before any delivery', async () => {
+    const t = setup();
+    await t.send('perch-d');
+    expect(t.delivered).toHaveLength(0);
+  });
+
   it('refuses a pid whose ancestors do not include the sender pane', async () => {
     const t = setup({ ancestor: false });
     expect(await t.send('perch-c')).toEqual({ result: 'refused', reason: 'not run from a Perch workspace' });

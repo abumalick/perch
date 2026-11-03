@@ -5,6 +5,8 @@ export interface TmuxSessionInfo {
   createdAt: number;
   // The orchestrator workspace this one was spawned for (`@perch_parent`); absent when none.
   parent?: string;
+  // The Codex app-server thread the pane's `codex resume` is bound to (`@perch_codex_thread`).
+  codexThread?: string;
   // The pane's OSC 7501 status (Program Status Protocol) and when tmux saw it change. Only a
   // tmux patched to keep it reports one; absent otherwise, and while the program reports nothing.
   program?: { state: string; changedAt: number };

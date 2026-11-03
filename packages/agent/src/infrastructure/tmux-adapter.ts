@@ -26,6 +26,7 @@ const FORMAT = [
   '#{host_short}',
   '#{@perch_command}',
   '#{@perch_parent}',
+  '#{@perch_codex_thread}',
   '#{pane_program_state}',
   '#{pane_program_time}',
   '#{pane_title}',
@@ -63,15 +64,16 @@ export function isMissingSession(err: unknown): boolean {
 function parseLine(line: string): TmuxSessionInfo | null {
   const parts = line.split(SEP);
   if (parts.length < 3) return null;
-  const [name, startPath, created, host, hostShort, command, parent, programState, programTime] = parts;
+  const [name, startPath, created, host, hostShort, command, parent, codexThread, programState, programTime] = parts;
   if (!name || !startPath || !created) return null;
-  const title = parts.slice(9).join(SEP);
+  const title = parts.slice(10).join(SEP);
   return {
     name,
     startPath,
     command: command ?? '',
     createdAt: Number(created) * 1000,
     ...(parent ? { parent } : {}),
+    ...(codexThread ? { codexThread } : {}),
     ...(programState ? { program: { state: programState, changedAt: Number(programTime) * 1000 } } : {}),
     // A pane's title is the host name until its program sets one: that is tmux's, not a name.
     title: title === host || title === hostShort ? '' : title,

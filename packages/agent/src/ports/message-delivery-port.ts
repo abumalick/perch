@@ -6,6 +6,8 @@ export interface DeliveryTarget {
   from: string;
   cli: AgentCli;
   command: string;
+  // The recipient's Codex app-server thread, when one is recorded.
+  codexThread?: string;
 }
 
 export interface MessageDelivery {

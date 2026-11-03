@@ -21,20 +21,30 @@ beforeEach(() => {
 });
 
 describe('TmuxAdapter (arguments)', () => {
-  it('reads @perch_parent and the program status before the pane title, which stays last', async () => {
+  it('reads @perch_parent, @perch_codex_thread and the program status before the pane title, which stays last', async () => {
     await new TmuxAdapter().listSessions('perch-');
     const fields = calls[0]![2]!.split('|:|');
-    expect(fields.slice(-4)).toEqual(['#{@perch_parent}', '#{pane_program_state}', '#{pane_program_time}', '#{pane_title}']);
+    expect(fields.slice(-5)).toEqual(['#{@perch_parent}', '#{@perch_codex_thread}', '#{pane_program_state}', '#{pane_program_time}', '#{pane_title}']);
   });
 
   it('parses a parent, and omits an empty one', async () => {
     stdout = [
-      'perch-a|:|/w|:|10|:|dev.example.com|:|dev|:|claude|:|perch-p|:||:||:|a|:|title',
-      'perch-b|:|/w|:|10|:|dev.example.com|:|dev|:|claude|:||:||:||:|plain',
+      'perch-a|:|/w|:|10|:|dev.example.com|:|dev|:|claude|:|perch-p|:||:||:||:|a|:|title',
+      'perch-b|:|/w|:|10|:|dev.example.com|:|dev|:|claude|:||:||:||:||:|plain',
     ].join('\n');
     const [a, b] = await new TmuxAdapter().listSessions('perch-');
     expect(a).toEqual({ name: 'perch-a', startPath: '/w', command: 'claude', createdAt: 10_000, parent: 'perch-p', title: 'a|:|title' });
     expect(b).toEqual({ name: 'perch-b', startPath: '/w', command: 'claude', createdAt: 10_000, title: 'plain' });
+  });
+
+  it('parses a Codex thread, and omits an empty one', async () => {
+    stdout = [
+      'perch-a|:|/w|:|10|:|dev.example.com|:|dev|:|codex resume t1|:||:|t1|:||:||:|x',
+      'perch-b|:|/w|:|10|:|dev.example.com|:|dev|:|codex|:||:||:||:||:|y',
+    ].join('\n');
+    const [a, b] = await new TmuxAdapter().listSessions('perch-');
+    expect(a).toMatchObject({ name: 'perch-a', codexThread: 't1', title: 'x' });
+    expect(b).not.toHaveProperty('codexThread');
   });
 
   // A short id (`perch-3`, `eng-ops-1`) can start with any folder name, so the prefix only
@@ -42,9 +52,9 @@ describe('TmuxAdapter (arguments)', () => {
   // the rest. A session without either is somebody else's.
   it('lists a session Perch started under any name, and a prefixed one even without its marker', async () => {
     stdout = [
-      'eng-ops-1|:|/w|:|10|:|dev.example.com|:|dev|:|claude|:||:||:||:|t',
-      'perch-a|:|/w|:|10|:|dev.example.com|:|dev|:||:||:||:||:|t',
-      'scratch|:|/w|:|10|:|dev.example.com|:|dev|:||:||:||:||:|t',
+      'eng-ops-1|:|/w|:|10|:|dev.example.com|:|dev|:|claude|:||:||:||:||:|t',
+      'perch-a|:|/w|:|10|:|dev.example.com|:|dev|:||:||:||:||:||:|t',
+      'scratch|:|/w|:|10|:|dev.example.com|:|dev|:||:||:||:||:||:|t',
     ].join('\n');
     const names = (await new TmuxAdapter().listSessions('perch-')).map((s) => s.name);
     expect(names).toEqual(['eng-ops-1', 'perch-a']);
@@ -52,16 +62,16 @@ describe('TmuxAdapter (arguments)', () => {
 
   it("reads a pane title that is still tmux's host-name default as no title", async () => {
     stdout = [
-      'perch-a|:|/w|:|10|:|dev.example.com|:|dev|:|claude|:||:||:||:|dev',
-      'perch-b|:|/w|:|10|:|dev.example.com|:|dev|:|claude|:||:||:||:|dev.example.com',
-      'perch-c|:|/w|:|10|:|dev.example.com|:|dev|:|claude|:||:||:||:|dev notes',
+      'perch-a|:|/w|:|10|:|dev.example.com|:|dev|:|claude|:||:||:||:||:|dev',
+      'perch-b|:|/w|:|10|:|dev.example.com|:|dev|:|claude|:||:||:||:||:|dev.example.com',
+      'perch-c|:|/w|:|10|:|dev.example.com|:|dev|:|claude|:||:||:||:||:|dev notes',
     ].join('\n');
     expect((await new TmuxAdapter().listSessions('perch-')).map((s) => s.title)).toEqual(['', '', 'dev notes']);
   });
 
   // A stock tmux expands the two fields to '', which must read as "no program status".
   it('parses the program status a patched tmux reports', async () => {
-    stdout = 'perch-a|:|/w|:|10|:|dev.example.com|:|dev|:|claude|:||:|done|:|1700000000|:|t';
+    stdout = 'perch-a|:|/w|:|10|:|dev.example.com|:|dev|:|claude|:||:||:|done|:|1700000000|:|t';
     const [a] = await new TmuxAdapter().listSessions('perch-');
     expect(a?.program).toEqual({ state: 'done', changedAt: 1_700_000_000_000 });
     expect(a?.title).toBe('t');

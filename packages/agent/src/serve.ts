@@ -19,6 +19,8 @@ import { ProcAncestry } from './infrastructure/proc-ancestry';
 import { CompositeDelivery } from './infrastructure/composite-delivery';
 import { ClaudeInboxDelivery } from './infrastructure/claude-inbox-delivery';
 import { PiInboxDelivery } from './infrastructure/pi-inbox-delivery';
+import { CodexAppServer } from './infrastructure/codex-app-server';
+import { CodexDelivery } from './infrastructure/codex-delivery';
 import { FileWorkspaceLogStore } from './infrastructure/file-workspace-log-store';
 import { FileParkedStore } from './infrastructure/file-parked-store';
 import { reconcileParked } from './application/reconcile-parked';
@@ -126,6 +128,7 @@ async function main(): Promise<void> {
       delivery: new CompositeDelivery({
         claude: new ClaudeInboxDelivery(claudeSessions),
         pi: new PiInboxDelivery(config.inboxDir),
+        codex: new CodexDelivery(new CodexAppServer()),
       }),
       log: new FileMessageLog(config.messageLogPath),
     },

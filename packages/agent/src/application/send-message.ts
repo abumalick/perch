@@ -106,7 +106,13 @@ export async function sendMessage(
     body: req.body,
   });
   const delivered = await deps.delivery.deliver(
-    { id: recipient.name, from: sender.name, cli, command: recipient.command },
+    {
+      id: recipient.name,
+      from: sender.name,
+      cli,
+      command: recipient.command,
+      ...(recipient.codexThread ? { codexThread: recipient.codexThread } : {}),
+    },
     text,
   );
   if (!delivered.ok) return refuse(`delivery failed: ${delivered.reason}`);

@@ -21,6 +21,12 @@ export function cliOfCommand(command: string): AgentCli | null {
   return null;
 }
 
+// The Codex session bound to a daemon thread. A thread two sessions claim names neither.
+export function sessionOfCodexThread<S extends { command: string; codexThread?: string }>(sessions: S[], thread: string): S | null {
+  const matches = sessions.filter((s) => s.codexThread === thread && cliOfCommand(s.command) === 'codex');
+  return matches.length === 1 ? matches[0]! : null;
+}
+
 export function isNoDaemonCodex(command: string): boolean {
   return cliOfCommand(command) === 'codex' && commandWords(command).includes('--no-daemon');
 }

@@ -94,6 +94,25 @@ describe('sendMessage', () => {
     expect(t.onSent).toHaveBeenCalledWith('perch-x');
   });
 
+  it('names no sender by a thread a non-Codex session records', async () => {
+    const t = setup({ sessions: [session({ name: 'perch-p' }), session({ name: 'perch-x', command: 'claude', codexThread: 't1' })] });
+    const res = await sendMessage(t.deps, { pane: '%1', pid: 200, to: 'perch-p', body: 'hi', codexThread: 't1' });
+    expect(res).toEqual({ result: 'refused', reason: 'not run from a Perch workspace' });
+  });
+
+  it('names no sender by a thread more than one session records', async () => {
+    const t = setup({
+      sessions: [
+        session({ name: 'perch-p' }),
+        session({ name: 'perch-x', command: 'codex resume t1', codexThread: 't1' }),
+        session({ name: 'perch-y', command: 'codex resume t1', codexThread: 't1' }),
+      ],
+    });
+    const res = await sendMessage(t.deps, { pane: '%1', pid: 200, to: 'perch-p', body: 'hi', codexThread: 't1' });
+    expect(res).toEqual({ result: 'refused', reason: 'not run from a Perch workspace' });
+    expect(t.delivered).toHaveLength(0);
+  });
+
   it('refuses a thread no workspace recorded, even from a valid pane', async () => {
     const t = setup();
     const res = await sendMessage(t.deps, { pane: '%1', pid: 200, to: 'perch-c', body: 'hi', codexThread: 'zz' });

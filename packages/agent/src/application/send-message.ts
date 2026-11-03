@@ -8,6 +8,7 @@ import {
   formatAgentMessage,
   isNoDaemonCodex,
   relationOf,
+  sessionOfCodexThread,
   type AgentCli,
   type Relation,
 } from './agent-message.js';
@@ -78,7 +79,7 @@ export async function sendMessage(
 
   const sender =
     req.codexThread !== undefined
-      ? ((await deps.tmux.listSessions(deps.sessionPrefix)).find((s) => s.codexThread === req.codexThread) ?? null)
+      ? sessionOfCodexThread(await deps.tmux.listSessions(deps.sessionPrefix), req.codexThread)
       : await resolveSender(deps, req.pane, req.pid);
   if (!sender) return refuse('not run from a Perch workspace');
   from = sender.name;

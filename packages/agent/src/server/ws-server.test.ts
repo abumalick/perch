@@ -2279,15 +2279,21 @@ describe('WsServer POST /message', () => {
     for (const socket of sockets.splice(0)) socket.close();
   });
 
-  async function messagingServer(descends: boolean) {
+  async function messagingServer(descends: boolean, opts: { extra?: TmuxSessionInfo[]; listDelays?: number[] } = {}) {
     const home = await mkdtemp(join(tmpdir(), 'perch-message-'));
     dirs.push(home);
+    const delays = [...(opts.listDelays ?? [])];
     const tmux: TmuxPort = {
-      listSessions: async () => [
-        { name: 'perch-child-1', startPath: tmpdir(), command: 'claude', createdAt: 1000, parent: 'perch-orch-1', title: '' },
-        { name: 'perch-orch-1', startPath: tmpdir(), command: 'claude', createdAt: 1000, title: '' },
-        { name: 'perch-cx-1', startPath: tmpdir(), command: 'codex resume t1', createdAt: 1000, codexThread: 't1', title: '' },
-      ],
+      listSessions: async () => {
+        const delay = delays.shift();
+        if (delay) await new Promise((r) => setTimeout(r, delay));
+        return [
+          { name: 'perch-child-1', startPath: tmpdir(), command: 'claude', createdAt: 1000, parent: 'perch-orch-1', title: '' },
+          { name: 'perch-orch-1', startPath: tmpdir(), command: 'claude', createdAt: 1000, title: '' },
+          { name: 'perch-cx-1', startPath: tmpdir(), command: 'codex resume t1', createdAt: 1000, codexThread: 't1', title: '' },
+          ...(opts.extra ?? []),
+        ];
+      },
       createSession: async () => undefined,
       killSession: async () => undefined,
       hasSession: async () => true,
@@ -2383,6 +2389,35 @@ describe('WsServer POST /message', () => {
     expect(status.get('perch-cx-1')).toBeUndefined();
     expect(status.get('perch-child-1')).toBe('working');
     expect((await post('/hooks', { event: 'Stop', agent: 'codex', claude: {} })).status).toBe(400);
+  });
+
+  it('drops a thread post that is not from Codex, or names a thread only a non-Codex session records', async () => {
+    const extra = [{ name: 'perch-cl-1', startPath: tmpdir(), command: 'claude', createdAt: 1000, codexThread: 't2', title: '' }];
+    const { status, post } = await messagingServer(true, { extra });
+    expect((await post('/hooks', { thread: 't1', event: 'UserPromptSubmit', claude: {} })).status).toBe(204);
+    expect((await post('/hooks', { thread: 't1', event: 'UserPromptSubmit', agent: 'claude', claude: {} })).status).toBe(204);
+    expect(status.get('perch-cx-1')).toBeUndefined();
+    expect((await post('/hooks', { thread: 't2', event: 'UserPromptSubmit', agent: 'codex', claude: {} })).status).toBe(204);
+    expect(status.get('perch-cl-1')).toBeUndefined();
+  });
+
+  it('drops a hook for a thread more than one session records', async () => {
+    const extra = [{ name: 'perch-cx-2', startPath: tmpdir(), command: 'codex resume t1', createdAt: 1000, codexThread: 't1', title: '' }];
+    const { status, post } = await messagingServer(true, { extra });
+    expect((await post('/hooks', { thread: 't1', event: 'UserPromptSubmit', agent: 'codex', claude: {} })).status).toBe(204);
+    expect(status.get('perch-cx-1')).toBeUndefined();
+    expect(status.get('perch-cx-2')).toBeUndefined();
+  });
+
+  // The first post's session lookup is the slow one: applied on lookup, it would land last.
+  it('applies thread hooks in the order they arrive', async () => {
+    const { status, post } = await messagingServer(true, { listDelays: [80, 0] });
+    const first = post('/hooks', { thread: 't1', event: 'UserPromptSubmit', agent: 'codex', claude: {} });
+    await new Promise((r) => setTimeout(r, 20));
+    const second = post('/hooks', { thread: 't1', event: 'Stop', agent: 'codex', claude: {} });
+    expect((await first).status).toBe(204);
+    expect((await second).status).toBe(204);
+    expect(status.get('perch-cx-1')).toBe('needs-feedback');
   });
 
   it('401 without the secret, 400 for a malformed body', async () => {

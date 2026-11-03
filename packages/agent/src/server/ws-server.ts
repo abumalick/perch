@@ -37,6 +37,7 @@ import type { Workspace } from '@perch/contracts';
 import { ConnectionHandler } from './connection-handler';
 import { ViewerRegistry } from './viewer-registry';
 import { applyHookEvent, markSent } from '../application/apply-hook-event';
+import { sessionOfCodexThread } from '../application/agent-message';
 import { sendMessage } from '../application/send-message';
 import type { MessageDelivery } from '../ports/message-delivery-port';
 import type { MessageLog } from '../ports/message-log-port';
@@ -149,6 +150,8 @@ export class WsServer {
   // Sessions whose needs-feedback an OSC 7501 turn end set — see applyProgramStatus. In-memory:
   // losing it costs one race won by needs-feedback, never a hidden prompt.
   private readonly oscTurnEnded = new Set<string>();
+  // Hooks posted by Codex thread, applied one after another in arrival order.
+  private threadHooks: Promise<void> = Promise.resolve();
   // The last OSC 7501 record seen per pane, so only a change is applied (applyProgramStatus).
   private readonly programSeen = new Map<string, string>();
 
@@ -361,7 +364,12 @@ export class WsServer {
           res.writeHead(400).end();
           return;
         }
-        void this.applyHookByThread(thread, event, claude, agent, res);
+        if (agent !== 'codex') {
+          res.writeHead(204).end();
+          return;
+        }
+        // Each lookup awaits tmux, so unchained a later hook could land before an earlier one.
+        this.threadHooks = this.threadHooks.then(() => this.applyHookByThread(thread, event, claude, agent, res));
       } catch {
         res.writeHead(400).end();
       }
@@ -372,7 +380,7 @@ export class WsServer {
   // instead; one no workspace recorded is dropped.
   private async applyHookByThread(thread: string, event: string, claude: unknown, agent: unknown, res: ServerResponse): Promise<void> {
     try {
-      const session = (await this.deps.tmux.listSessions(this.deps.config.sessionPrefix)).find((s) => s.codexThread === thread);
+      const session = sessionOfCodexThread(await this.deps.tmux.listSessions(this.deps.config.sessionPrefix), thread);
       if (session) this.applyHook(session.name, event, claude, agent);
       res.writeHead(204).end();
     } catch {

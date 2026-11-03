@@ -118,6 +118,45 @@ check "still forwards the payload with an agent" "Bash" \
 check "posts no agent when none is given" "None" \
   "$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("agent"))' < "${SANDBOX}/with-tmux.txt")"
 
+# Codex bound to the app-server daemon runs its hooks in the daemon, never under the pane. Its
+# payload's session_id is the thread id the agent recorded for the workspace, so the hook posts
+# that instead of a session name and the agent maps it.
+CODEX_PAYLOAD='{"session_id":"01a1a378-2e85-7c92-859f-ac6c43f37efb","turn_id":"t","hook_event_name":"Stop"}'
+sleep 30 &
+stranger=$!
+export CURL_LOG="${SANDBOX}/codex-thread.txt"
+: > "${CURL_LOG}"
+TMUX="/tmp/tmux-1000/default,1,0" TMUX_PANE=%1 FAKE_PANE_PID="${stranger}" CURL_LOG="${CURL_LOG}" bash "${HOOK}" Stop 8787 codex <<< "${CODEX_PAYLOAD}"
+check "posts a Codex hook outside its pane by thread" "01a1a378-2e85-7c92-859f-ac6c43f37efb" \
+  "$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("thread"))' < "${CURL_LOG}")"
+check "posts no session name for it" "None" \
+  "$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("sessionName"))' < "${CURL_LOG}")"
+check "still posts its event, agent and payload" "Stop codex t" \
+  "$(python3 -c 'import json,sys; b=json.load(sys.stdin); print(b["event"], b["agent"], b["claude"]["turn_id"])' < "${CURL_LOG}")"
+
+export CURL_LOG="${SANDBOX}/claude-thread.txt"
+: > "${CURL_LOG}"
+TMUX="/tmp/tmux-1000/default,1,0" TMUX_PANE=%1 FAKE_PANE_PID="${stranger}" CURL_LOG="${CURL_LOG}" bash "${HOOK}" Stop 8787 <<< "${CODEX_PAYLOAD}"
+check "posts nothing for Claude outside its pane, session_id or not" "" "$(cat "${CURL_LOG}")"
+
+export CURL_LOG="${SANDBOX}/codex-hostile.txt"
+: > "${CURL_LOG}"
+TMUX="/tmp/tmux-1000/default,1,0" TMUX_PANE=%1 FAKE_PANE_PID="${stranger}" CURL_LOG="${CURL_LOG}" bash "${HOOK}" Stop 8787 codex <<< '{"session_id":"x\",\"sessionName\":\"perch-a"}'
+check "posts nothing for a session_id that is not a thread id" "" "$(cat "${CURL_LOG}")"
+kill "${stranger}"
+
+export CURL_LOG="${SANDBOX}/codex-no-tmux.txt"
+: > "${CURL_LOG}"
+env -u TMUX -u TMUX_PANE CURL_LOG="${CURL_LOG}" bash "${HOOK}" Stop 8787 codex <<< "${CODEX_PAYLOAD}"
+check "posts a Codex hook by thread with no tmux environment" "01a1a378-2e85-7c92-859f-ac6c43f37efb" \
+  "$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("thread"))' < "${CURL_LOG}")"
+
+export CURL_LOG="${SANDBOX}/codex-in-pane.txt"
+: > "${CURL_LOG}"
+TMUX="/tmp/tmux-1000/default,1,0" TMUX_PANE=%1 FAKE_PANE_PID=$$ CURL_LOG="${CURL_LOG}" bash "${HOOK}" Stop 8787 codex <<< "${CODEX_PAYLOAD}"
+check "a Codex hook inside its pane posts its session name, no thread" "perch-somesession None" \
+  "$(python3 -c 'import json,sys; b=json.load(sys.stdin); print(b["sessionName"], b.get("thread"))' < "${CURL_LOG}")"
+
 if [ "${fails}" -gt 0 ]; then
   echo "${fails} check(s) failed"
   exit 1

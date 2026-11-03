@@ -522,6 +522,21 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
       expect(calls).toEqual([]);
     });
 
+    // Codex bound to its daemon runs tools outside the pane, with the daemon's stale TMUX_PANE or
+    // none: the thread id is what names the sender there.
+    it('send from Codex posts its thread id too', async () => {
+      const { home, env, calls, fetch } = await agent();
+      await run(['send', 'perch-orch-1', 'hi'], { ...env, CODEX_THREAD_ID: 't1' }, home, io(fakeTmux().tmux, { fetch }));
+      expect(calls[0]!.body).toEqual({ pane: '%3', pid: process.pid, to: 'perch-orch-1', body: 'hi', codexThread: 't1' });
+    });
+
+    it('send from Codex does not need TMUX_PANE', async () => {
+      const { home, env, calls, fetch } = await agent();
+      const codexEnv = { ...env, TMUX_PANE: undefined, CODEX_THREAD_ID: 't1' };
+      expect(await run(['send', 'perch-orch-1', 'hi'], codexEnv, home, io(fakeTmux().tmux, { fetch }))).toBe('delivered to perch-orch-1');
+      expect(calls[0]!.body).toMatchObject({ pane: '', codexThread: 't1' });
+    });
+
     it('a refusal throws its reason', async () => {
       const { home, env, fetch } = await agent(() => Response.json({ result: 'refused', reason: 'cannot message yourself' }));
       await expect(run(['send', 'perch-child-1', 'hi'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow('cannot message yourself');

@@ -322,10 +322,19 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rena
       if (!to || to.startsWith('-') || extra.length > 0 || args.some((a) => a === '-f' || a === '--file' || a.startsWith('--file='))) {
         throw new Error(SEND_USAGE);
       }
-      const pane = env.TMUX_PANE;
-      if (!pane) throw new Error('not inside a Perch workspace: $TMUX_PANE is unset');
+      // Codex under its daemon runs this outside the pane, with a stale TMUX_PANE or none; its
+      // thread id names the sender instead.
+      const codexThread = env.CODEX_THREAD_ID || undefined;
+      const pane = env.TMUX_PANE ?? '';
+      if (!pane && !codexThread) throw new Error('not inside a Perch workspace: $TMUX_PANE is unset');
       const body = message ?? (await (io.stdin ?? (() => readStdin(`pass the message as an argument or on stdin: ${SEND_USAGE}`)))());
-      const { status, json } = await agentPost(config.port, home, io.fetch ?? fetch)('/message', { pane, pid: process.pid, to, body });
+      const { status, json } = await agentPost(config.port, home, io.fetch ?? fetch)('/message', {
+        pane,
+        pid: process.pid,
+        to,
+        body,
+        ...(codexThread ? { codexThread } : {}),
+      });
       if (status === 200 && json.result === 'delivered') return `delivered to ${to}`;
       if (status === 200 && json.result === 'refused' && typeof json.reason === 'string') throw new Error(json.reason);
       throw new Error(`the agent answered ${status}${status === 404 ? ' (it predates perch send: restart it)' : ''}${json.error ? ` (${json.error})` : ''}`);

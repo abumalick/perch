@@ -341,43 +341,68 @@ export class WsServer {
       }
       try {
         const parsed: unknown = JSON.parse(body);
-        const { sessionName, event, claude, agent } = parsed as {
+        const { sessionName, thread, event, claude, agent } = parsed as {
           sessionName?: unknown;
+          thread?: unknown;
           event?: unknown;
           claude?: unknown;
           agent?: unknown;
         };
-        if (typeof sessionName !== 'string' || typeof event !== 'string') {
+        if (typeof event !== 'string') {
           res.writeHead(400).end();
           return;
         }
-        const statusBefore = this.deps.status.get(sessionName);
-        const messagedBefore = this.messagedLast.has(sessionName);
-        applyHookEvent(
-          {
-            store: this.deps.status,
-            deferred: this.deferred,
-            messagedLast: this.messagedLast,
-            sentDuringTool: this.sentDuringTool,
-            questionPending: this.questionPending,
-            oscTurnEnded: this.oscTurnEnded,
-            log: this.deps.hookEventLog,
-          },
-          { sessionName, event, claude, agent: typeof agent === 'string' ? agent : undefined },
-        );
-        // The mark drives `waitingOn`, and it flips with the status unchanged, so onChange
-        // (which already pushed any status change) said nothing.
-        if (
-          this.messagedLast.has(sessionName) !== messagedBefore &&
-          this.deps.status.get(sessionName) === statusBefore
-        ) {
-          void this.broadcastWorkspace(sessionName).catch(() => undefined);
+        if (typeof sessionName === 'string') {
+          this.applyHook(sessionName, event, claude, agent);
+          res.writeHead(204).end();
+          return;
         }
-        res.writeHead(204).end();
+        if (typeof thread !== 'string') {
+          res.writeHead(400).end();
+          return;
+        }
+        void this.applyHookByThread(thread, event, claude, agent, res);
       } catch {
         res.writeHead(400).end();
       }
     });
+  }
+
+  // Codex under its daemon runs hooks outside every pane, so perch-hook.sh names the thread
+  // instead; one no workspace recorded is dropped.
+  private async applyHookByThread(thread: string, event: string, claude: unknown, agent: unknown, res: ServerResponse): Promise<void> {
+    try {
+      const session = (await this.deps.tmux.listSessions(this.deps.config.sessionPrefix)).find((s) => s.codexThread === thread);
+      if (session) this.applyHook(session.name, event, claude, agent);
+      res.writeHead(204).end();
+    } catch {
+      res.writeHead(500).end();
+    }
+  }
+
+  private applyHook(sessionName: string, event: string, claude: unknown, agent: unknown): void {
+    const statusBefore = this.deps.status.get(sessionName);
+    const messagedBefore = this.messagedLast.has(sessionName);
+    applyHookEvent(
+      {
+        store: this.deps.status,
+        deferred: this.deferred,
+        messagedLast: this.messagedLast,
+        sentDuringTool: this.sentDuringTool,
+        questionPending: this.questionPending,
+        oscTurnEnded: this.oscTurnEnded,
+        log: this.deps.hookEventLog,
+      },
+      { sessionName, event, claude, agent: typeof agent === 'string' ? agent : undefined },
+    );
+    // The mark drives `waitingOn`, and it flips with the status unchanged, so onChange
+    // (which already pushed any status change) said nothing.
+    if (
+      this.messagedLast.has(sessionName) !== messagedBefore &&
+      this.deps.status.get(sessionName) === statusBefore
+    ) {
+      void this.broadcastWorkspace(sessionName).catch(() => undefined);
+    }
   }
 
   private async handleUnpark(body: string, res: ServerResponse): Promise<void> {
@@ -401,14 +426,20 @@ export class WsServer {
   }
 
   private async handleMessage(body: string, res: ServerResponse): Promise<void> {
-    let req: { pane?: unknown; pid?: unknown; to?: unknown; body?: unknown } | null;
+    let req: { pane?: unknown; pid?: unknown; to?: unknown; body?: unknown; codexThread?: unknown } | null;
     try {
       req = JSON.parse(body) as typeof req;
     } catch {
       req = null;
     }
-    const { pane, pid, to, body: text } = req ?? {};
-    if (typeof pane !== 'string' || !Number.isInteger(pid) || typeof to !== 'string' || typeof text !== 'string') {
+    const { pane, pid, to, body: text, codexThread } = req ?? {};
+    if (
+      typeof pane !== 'string' ||
+      !Number.isInteger(pid) ||
+      typeof to !== 'string' ||
+      typeof text !== 'string' ||
+      (codexThread !== undefined && typeof codexThread !== 'string')
+    ) {
       res.writeHead(400).end();
       return;
     }
@@ -429,7 +460,7 @@ export class WsServer {
             void this.broadcastWorkspace(senderId).catch(() => undefined);
           },
         },
-        { pane, pid: pid as number, to, body: text },
+        { pane, pid: pid as number, to, body: text, ...(codexThread !== undefined ? { codexThread } : {}) },
       );
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(result));
     } catch (err) {

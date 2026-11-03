@@ -2286,6 +2286,7 @@ describe('WsServer POST /message', () => {
       listSessions: async () => [
         { name: 'perch-child-1', startPath: tmpdir(), command: 'claude', createdAt: 1000, parent: 'perch-orch-1', title: '' },
         { name: 'perch-orch-1', startPath: tmpdir(), command: 'claude', createdAt: 1000, title: '' },
+        { name: 'perch-cx-1', startPath: tmpdir(), command: 'codex resume t1', createdAt: 1000, codexThread: 't1', title: '' },
       ],
       createSession: async () => undefined,
       killSession: async () => undefined,
@@ -2359,6 +2360,29 @@ describe('WsServer POST /message', () => {
     expect(await res.json()).toEqual({ result: 'refused', reason: 'not run from a Perch workspace' });
     expect(delivered).toEqual([]);
     expect(status.getMessagedLast('perch-child-1')).toBe(false);
+  });
+
+  it('names a Codex sender by the thread id it posts', async () => {
+    const { delivered, logged, post } = await messagingServer(false);
+    const res = await post('/message', { ...send, pane: '', codexThread: 't1' });
+    expect(await res.json()).toEqual({ result: 'delivered' });
+    expect(delivered.map((d) => d.id)).toEqual(['perch-orch-1']);
+    expect(logged).toMatchObject([{ from: 'perch-cx-1', outcome: 'delivered' }]);
+    expect((await post('/message', { ...send, codexThread: 42 })).status).toBe(400);
+  });
+
+  it('a Codex hook by thread lands on its workspace', async () => {
+    const { status, post } = await messagingServer(true);
+    expect((await post('/hooks', { thread: 't1', event: 'UserPromptSubmit', agent: 'codex', claude: { session_id: 't1' } })).status).toBe(204);
+    expect(status.get('perch-cx-1')).toBe('working');
+  });
+
+  it('an unknown thread changes nothing', async () => {
+    const { status, post } = await messagingServer(true);
+    expect((await post('/hooks', { thread: 'zz', event: 'Stop', agent: 'codex', claude: {} })).status).toBe(204);
+    expect(status.get('perch-cx-1')).toBeUndefined();
+    expect(status.get('perch-child-1')).toBe('working');
+    expect((await post('/hooks', { event: 'Stop', agent: 'codex', claude: {} })).status).toBe(400);
   });
 
   it('401 without the secret, 400 for a malformed body', async () => {

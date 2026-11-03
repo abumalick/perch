@@ -44,7 +44,9 @@ function headerSafe(name: string): string {
 
 export async function sendMessage(
   deps: SendMessageDeps,
-  req: { pane: string; pid: number; to: string; body: string },
+  // `codexThread` comes from Codex under its daemon, whose tools run outside the pane: it names
+  // the sender in place of the pane and pid. Any process of this user could claim one (accepted).
+  req: { pane: string; pid: number; to: string; body: string; codexThread?: string },
 ): Promise<SendResult> {
   const bytes = Buffer.byteLength(req.body, 'utf8');
   let from = '';
@@ -74,7 +76,10 @@ export async function sendMessage(
 
   if (req.body.trim() === '') return refuse('empty message');
 
-  const sender = await resolveSender(deps, req.pane, req.pid);
+  const sender =
+    req.codexThread !== undefined
+      ? ((await deps.tmux.listSessions(deps.sessionPrefix)).find((s) => s.codexThread === req.codexThread) ?? null)
+      : await resolveSender(deps, req.pane, req.pid);
   if (!sender) return refuse('not run from a Perch workspace');
   from = sender.name;
 

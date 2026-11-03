@@ -80,6 +80,27 @@ describe('sendMessage', () => {
     expect(t.delivered).toHaveLength(0);
   });
 
+  it('names a Codex sender by its recorded thread, whatever its pane and ancestry', async () => {
+    const t = setup({
+      ancestor: false,
+      sessions: [
+        session({ name: 'perch-p', title: '✳ planner' }),
+        session({ name: 'perch-x', command: 'codex resume t1', codexThread: 't1', parent: 'perch-p' }),
+      ],
+    });
+    const res = await sendMessage(t.deps, { pane: '%1', pid: 200, to: 'perch-p', body: 'done', codexThread: 't1' });
+    expect(res).toEqual({ result: 'delivered' });
+    expect(t.delivered[0]!.target).toMatchObject({ id: 'perch-p', from: 'perch-x' });
+    expect(t.onSent).toHaveBeenCalledWith('perch-x');
+  });
+
+  it('refuses a thread no workspace recorded, even from a valid pane', async () => {
+    const t = setup();
+    const res = await sendMessage(t.deps, { pane: '%1', pid: 200, to: 'perch-c', body: 'hi', codexThread: 'zz' });
+    expect(res).toEqual({ result: 'refused', reason: 'not run from a Perch workspace' });
+    expect(t.delivered).toHaveLength(0);
+  });
+
   it('refuses a pid whose ancestors do not include the sender pane', async () => {
     const t = setup({ ancestor: false });
     expect(await t.send('perch-c')).toEqual({ result: 'refused', reason: 'not run from a Perch workspace' });

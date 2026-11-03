@@ -1130,7 +1130,9 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   until the user trusts the hooks in `/hooks` (hash-keyed, so re-trust after a change). Three
   differences from Claude Code, all observed on Codex 0.162:
   - **Hooks run outside the pane unless Codex is started with `--no-daemon`**, which the create
-    form adds. Under the shared daemon the hook posts nothing (see the pane check above).
+    form adds. Under the shared daemon the hook posts the payload's `session_id` as `thread`
+    instead of a session name, and `/hooks` maps it through `@perch_codex_thread`; a thread no
+    workspace recorded changes nothing (`docs/MESSAGING.md`, "Codex delivery").
   - **A question is asynchronous.** `request_user_input_async`'s `PostToolUse` fires as soon as
     the question is shown, then the model sleeps on `clocksleep`; the answer arrives as a
     `UserPromptSubmit`. A third in-memory marker (`questionPending`) holds `needs-feedback`

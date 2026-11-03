@@ -41,3 +41,27 @@
   refuse only the obvious commands that would do either.
 - **Status:** an accepted message reports `UserPromptSubmit` through the Perch status hook
   before it reaches Pi, as a typed prompt does.
+
+## Codex delivery
+
+`perch send` reaches a Codex session through the Codex app-server daemon
+(`~/.codex/app-server-control/app-server-control.sock`, JSON-RPC over a WebSocket), never
+through the pane. The agent's side is `CodexDelivery` over `CodexAppServer`
+(`packages/agent/src/infrastructure/codex-*.ts`).
+
+- **Only a daemon-bound thread takes messages.** The workspace must record its thread as the
+  tmux option `@perch_codex_thread` (set by `perch spawn --cli codex`), and the daemon must list
+  that thread in `thread/loaded/list`. A Codex started with `--no-daemon`, or with any `-c`,
+  `--enable`, `--disable` or `--search` on its command line, holds its thread in-process, where
+  nothing outside can reach it.
+- **Idle thread → `turn/start`; running turn → `turn/steer`** with the turn's id from
+  `thread/read`. When the turn moved or ended between the two, the delivery re-reads once.
+- **What `perch send` reports:** no recorded thread → `no Codex thread recorded for <id> (only
+  perch spawn --cli codex workspaces take messages)`; not loaded → `the Codex thread of <id> is
+  not open`; no socket → `the Codex app server is not running`; anything else → `the Codex app
+  server failed: <message>`.
+- **A Codex sender is named by its thread.** Tools run in the daemon's sandbox, outside the
+  pane, with the daemon's stale `TMUX_PANE`; `perch send` posts `CODEX_THREAD_ID` and the agent
+  takes the workspace recording that thread as the sender, with no ancestry check (the same
+  accepted limit as above). Its hooks run in the daemon too: `perch-hook.sh` posts the payload's
+  `session_id` as `thread`, and `/hooks` applies the event to the workspace recording it.

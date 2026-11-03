@@ -19,6 +19,7 @@ describe('loadConfig', () => {
       keytermsPath: '/home/u/.perch/keyterms.txt',
       clientLogPath: '/home/u/.perch/client-log.jsonl',
       hookEventLogPath: '/home/u/.perch/hook-events.jsonl',
+      messageLogPath: '/home/u/.perch/messages.jsonl',
       workspaceLogPath: '/home/u/.perch/workspace-log.jsonl',
       parkedStorePath: '/home/u/.perch/parked.json',
       liveSnapshotPath: '/home/u/.perch/live.json',

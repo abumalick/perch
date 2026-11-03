@@ -36,7 +36,11 @@ import { trackLiveWorkspaces } from '../application/track-live-workspaces';
 import type { Workspace } from '@perch/contracts';
 import { ConnectionHandler } from './connection-handler';
 import { ViewerRegistry } from './viewer-registry';
-import { applyHookEvent } from '../application/apply-hook-event';
+import { applyHookEvent, markSent } from '../application/apply-hook-event';
+import { sendMessage } from '../application/send-message';
+import type { MessageDelivery } from '../ports/message-delivery-port';
+import type { MessageLog } from '../ports/message-log-port';
+import type { ProcessAncestry } from '../ports/process-ancestry-port';
 import { applyProgramStatus } from '../application/apply-program-status';
 import type { HookEventLogPort } from '../ports/hook-event-log-port';
 import { listWorkspaces } from '../application/list-workspaces';
@@ -69,6 +73,8 @@ export interface WsServerDeps {
   clientLog: ClientLogPort;
   // Optional: where every hook event and its decision is recorded (applyHookEvent).
   hookEventLog?: HookEventLogPort;
+  // What `POST /message` (perch send) needs. Without it the route is not served.
+  messaging?: { ancestry: ProcessAncestry; delivery: MessageDelivery; log: MessageLog };
   workspaceLog: WorkspaceLogPort;
   parked: ParkedStorePort;
   // Optional: where the live workspaces are snapshotted so those lost with their tmux server
@@ -293,11 +299,12 @@ export class WsServer {
     });
   }
 
-  // Two routes, both behind the hooks secret: `/hooks` for Claude Code's hook events, and
-  // `/unpark` for `perch unpark`, which must go through the agent because it holds status.json in
-  // memory and writes parked.json itself.
+  // Three routes, all behind the hooks secret: `/hooks` for Claude Code's hook events, `/unpark`
+  // for `perch unpark`, which must go through the agent because it holds status.json in memory and
+  // writes parked.json itself, and `/message` for `perch send`, whose marks live here too.
   private handleHttp(req: IncomingMessage, res: ServerResponse): void {
-    if (req.method !== 'POST' || (req.url !== '/hooks' && req.url !== '/unpark')) {
+    const routes = this.deps.messaging ? ['/hooks', '/unpark', '/message'] : ['/hooks', '/unpark'];
+    if (req.method !== 'POST' || !routes.includes(req.url ?? '')) {
       res.writeHead(404).end();
       return;
     }
@@ -326,6 +333,10 @@ export class WsServer {
       if (refused) return;
       if (route === '/unpark') {
         void this.handleUnpark(body, res);
+        return;
+      }
+      if (route === '/message') {
+        void this.handleMessage(body, res);
         return;
       }
       try {
@@ -384,6 +395,43 @@ export class WsServer {
       const { parked, tmux, isDirectory, status } = this.deps;
       const result = await unparkWorkspace({ parked, tmux, isDirectory, status }, id);
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ result }));
+    } catch (err) {
+      res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: (err as Error).message }));
+    }
+  }
+
+  private async handleMessage(body: string, res: ServerResponse): Promise<void> {
+    let req: { pane?: unknown; pid?: unknown; to?: unknown; body?: unknown } | null;
+    try {
+      req = JSON.parse(body) as typeof req;
+    } catch {
+      req = null;
+    }
+    const { pane, pid, to, body: text } = req ?? {};
+    if (typeof pane !== 'string' || !Number.isInteger(pid) || typeof to !== 'string' || typeof text !== 'string') {
+      res.writeHead(400).end();
+      return;
+    }
+    try {
+      const { ancestry, delivery, log } = this.deps.messaging!;
+      const result = await sendMessage(
+        {
+          tmux: this.deps.tmux,
+          parked: this.deps.parked,
+          ancestry,
+          delivery,
+          log,
+          machineId: this.deps.config.machineId,
+          sessionPrefix: this.deps.config.sessionPrefix,
+          now: () => this.deps.clock.now(),
+          onSent: (senderId) => {
+            markSent({ sentDuringTool: this.sentDuringTool, messagedLast: this.messagedLast }, senderId);
+            void this.broadcastWorkspace(senderId).catch(() => undefined);
+          },
+        },
+        { pane, pid: pid as number, to, body: text },
+      );
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(result));
     } catch (err) {
       res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: (err as Error).message }));
     }

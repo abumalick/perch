@@ -476,6 +476,66 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     await expect(run(['unpark', 'perch-aaaaaa'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/agent is not running/);
   });
 
+  describe('send', () => {
+    async function agent(answer: (body: Record<string, unknown>) => Response = () => Response.json({ result: 'delivered' })) {
+      const { home } = await machine();
+      await writeFile(join(home, '.perch', 'token'), 'hook-secret');
+      const env = { PERCH_AGENT_ENV: join(home, 'agent.env'), TMUX_PANE: '%3' };
+      await writeFile(env.PERCH_AGENT_ENV, 'PERCH_PORT=9911\n');
+      const calls: Array<{ url: string; auth: string; body: Record<string, unknown> }> = [];
+      const fetch = async (url: string | URL | Request, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        calls.push({ url: String(url), auth: new Headers(init?.headers).get('authorization') ?? '', body });
+        return answer(body);
+      };
+      return { home, env, calls, fetch };
+    }
+
+    it('send posts pane, pid, to and body to /message', async () => {
+      const { home, env, calls, fetch } = await agent();
+      expect(await run(['send', 'perch-orch-1', 'done: see PR'], env, home, io(fakeTmux().tmux, { fetch }))).toBe('delivered to perch-orch-1');
+      expect(calls).toEqual([
+        {
+          url: 'http://127.0.0.1:9911/message',
+          auth: 'Bearer hook-secret',
+          body: { pane: '%3', pid: process.pid, to: 'perch-orch-1', body: 'done: see PR' },
+        },
+      ]);
+    });
+
+    it('send reads the body from stdin when no message argument', async () => {
+      const { home, env, calls, fetch } = await agent();
+      const stdin = async () => 'a long\nreport\n';
+      expect(await run(['send', 'perch-orch-1'], env, home, io(fakeTmux().tmux, { fetch, stdin }))).toBe('delivered to perch-orch-1');
+      expect(calls[0]!.body.body).toBe('a long\nreport\n');
+    });
+
+    it('send refuses --file and extra arguments with usage', async () => {
+      const { home, env, calls, fetch } = await agent();
+      const usage = /usage: perch send <workspace id> "<message>"/;
+      for (const argv of [['send'], ['send', 'perch-orch-1', 'a', 'b'], ['send', '--file', 'x', 'perch-orch-1'], ['send', 'perch-orch-1', '-f', 'x']]) {
+        await expect(run(argv, env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(usage);
+      }
+      await expect(run(['send', 'perch-orch-1', 'hi'], { ...env, TMUX_PANE: undefined }, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(
+        'not inside a Perch workspace: $TMUX_PANE is unset',
+      );
+      expect(calls).toEqual([]);
+    });
+
+    it('a refusal throws its reason', async () => {
+      const { home, env, fetch } = await agent(() => Response.json({ result: 'refused', reason: 'cannot message yourself' }));
+      await expect(run(['send', 'perch-child-1', 'hi'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow('cannot message yourself');
+    });
+
+    it('agent not running', async () => {
+      const { home, env } = await agent();
+      const fetch = async () => {
+        throw new TypeError('fetch failed');
+      };
+      await expect(run(['send', 'perch-orch-1', 'hi'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/agent is not running/);
+    });
+  });
+
   it('spawns from the caller cwd with the brief from stdin, and prints the id', async () => {
     const { home, env } = await machine();
     await mkdir(join(home, 'proj'));

@@ -33,6 +33,7 @@ import type { SystemStatsPort } from '../ports/system-stats-port';
 import { connectBrowserUpstream } from '../infrastructure/ws-browser-stream-socket';
 import { wsFrameSocket } from '../infrastructure/ws-frame-socket';
 import type { HookEventEntry } from '../ports/hook-event-log-port';
+import type { MessageLogEntry } from '../ports/message-log-port';
 import type { AgentMessage } from '@perch/contracts';
 import {
   SecureSession,
@@ -193,6 +194,7 @@ function testConfig(home: string, overrides: Partial<AgentConfig> = {}): AgentCo
     keytermsPath: join(home, 'keyterms.txt'),
     clientLogPath: join(home, 'client-log.jsonl'),
     hookEventLogPath: join(home, 'hook-events.jsonl'),
+    messageLogPath: join(home, 'messages.jsonl'),
     workspaceLogPath: join(home, 'workspace-log.jsonl'),
     parkedStorePath: join(home, 'parked.json'),
     liveSnapshotPath: join(home, 'live.json'),
@@ -2265,5 +2267,106 @@ describe('WsServer lost-workspace tracking', () => {
     server = new WsServer({ ...makeServerDeps(config, noClientLog), liveSnapshot });
     server.forgetWorkspace('perch-a');
     await until(async () => (await liveSnapshot.read())?.workspaces.length === 0);
+  });
+});
+
+// `perch send` asks the agent, which proves the caller runs inside the pane it names and holds
+// the marks the send sets.
+describe('WsServer POST /message', () => {
+  const sockets: WebSocket[] = [];
+  afterEach(() => {
+    for (const socket of sockets.splice(0)) socket.close();
+  });
+
+  async function messagingServer(descends: boolean) {
+    const home = await mkdtemp(join(tmpdir(), 'perch-message-'));
+    dirs.push(home);
+    const tmux: TmuxPort = {
+      listSessions: async () => [
+        { name: 'perch-child-1', startPath: tmpdir(), command: 'claude', createdAt: 1000, parent: 'perch-orch-1', title: '' },
+        { name: 'perch-orch-1', startPath: tmpdir(), command: 'claude', createdAt: 1000, title: '' },
+      ],
+      createSession: async () => undefined,
+      killSession: async () => undefined,
+      hasSession: async () => true,
+      sessionOfPane: async (pane) => (pane === '%3' ? 'perch-child-1' : null),
+      panePid: async () => 4000,
+    };
+    const status = new InMemoryStatusStore();
+    status.set('perch-child-1', 'working');
+    const delivered: Array<{ id: string; text: string }> = [];
+    const logged: MessageLogEntry[] = [];
+    server = new WsServer({
+      ...makeServerDeps(testConfig(home), noClientLog),
+      tmux,
+      status,
+      messaging: {
+        ancestry: { isAncestor: async (ancestor, pid) => descends && ancestor === 4000 && pid === 4242 },
+        delivery: {
+          deliver: async (target, text) => {
+            delivered.push({ id: target.id, text });
+            return { ok: true };
+          },
+        },
+        log: { append: async (e) => void logged.push(e) },
+      },
+    });
+    await server.start();
+    const port = server.address().port;
+    const post = (route: string, body: unknown, token = HOOK_TOKEN) =>
+      fetch(`http://127.0.0.1:${port}${route}`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    return { status, delivered, logged, post };
+  }
+
+  const send = { pane: '%3', pid: 4242, to: 'perch-orch-1', body: 'done: see PR' };
+
+  it('delivers over POST /message and marks the sender waiting', async () => {
+    const { status, delivered, logged, post } = await messagingServer(true);
+    const socket = new WebSocket(await clientUrl());
+    sockets.push(socket);
+    await new Promise((r) => socket.once('open', r));
+    socket.send(JSON.stringify({ type: 'auth', token: 'secret' }));
+    await nextMessage(socket);
+    const pushed = nextMessage(socket);
+
+    const res = await post('/message', send);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ result: 'delivered' });
+    expect(delivered.map((d) => d.id)).toEqual(['perch-orch-1']);
+    expect(delivered[0]!.text).toContain('done: see PR');
+    expect(logged).toMatchObject([{ from: 'perch-child-1', to: 'perch-orch-1', relation: 'child', outcome: 'delivered' }]);
+    expect(await pushed).toMatchObject({ type: 'workspaceUpdated', workspace: { id: 'perch-child-1', waitingOn: 'parent' } });
+
+    // The Bash call that ran perch send ends, then the turn does: the child is still waiting.
+    expect((await post('/hooks', { sessionName: 'perch-child-1', event: 'PostToolUse', claude: { tool_name: 'Bash' } })).status).toBe(204);
+    expect((await post('/hooks', { sessionName: 'perch-child-1', event: 'Stop', claude: {} })).status).toBe(204);
+    expect(status.get('perch-child-1')).toBe('working');
+    socket.send(JSON.stringify({ type: 'list' }));
+    let list = await nextMessage(socket);
+    while (list.type !== 'workspaces') list = await nextMessage(socket);
+    expect(list.workspaces.find((w) => w.id === 'perch-child-1')).toMatchObject({ waitingOn: 'parent' });
+  });
+
+  it('refuses a pane the pid does not descend from', async () => {
+    const { status, delivered, post } = await messagingServer(false);
+    const res = await post('/message', send);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ result: 'refused', reason: 'not run from a Perch workspace' });
+    expect(delivered).toEqual([]);
+    expect(status.getMessagedLast('perch-child-1')).toBe(false);
+  });
+
+  it('401 without the secret, 400 for a malformed body', async () => {
+    const { delivered, post } = await messagingServer(true);
+    expect((await post('/message', send, 'wrong')).status).toBe(401);
+    expect((await post('/message', { ...send, pid: '4242' })).status).toBe(400);
+    expect((await post('/message', { ...send, pid: 42.5 })).status).toBe(400);
+    expect((await post('/message', { ...send, body: undefined })).status).toBe(400);
+    expect((await post('/message', 'not json at all')).status).toBe(400);
+    expect(delivered).toEqual([]);
   });
 });

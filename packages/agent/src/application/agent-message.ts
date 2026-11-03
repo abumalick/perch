@@ -1,0 +1,53 @@
+export type AgentCli = 'claude' | 'codex' | 'pi';
+export type Relation = 'orchestrator' | 'child' | 'peer';
+
+type Linked = { id: string; parentId?: string };
+
+const ENV_PREFIX = /^[A-Za-z_][A-Za-z0-9_]*=\S*$/;
+
+function commandWords(command: string): string[] {
+  const words = command.trim().split(/\s+/).filter(Boolean);
+  while (words.length > 0 && ENV_PREFIX.test(words[0]!)) words.shift();
+  return words;
+}
+
+export function cliOfCommand(command: string): AgentCli | null {
+  const first = commandWords(command)[0];
+  if (!first) return null;
+  const name = first.split('/').pop();
+  if (name === 'claude') return 'claude';
+  if (name === 'codex') return 'codex';
+  if (name === 'pi' || name === 'pi-reviewed') return 'pi';
+  return null;
+}
+
+export function isNoDaemonCodex(command: string): boolean {
+  return cliOfCommand(command) === 'codex' && commandWords(command).includes('--no-daemon');
+}
+
+export function relationOf(sender: Linked, recipient: Linked): Relation {
+  if (recipient.parentId === sender.id) return 'orchestrator';
+  if (sender.parentId === recipient.id) return 'child';
+  return 'peer';
+}
+
+const RELATION_LABEL: Record<Relation, string> = {
+  orchestrator: 'your ORCHESTRATOR',
+  child: 'your CHILD',
+  peer: 'a PEER',
+};
+
+export function formatAgentMessage(m: {
+  from: { id: string; name: string; cli: AgentCli };
+  relation: Relation;
+  machineId: string;
+  body: string;
+}): string {
+  return [
+    `[Perch message — from ${RELATION_LABEL[m.relation]}]`,
+    `from: ${m.from.id} "${m.from.name}" (${m.from.cli}) · relation: ${m.relation} · machine: ${m.machineId}`,
+    `reply with: perch send ${m.from.id} "<your reply>"`,
+    '---',
+    m.body,
+  ].join('\n');
+}

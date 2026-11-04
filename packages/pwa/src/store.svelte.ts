@@ -1,5 +1,5 @@
 import type { AgentMessage, BrowserSession, ClientMessage, MachineStats, MediaResult, Workspace, WorkspaceStatus } from '@perch/contracts';
-import { imageMediaType, pdfMediaType, audioMediaType } from '@perch/contracts';
+import { imageMediaType, pdfMediaType, audioMediaType, runsClaude } from '@perch/contracts';
 import { SvelteSet } from 'svelte/reactivity';
 import type { ConnectionManager } from './core/connection-manager';
 import type { WorkspaceAggregator } from './core/workspace-aggregator';
@@ -30,9 +30,10 @@ export interface DeviceKeyInfo {
 }
 import { SpeechToText, type DictationState } from './core/speech-to-text';
 import { mergeKeyterms } from './core/keyterms';
-import { DEFAULT_PRESETS, currentPreset, type DictationPreset, type DictationProvider } from './core/dictation-presets';
+import { DEFAULT_PRESETS, currentPreset, type DictationPreset, type PresetKeys } from './core/dictation-presets';
 import type { AudioRecorder } from './core/ports/audio-recorder';
 import type { Transcriber } from './core/ports/transcriber';
+import type { VoiceLink } from './core/claude-voice';
 
 type View = 'list' | 'terminal' | 'settings' | 'create' | 'newMachine' | 'browser' | 'viewer' | 'browserView';
 
@@ -68,6 +69,9 @@ const GRACE_MS = 4000;
 // brief blip (phone waking, backoff) shouldn't alarm, but a genuine extended outage (phone
 // offline, agent down) still surfaces the relay hint + Reconnect button so the user can act.
 const RECONNECT_GRACE_MS = 25_000;
+// How long after the end of a Claude voice dictation the agent may take to answer before it
+// is taken not to support it: the last second of playback, the release and Claude's transcription.
+export const VOICE_REPLY_MS = 20_000;
 
 // Why a media preview could not be shown (a file over the cap is shown as truncated instead).
 const MEDIA_ERRORS: Record<Exclude<MediaResult, 'ok' | 'too-large'>, string> = {
@@ -261,6 +265,8 @@ export class PerchStore {
   // Called before the store types into the terminal on its own (a stored file's path, a
   // dictation transcript), so the view can drop input state that assumed it owned the line.
   onInjectedInput: (() => void) | null = null;
+  private voice: { id: string; machineId: string; outcome: Promise<void>; settled: boolean; settle: (e: Error | null) => void } | null = null;
+  private voiceSeq = 0;
   // Called when the active terminal's machine recovers from a drop, so the view re-attaches
   // (clear stale rows + resend `attach`) and self-heals instead of staying frozen on the last
   // frame. Wired by TerminalView, which owns the terminal dimensions.
@@ -382,6 +388,8 @@ export class PerchStore {
     }
     if (status === 'offline') {
       this.sessionChannels.get(machineId)?.offline();
+      // The agent ends a dictation whose session dropped, but can no longer say so.
+      if (this.voice?.machineId === machineId) this.failVoice(this.voice, 'Dictation stopped: the connection dropped');
       this.disconnected.add(machineId);
       const { [machineId]: _dropped, ...rest } = this.machineStats;
       this.machineStats = rest;
@@ -511,6 +519,14 @@ export class PerchStore {
         // into the terminal at the cursor, exactly like typed input.
         if (this.active?.id === message.workspaceId) this.injectInput(message.path);
         return;
+      case 'voiceDone': {
+        const voice = this.voice;
+        if (voice?.id !== message.id || voice.settled) return;
+        if (!message.ok) return this.failVoice(voice, message.error ?? 'Claude voice failed');
+        // Claude writes the transcript into the line behind the input field's back.
+        this.onInjectedInput?.();
+        return voice.settle(null);
+      }
       case 'detached':
         if (this.active?.id === message.workspaceId && message.reason === 'opened-elsewhere') {
           this.terminalState = 'moved';
@@ -672,6 +688,62 @@ export class PerchStore {
     }
     this.send(this.active.machineId, { type: 'putFile', workspaceId: this.active.id, name, data: encodeBytes(bytes) });
     return true;
+  }
+
+  // A Claude voice dictation, streamed as it is spoken: the agent plays the audio into the
+  // machine's virtual mic while holding space, and Claude Code itself writes the transcript into
+  // the prompt, so nothing is typed from here. The wait after the end is bounded because an
+  // agent that predates `voiceStart` answers `bad_message`, which is deliberately silent.
+  readonly voiceLink: VoiceLink = {
+    begin: () => {
+      const active = this.active;
+      if (!active) throw new Error('Open a workspace first');
+      this.voice?.settle(new Error('Superseded by a newer dictation'));
+      const id = `voice-${Date.now().toString(36)}-${++this.voiceSeq}`;
+      let settleOutcome!: (e: Error | null) => void;
+      const outcome = new Promise<void>((resolve, reject) => (settleOutcome = (e) => (e ? reject(e) : resolve())));
+      outcome.catch(() => undefined);
+      const voice = {
+        id,
+        machineId: active.machineId,
+        outcome,
+        settled: false,
+        settle: (e: Error | null) => {
+          if (voice.settled) return;
+          voice.settled = true;
+          settleOutcome(e);
+        },
+      };
+      this.voice = voice;
+      this.send(active.machineId, { type: 'voiceStart', workspaceId: active.id, id });
+    },
+    chunk: (pcm) => {
+      const voice = this.voice;
+      if (voice && !voice.settled) this.send(voice.machineId, { type: 'voiceChunk', id: voice.id, data: encodeBytes(pcm) });
+    },
+    finish: async () => {
+      const voice = this.voice;
+      if (!voice) throw new Error('No dictation in progress');
+      if (!voice.settled) this.send(voice.machineId, { type: 'voiceEnd', id: voice.id });
+      const timer = setTimeout(() => {
+        // The agent may still be dictating, so the line is no longer the field's.
+        this.onInjectedInput?.();
+        voice.settle(new Error('This machine’s agent does not support Claude voice'));
+      }, VOICE_REPLY_MS);
+      try {
+        await voice.outcome;
+      } finally {
+        clearTimeout(timer);
+        if (this.voice === voice) this.voice = null;
+      }
+    },
+  };
+
+  // A failure can come while the user is still talking: stop the recording at once.
+  private failVoice(voice: NonNullable<PerchStore['voice']>, error: string): void {
+    if (voice.settled) return;
+    voice.settle(new Error(error));
+    this.stt?.abort(error);
   }
 
   // Toggle dictation: first tap records, second stops and transcribes; the transcript is
@@ -1011,8 +1083,10 @@ export class PerchStore {
     this.deps.settings.setOpenRouterApiKey(key);
   }
 
-  get presetKeys(): Record<DictationProvider, boolean> {
-    return { elevenlabs: !!this.elevenLabsApiKey, openrouter: !!this.openRouterApiKey };
+  get presetKeys(): PresetKeys {
+    const keys = { elevenlabs: !!this.elevenLabsApiKey, openrouter: !!this.openRouterApiKey };
+    if (!this.active) return keys;
+    return { ...keys, claude: !runsClaude(this.active.command) ? 'not-claude' : this.active.asking ? 'asking' : 'ok' };
   }
 
   get currentPreset(): DictationPreset {

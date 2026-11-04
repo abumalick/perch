@@ -3,9 +3,14 @@
 // (Settings); the app ships only the neutral defaults below.
 export type DictationPreset =
   | { id: string; name: string; badge: string; provider: 'elevenlabs' }
-  | { id: string; name: string; badge: string; provider: 'openrouter'; model: string; prompt: string };
+  | { id: string; name: string; badge: string; provider: 'openrouter'; model: string; prompt: string }
+  // Claude Code's own /voice on the machine: the agent plays the audio into its virtual mic.
+  // `fallbackId` names the preset the mic uses where Claude voice cannot run (outside Claude
+  // Code, a question open); absent, it is the first preset that can.
+  | { id: string; name: string; badge: string; provider: 'claude'; fallbackId?: string };
 
-export type DictationProvider = DictationPreset['provider'];
+// The providers that need an API key on the phone; Claude voice runs on the machine.
+export type DictationProvider = Exclude<DictationPreset['provider'], 'claude'>;
 
 export const DEFAULT_CLEANUP_PROMPT = `You turn a developer's voice dictation into the message they meant to type to an AI coding agent.
 
@@ -61,6 +66,8 @@ function asPreset(value: unknown): DictationPreset | null {
   const base = { id: v.id, name: v.name, badge: v.badge };
   let preset: DictationPreset;
   if (v.provider === 'elevenlabs') preset = { ...base, provider: 'elevenlabs' };
+  else if (v.provider === 'claude')
+    preset = { ...base, provider: 'claude', ...(typeof v.fallbackId === 'string' && v.fallbackId ? { fallbackId: v.fallbackId } : {}) };
   else if (v.provider === 'openrouter' && typeof v.model === 'string' && typeof v.prompt === 'string')
     preset = { ...base, provider: 'openrouter', model: v.model, prompt: v.prompt };
   else return null;
@@ -89,21 +96,42 @@ export function parsePresets(raw: string | null): DictationPreset[] | null {
   return presets.length ? presets : null;
 }
 
-export function needsKey(p: DictationPreset, keys: Record<DictationProvider, boolean>): boolean {
-  return !keys[p.provider];
+// What each provider needs here: a key for the ones that call an API, and for Claude voice
+// Claude Code's prompt, since its held spaces are typed anywhere else: a workspace running
+// something else (`not-claude`) or a question or menu on screen (`asking`) rules it out, and
+// the mic falls back to another preset. `claude` is absent where there is no workspace to
+// judge, as in Settings.
+export type ClaudeVoiceHere = 'ok' | 'not-claude' | 'asking';
+export type PresetKeys = Record<DictationProvider, boolean> & { claude?: ClaudeVoiceHere };
+
+export function needsKey(p: DictationPreset, keys: PresetKeys): boolean {
+  return p.provider === 'claude' ? keys.claude !== undefined && keys.claude !== 'ok' : !keys[p.provider];
 }
 
-export function hasUsablePreset(presets: readonly DictationPreset[], keys: Record<DictationProvider, boolean>): boolean {
+// Why the mic menu cannot offer a preset here, or null.
+export function unavailableHint(p: DictationPreset, keys: PresetKeys): string | null {
+  if (!needsKey(p, keys)) return null;
+  if (p.provider !== 'claude') return 'needs key';
+  return keys.claude === 'asking' ? 'question open' : 'Claude Code only';
+}
+
+export function hasUsablePreset(presets: readonly DictationPreset[], keys: PresetKeys): boolean {
   return presets.some((p) => !needsKey(p, keys));
 }
 
-// The preset dictation uses: the chosen one if its provider has a key, else the first that does.
-// With no key at all there is no mic, so the plain lookup is only a fallback.
+// The preset dictation uses: the chosen one if it can run here, else its fallback when that
+// can, else the first that can. With none usable there is no mic, so the plain lookup is only
+// a last resort.
 export function currentPreset(
   presets: readonly DictationPreset[],
   id: string | null,
-  keys: Record<DictationProvider, boolean>,
+  keys: PresetKeys,
 ): DictationPreset {
   const usable = presets.filter((p) => !needsKey(p, keys));
+  const chosen = presets.find((p) => p.id === id);
+  if (chosen?.provider === 'claude' && chosen.fallbackId && !usable.includes(chosen)) {
+    const fallback = usable.find((p) => p.id === chosen.fallbackId);
+    if (fallback) return fallback;
+  }
   return usable.find((p) => p.id === id) ?? usable[0] ?? presets.find((p) => p.id === id) ?? presets[0]!;
 }

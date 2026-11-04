@@ -6,6 +6,7 @@ import {
   hasUsablePreset,
   needsKey,
   parsePresets,
+  unavailableHint,
   presetError,
   type DictationPreset,
 } from './dictation-presets';
@@ -47,6 +48,36 @@ describe('parsePresets', () => {
   it('keeps valid entries and drops broken ones one by one', () => {
     const broken = { ...custom, id: 'x', model: '' };
     expect(parsePresets(JSON.stringify([custom, broken, 42, null]))).toEqual([custom]);
+  });
+
+  it('keeps a Claude voice preset, which needs no key', () => {
+    const claude = { id: 'cv', name: 'Claude voice', badge: 'CV', provider: 'claude' };
+    expect(parsePresets(JSON.stringify([claude]))).toEqual([claude]);
+    expect(needsKey(claude as never, { elevenlabs: false, openrouter: false })).toBe(false);
+  });
+
+  it('falls back from Claude voice to the preset it names, when that one can run', () => {
+    const claude: DictationPreset = { id: 'cv', name: 'Claude voice', badge: 'CV', provider: 'claude', fallbackId: 'clean' };
+    const list = [DEFAULT_PRESETS[0]!, DEFAULT_PRESETS[1]!, claude];
+    const both = { elevenlabs: true, openrouter: true };
+    expect(currentPreset(list, 'cv', { ...both, claude: 'ok' }).id).toBe('cv');
+    expect(currentPreset(list, 'cv', { ...both, claude: 'asking' }).id).toBe('clean');
+    expect(currentPreset(list, 'cv', { elevenlabs: true, openrouter: false, claude: 'asking' }).id).toBe('scribe');
+    expect(parsePresets(JSON.stringify([claude]))).toEqual([claude]);
+    const orphan: DictationPreset = { ...claude, fallbackId: 'deleted' };
+    expect(currentPreset([DEFAULT_PRESETS[0]!, orphan], 'cv', { ...both, claude: 'asking' }).id).toBe('scribe');
+  });
+
+  it('offers a Claude voice preset only in a workspace running Claude Code', () => {
+    const claude: DictationPreset = { id: 'cv', name: 'Claude voice', badge: 'CV', provider: 'claude' };
+    const keys = { elevenlabs: true, openrouter: false };
+    expect(unavailableHint(claude, keys)).toBeNull();
+    expect(unavailableHint(claude, { ...keys, claude: 'ok' })).toBeNull();
+    expect(unavailableHint(claude, { ...keys, claude: 'not-claude' })).toBe('Claude Code only');
+    expect(unavailableHint(claude, { ...keys, claude: 'asking' })).toBe('question open');
+    expect(unavailableHint(DEFAULT_PRESETS[1]!, keys)).toBe('needs key');
+    expect(currentPreset([claude, DEFAULT_PRESETS[0]!], 'cv', { ...keys, claude: 'asking' }).id).toBe('scribe');
+    expect(hasUsablePreset([claude], { elevenlabs: false, openrouter: false, claude: 'not-claude' })).toBe(false);
   });
 
   it('returns null when nothing valid is left', () => {

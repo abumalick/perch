@@ -119,6 +119,16 @@ describe('clientMessageSchema', () => {
     expect(parseClientMessage(msg)).toEqual(msg);
   });
 
+  it('parses the voice stream messages', () => {
+    for (const msg of [
+      { type: 'voiceStart', workspaceId: 'perch-a', id: 'v1' },
+      { type: 'voiceChunk', id: 'v1', data: 'AAAA' },
+      { type: 'voiceEnd', id: 'v1' },
+    ]) {
+      expect(parseClientMessage(msg)).toEqual(msg);
+    }
+  });
+
   it('parses a ping message', () => {
     expect(parseClientMessage({ type: 'ping' })).toEqual({ type: 'ping' });
   });
@@ -142,6 +152,13 @@ describe('agentMessageSchema', () => {
   it('parses a fileStored message', () => {
     const msg = { type: 'fileStored', workspaceId: 'perch-a', path: '.tmp/files/pasted-image.png' };
     expect(parseAgentMessage(msg)).toEqual(msg);
+  });
+
+  it('parses voiceDone, with and without an error', () => {
+    const ok = { type: 'voiceDone', id: 'v1', ok: true };
+    const failed = { type: 'voiceDone', id: 'v1', ok: false, error: 'busy' };
+    expect(parseAgentMessage(ok)).toEqual(ok);
+    expect(parseAgentMessage(failed)).toEqual(failed);
   });
 
   it('parses a workspaces snapshot', () => {
@@ -348,6 +365,11 @@ describe('workspaceSchema', () => {
   it('parses a child workspace waiting on its orchestrator', () => {
     const child = { ...sampleWorkspace, parentId: 'perch-a1b2c3', waitingOn: 'parent' as const };
     expect(workspaceSchema.parse(child)).toEqual(child);
+  });
+
+  it('keeps the asking flag', () => {
+    const asking = { ...sampleWorkspace, asking: true };
+    expect(workspaceSchema.parse(asking)).toEqual(asking);
   });
 
   it('rejects an unknown waitingOn value', () => {

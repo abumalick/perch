@@ -8,7 +8,6 @@
     DEFAULT_CLEANUP_PROMPT,
     presetError,
     type DictationPreset,
-    type DictationProvider,
   } from '../core/dictation-presets';
 
   let {
@@ -20,7 +19,8 @@
     >;
   } = $props();
 
-  type Draft = { id: string; name: string; badge: string; provider: DictationProvider; model: string; prompt: string };
+  // `fallbackId` '' = the first preset that can run.
+  type Draft = { id: string; name: string; badge: string; provider: DictationPreset['provider']; model: string; prompt: string; fallbackId: string };
 
   // index null = a new preset, appended on save.
   let editing = $state<{ index: number | null; draft: Draft; touched: boolean } | null>(null);
@@ -32,17 +32,20 @@
   const draftError = $derived(draftPreset ? presetError(draftPreset) : null);
 
   function toDraft(p: DictationPreset): Draft {
+    const fallbackId = p.provider === 'claude' ? (p.fallbackId ?? '') : '';
     return p.provider === 'openrouter'
-      ? { ...p }
-      : { ...p, model: 'google/gemini-3.8-flash', prompt: DEFAULT_CLEANUP_PROMPT };
+      ? { ...p, fallbackId }
+      : { ...p, model: 'google/gemini-3.8-flash', prompt: DEFAULT_CLEANUP_PROMPT, fallbackId };
   }
 
   function toPreset(d: Draft): DictationPreset {
     const base = { id: d.id, name: d.name.trim(), badge: d.badge.trim() };
-    return d.provider === 'openrouter'
-      ? { ...base, provider: 'openrouter', model: d.model.trim(), prompt: d.prompt }
-      : { ...base, provider: 'elevenlabs' };
+    if (d.provider === 'openrouter') return { ...base, provider: 'openrouter', model: d.model.trim(), prompt: d.prompt };
+    if (d.provider === 'claude') return { ...base, provider: 'claude', ...(d.fallbackId ? { fallbackId: d.fallbackId } : {}) };
+    return { ...base, provider: 'elevenlabs' };
   }
+
+  const PROVIDER_LABELS = { elevenlabs: 'ElevenLabs', claude: 'Claude voice (on the machine)' } as const;
 
   function edit(index: number) {
     editing = { index, draft: toDraft(presets[index]!), touched: false };
@@ -51,7 +54,7 @@
   function add() {
     editing = {
       index: null,
-      draft: { id: crypto.randomUUID(), name: '', badge: '', provider: 'openrouter', model: 'google/gemini-3.8-flash', prompt: DEFAULT_CLEANUP_PROMPT },
+      draft: { id: crypto.randomUUID(), name: '', badge: '', provider: 'openrouter', model: 'google/gemini-3.8-flash', prompt: DEFAULT_CLEANUP_PROMPT, fallbackId: '' },
       touched: false,
     };
   }
@@ -96,7 +99,7 @@
         <span class="badge">{preset.badge}</span>
         <span class="label">{preset.name}</span>
         {#if preset.id === inUseId}<span class="in-use">In use</span>{/if}
-        <span class="provider">{preset.provider === 'openrouter' ? preset.model : 'ElevenLabs'}</span>
+        <span class="provider">{preset.provider === 'openrouter' ? preset.model : PROVIDER_LABELS[preset.provider]}</span>
       </button>
       <button type="button" class="icon" aria-label="Move {preset.name} up" disabled={i === 0} onclick={() => move(i, -1)}>↑</button>
       <button type="button" class="icon" aria-label="Move {preset.name} down" disabled={i === presets.length - 1} onclick={() => move(i, 1)}>↓</button>
@@ -133,6 +136,7 @@
         <select id="preset-provider" bind:value={editing.draft.provider}>
           <option value="elevenlabs">ElevenLabs (plain transcript)</option>
           <option value="openrouter">OpenRouter (model + prompt)</option>
+          <option value="claude">Claude Code /voice (Linux machine, set up by hand)</option>
         </select>
       </div>
       {#if editing.draft.provider === 'openrouter'}
@@ -140,6 +144,17 @@
         <input id="preset-model" bind:value={editing.draft.model} placeholder="google/gemini-3.8-flash" autocapitalize="off" spellcheck="false" />
         <label for="preset-prompt">Prompt</label>
         <textarea id="preset-prompt" rows="8" bind:value={editing.draft.prompt}></textarea>
+      {:else if editing.draft.provider === 'claude'}
+        <label for="preset-fallback">Fallback</label>
+        <div class="select">
+          <select id="preset-fallback" bind:value={editing.draft.fallbackId}>
+            <option value="">First available preset</option>
+            {#each presets.filter((p) => p.provider !== 'claude') as other (other.id)}
+              <option value={other.id}>{other.name}</option>
+            {/each}
+          </select>
+        </div>
+        <p class="hint">Used outside Claude Code workspaces and while Claude shows a question or menu.</p>
       {/if}
       {#if draftError && editing.touched}<p class="hint error" role="alert">{draftError}</p>{/if}
       <div class="actions">

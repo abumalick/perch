@@ -6,13 +6,17 @@ describe('PresetTranscriber', () => {
   it('delegates to the provider of the preset current at each call', async () => {
     const elevenlabs = { transcribe: vi.fn().mockResolvedValue('scribe') };
     const openrouter = { transcribe: vi.fn().mockResolvedValue('gemini') };
+    const claude = { transcribe: vi.fn().mockResolvedValue('') };
     let preset: DictationPreset = DEFAULT_PRESETS[0]!;
-    const t = new PresetTranscriber(() => preset, { elevenlabs, openrouter });
+    const t = new PresetTranscriber(() => preset, { elevenlabs, openrouter, claude });
     const audio = new Blob(['x']);
 
     expect(await t.transcribe(audio)).toBe('scribe');
     preset = DEFAULT_PRESETS[1]!;
     expect(await t.transcribe(audio)).toBe('gemini');
     expect(openrouter.transcribe).toHaveBeenCalledWith(audio);
+    preset = { id: 'cv', name: 'Claude voice', badge: 'CV', provider: 'claude' };
+    expect(await t.transcribe(audio)).toBe('');
+    expect(claude.transcribe).toHaveBeenCalledWith(audio);
   });
 });

@@ -1063,6 +1063,203 @@ describe('ConnectionHandler.pushBrowserSessions', () => {
   });
 });
 
+describe('ConnectionHandler voice stream', () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const b64 = (...bytes: number[]) => Buffer.from(bytes).toString('base64');
+
+  function fakeVoice() {
+    const written: number[] = [];
+    let press: () => void = () => undefined;
+    const makeSession = () => {
+      let settle!: (error: string | null) => void;
+      const done = new Promise<string | null>((resolve) => (settle = resolve));
+      return {
+        write: vi.fn((pcm: Uint8Array) => void written.push(...pcm)),
+        end: vi.fn(),
+        abort: vi.fn((reason: string) => settle(reason)),
+        done,
+        settle: (e: string | null) => settle(e),
+      };
+    };
+    const sessions: ReturnType<typeof makeSession>[] = [];
+    const start = vi.fn((p: () => void) => {
+      press = p;
+      sessions.push(makeSession());
+      return sessions.at(-1)!;
+    });
+    // The first session, which every single-dictation test drives.
+    return {
+      start,
+      sessions,
+      get session() {
+        return sessions[0]!;
+      },
+      written,
+      press: () => press(),
+      settle: (e: string | null) => sessions[0]!.settle(e),
+    };
+  }
+
+  function attached(deps: Partial<ConnectionHandlerDeps> = {}) {
+    const fp = fakePty();
+    const conn = fakeConn();
+    const voice = fakeVoice();
+    new ConnectionHandler(conn.conn, { ...baseDeps(), pty: fp.pty, claudeVoice: { start: voice.start }, ...deps });
+    conn.emit({ type: 'auth', token: 'secret' });
+    conn.emit({ type: 'attach', workspaceId: 'perch-aa', cols: 80, rows: 24 });
+    return { fp, conn, voice };
+  }
+
+  it('streams chunks into the dictation, holds space in the workspace and replies voiceDone', async () => {
+    const { fp, conn, voice } = attached();
+    await tick();
+    conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    conn.emit({ type: 'voiceChunk', id: 'v1', data: b64(1, 2) });
+    await tick();
+    conn.emit({ type: 'voiceChunk', id: 'v1', data: b64(3) });
+    expect(voice.written).toEqual([1, 2, 3]);
+    voice.press();
+    voice.press();
+    expect(fp.sessions[0]!.written).toEqual([' ', ' ']);
+    conn.emit({ type: 'voiceEnd', id: 'v1' });
+    expect(voice.session.end).toHaveBeenCalledOnce();
+    voice.settle(null);
+    await tick();
+    expect(conn.sent).toContainEqual({ type: 'voiceDone', id: 'v1', ok: true });
+  });
+
+  it('ends a dictation whose end came before its checks passed', async () => {
+    const { conn, voice } = attached();
+    await tick();
+    conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    conn.emit({ type: 'voiceChunk', id: 'v1', data: b64(9) });
+    conn.emit({ type: 'voiceEnd', id: 'v1' });
+    await tick();
+    expect(voice.written).toEqual([9]);
+    expect(voice.session.end).toHaveBeenCalledOnce();
+  });
+
+  it('reports the dictation’s failure', async () => {
+    const { conn, voice } = attached();
+    await tick();
+    conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    await tick();
+    voice.settle('Voice is off');
+    await tick();
+    expect(conn.sent).toContainEqual({ type: 'voiceDone', id: 'v1', ok: false, error: 'Voice is off' });
+  });
+
+  it('refuses a workspace that does not run Claude Code', async () => {
+    const deps = baseDeps();
+    const [only] = await deps.tmux.listSessions('perch-');
+    const { conn, voice } = attached({ tmux: { ...deps.tmux, listSessions: async () => [{ ...only!, command: 'codex --no-daemon' }] } });
+    await tick();
+    conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    await tick();
+    expect(voice.start).not.toHaveBeenCalled();
+    expect(conn.sent).toContainEqual(expect.objectContaining({ type: 'voiceDone', ok: false, error: expect.stringMatching(/Claude Code workspace/) }));
+  });
+
+  it('stops the dictation and the typing when the workspace is detached or the phone leaves', async () => {
+    const { fp, conn, voice } = attached();
+    await tick();
+    conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    await tick();
+    conn.emit({ type: 'detach', workspaceId: 'perch-aa' });
+    expect(voice.session.abort).toHaveBeenCalled();
+    voice.press();
+    expect(fp.sessions[0]!.written).toEqual([]);
+
+    const second = attached();
+    await tick();
+    second.conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    await tick();
+    second.conn.triggerClose();
+    expect(second.voice.session.abort).toHaveBeenCalledWith('The phone disconnected');
+  });
+
+  it('refuses while Claude shows a question or a permission menu', async () => {
+    const deps = baseDeps();
+    const [only] = await deps.tmux.listSessions('perch-');
+    const { conn, voice } = attached({
+      tmux: { ...deps.tmux, listSessions: async () => [{ ...only!, program: { state: 'blocked', changedAt: 1 } }] },
+    });
+    await tick();
+    conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    await tick();
+    expect(voice.start).not.toHaveBeenCalled();
+    expect(conn.sent).toContainEqual({ type: 'voiceDone', id: 'v1', ok: false, error: 'Answer Claude’s question first, then dictate' });
+  });
+
+  it('stops a running dictation when a question opens in its workspace, and no other', async () => {
+    const handlers: ConnectionHandler[] = [];
+    const fp = fakePty();
+    const conn = fakeConn();
+    const voice = fakeVoice();
+    handlers.push(new ConnectionHandler(conn.conn, { ...baseDeps(), pty: fp.pty, claudeVoice: { start: voice.start } }));
+    conn.emit({ type: 'auth', token: 'secret' });
+    conn.emit({ type: 'attach', workspaceId: 'perch-aa', cols: 80, rows: 24 });
+    await tick();
+    conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    await tick();
+    handlers[0]!.stopVoiceIn('perch-bb', 'asked');
+    expect(voice.session.abort).not.toHaveBeenCalled();
+    handlers[0]!.stopVoiceIn('perch-aa', 'Dictation stopped: Claude asked a question');
+    await tick();
+    expect(conn.sent).toContainEqual({ type: 'voiceDone', id: 'v1', ok: false, error: 'Dictation stopped: Claude asked a question' });
+  });
+
+  it('answers a superseded dictation under its own id', async () => {
+    const { conn, voice } = attached();
+    await tick();
+    conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    await tick();
+    conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v2' });
+    await tick();
+    expect(voice.session.abort).toHaveBeenCalledWith('Superseded by a newer dictation');
+    expect(conn.sent).toContainEqual({ type: 'voiceDone', id: 'v1', ok: false, error: 'Superseded by a newer dictation' });
+    expect(conn.sent).not.toContainEqual(expect.objectContaining({ type: 'voiceDone', id: 'v2' }));
+  });
+
+  it('cancels a dictation still in its checks when the workspace is detached', async () => {
+    const { conn, voice } = attached();
+    await tick();
+    conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    conn.emit({ type: 'detach', workspaceId: 'perch-aa' });
+    await tick();
+    expect(voice.start).not.toHaveBeenCalled();
+    expect(conn.sent).toContainEqual({ type: 'voiceDone', id: 'v1', ok: false, error: 'The workspace was closed' });
+  });
+
+  it('cancels the dictation when another workspace is opened', async () => {
+    const { conn, voice } = attached();
+    await tick();
+    conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    await tick();
+    conn.emit({ type: 'attach', workspaceId: 'perch-bb', cols: 80, rows: 24 });
+    await tick();
+    expect(voice.session.abort).toHaveBeenCalledWith('The workspace was closed');
+  });
+
+  it('refuses a workspace that is not attached, and a machine without voice', async () => {
+    const voice = fakeVoice();
+    const conn = fakeConn();
+    new ConnectionHandler(conn.conn, { ...baseDeps(), claudeVoice: { start: voice.start } });
+    conn.emit({ type: 'auth', token: 'secret' });
+    conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    await tick();
+    expect(voice.start).not.toHaveBeenCalled();
+    expect(conn.sent).toContainEqual(expect.objectContaining({ type: 'voiceDone', ok: false }));
+
+    const bare = fakeConn();
+    new ConnectionHandler(bare.conn, baseDeps());
+    bare.emit({ type: 'auth', token: 'secret' });
+    bare.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    await tick();
+    expect(bare.sent).toContainEqual(expect.objectContaining({ type: 'voiceDone', ok: false, error: expect.stringMatching(/Linux/) }));
+  });
+});
+
 describe('ConnectionHandler attach lifecycle', () => {
   it('attaches, streams base64 output, forwards input and resize', async () => {
     const fp = fakePty();

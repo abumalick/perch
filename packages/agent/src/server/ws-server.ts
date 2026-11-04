@@ -1,3 +1,4 @@
+import type { ClaudeVoice } from '../application/claude-voice';
 import { constantTimeEqual } from '@perch/secure-channel';
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import { NoiseClientConnection, type NoiseClientConnectionOptions } from './noise-client-connection';
@@ -78,6 +79,7 @@ export interface WsServerDeps {
   repoRemote?: RepoRemotePort;
   claudeSessions?: ClaudeSessionsPort;
   scopes?: ProcessScopePort;
+  claudeVoice?: Pick<ClaudeVoice, 'start'>;
   // Absent on a platform with no collector: the agent then never sends `stats` and the
   // PWA shows no load strip for this machine.
   systemStats?: SystemStatsPort;
@@ -141,6 +143,8 @@ export class WsServer {
   // Sessions whose needs-feedback an OSC 7501 turn end set — see applyProgramStatus. In-memory:
   // losing it costs one race won by needs-feedback, never a hidden prompt.
   private readonly oscTurnEnded = new Set<string>();
+  // The panes showing a question or menu at the last poll.
+  private asking = new Set<string>();
   // The last OSC 7501 record seen per pane, so only a change is applied (applyProgramStatus).
   private readonly programSeen = new Map<string, string>();
 
@@ -440,6 +444,17 @@ export class WsServer {
       },
       sessions,
     );
+    // `asking` can flip with the status unchanged (a question after a permission prompt, or
+    // Esc out of one), so a flip is pushed here; the phone keeps Claude voice off meanwhile.
+    const asking = new Set(sessions.filter((s) => s.program?.state === 'blocked').map((s) => s.name));
+    const flipped = [...asking, ...this.asking].filter((name) => asking.has(name) !== this.asking.has(name));
+    this.asking = asking;
+    for (const name of flipped) {
+      if (asking.has(name)) {
+        for (const handler of this.handlers) handler.stopVoiceIn(name, 'Dictation stopped: Claude asked a question');
+      }
+      void this.broadcastWorkspace(name).catch(() => undefined);
+    }
   }
 
   // Runs whether or not a client is connected: the snapshot must be current when the server dies.

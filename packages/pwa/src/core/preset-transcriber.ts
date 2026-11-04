@@ -1,4 +1,4 @@
-import type { DictationPreset, DictationProvider } from './dictation-presets';
+import type { DictationPreset } from './dictation-presets';
 import type { Transcriber } from './ports/transcriber';
 
 // The transcriber the mic uses: whichever provider the current preset names, read at each
@@ -6,7 +6,7 @@ import type { Transcriber } from './ports/transcriber';
 export class PresetTranscriber implements Transcriber {
   constructor(
     private readonly current: () => DictationPreset,
-    private readonly byProvider: Record<DictationProvider, Transcriber>,
+    private readonly byProvider: Record<DictationPreset['provider'], Transcriber>,
   ) {}
 
   transcribe(audio: Blob): Promise<string> {

@@ -404,3 +404,20 @@ describe('listWorkspaces parent link', () => {
     expect(byId(result, 'perch-parked')).not.toHaveProperty('waitingOn');
   });
 });
+
+describe('listWorkspaces asking', () => {
+  it('marks a pane that shows a question or menu, and nothing else', async () => {
+    const tmux: TmuxPort = {
+      ...baseTmux,
+      listSessions: async () => [
+        { name: 'perch-ask', startPath: '/w/foo', command: 'claude', createdAt: 1, title: '', program: { state: 'blocked', changedAt: 2 } },
+        { name: 'perch-busy', startPath: '/w/foo', command: 'claude', createdAt: 1, title: '', program: { state: 'working', changedAt: 2 } },
+        { name: 'perch-old', startPath: '/w/foo', command: 'claude', createdAt: 1, title: '' },
+      ],
+    };
+    const result = await listWorkspaces({ ...baseDeps, tmux });
+    expect(result.find((w) => w.id === 'perch-ask')?.asking).toBe(true);
+    expect(result.find((w) => w.id === 'perch-busy')).not.toHaveProperty('asking');
+    expect(result.find((w) => w.id === 'perch-old')).not.toHaveProperty('asking');
+  });
+});

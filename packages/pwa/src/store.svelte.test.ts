@@ -647,6 +647,50 @@ describe('PerchStore', () => {
     expect(store.autoFocus).toBe(true);
   });
 
+  it('opens the created workspace when another machine already has a workspace with its id', () => {
+    const other = { ...mac, id: 'mini', name: 'Mini', url: 'wss://mini', token: 't2' };
+    const { store, sockets } = build([mac, other]);
+    store.start();
+    for (const url of ['wss://mac', 'wss://mini']) {
+      sockets[url]!.open();
+      sockets[url]!.deliver({ type: 'authResult', ok: true });
+    }
+    sockets['wss://mini']!.deliver({
+      type: 'workspaces',
+      workspaces: [
+        { machineId: 'mini', id: 'perch-1', name: 'p', projectPath: '/p', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'idle' },
+      ],
+    });
+    store.goCreate();
+    store.requestCreate('mac', '/p', 'claude');
+    sockets['wss://mac']!.deliver({
+      type: 'workspaces',
+      workspaces: [
+        { machineId: 'mac', id: 'perch-1', name: 'p', projectPath: '/p', command: 'claude', createdAt: 1, lastActivityAt: 1, status: 'idle' },
+      ],
+    });
+    expect(store.view).toBe('terminal');
+    expect(store.active?.machineId).toBe('mac');
+  });
+
+  it('ignores another machine closing or streaming a workspace with the open id', () => {
+    const other = { ...mac, id: 'mini', name: 'Mini', url: 'wss://mini', token: 't2' };
+    const { store, sockets } = build([mac, other]);
+    store.start();
+    for (const url of ['wss://mac', 'wss://mini']) {
+      sockets[url]!.open();
+      sockets[url]!.deliver({ type: 'authResult', ok: true });
+    }
+    const output: string[] = [];
+    store.onOutput = (bytes) => output.push(bytes);
+    store.open({ machineId: 'mac', id: 'perch-1', name: 'p', projectPath: '/p', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'idle' });
+    sockets['wss://mini']!.deliver({ type: 'output', workspaceId: 'perch-1', data: btoa('x') });
+    sockets['wss://mini']!.deliver({ type: 'closed', workspaceId: 'perch-1' });
+    expect(output).toEqual([]);
+    expect(store.view).toBe('terminal');
+    expect(store.active?.machineId).toBe('mac');
+  });
+
   it('stays on the create form and surfaces a create error, clearing the pending create', () => {
     const { store, sockets } = build([mac]);
     store.start();

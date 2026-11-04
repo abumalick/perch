@@ -133,7 +133,7 @@
     type="button"
     class="row"
     data-status={ws.status}
-    aria-current={ws.id === store.active?.id ? 'true' : undefined}
+    aria-current={ws.machineId === store.active?.machineId && ws.id === store.active?.id ? 'true' : undefined}
     onclick={() => store.open(ws)}
   >
     <span class="body">

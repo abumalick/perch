@@ -514,12 +514,12 @@ export class PerchStore {
     if (this.channelsFor(machineId).handle(message)) return;
     switch (message.type) {
       case 'output':
-        if (this.active?.id === message.workspaceId) this.onOutput?.(decode(message.data));
+        if (this.isActive(machineId, message.workspaceId)) this.onOutput?.(decode(message.data));
         return;
       case 'fileStored':
         // The agent saved a pasted file under the workspace cwd; type its relative path
         // into the terminal at the cursor, exactly like typed input.
-        if (this.active?.id === message.workspaceId) this.injectInput(message.path);
+        if (this.isActive(machineId, message.workspaceId)) this.injectInput(message.path);
         return;
       case 'voiceDone': {
         const voice = this.voice;
@@ -530,12 +530,12 @@ export class PerchStore {
         return voice.settle(null);
       }
       case 'detached':
-        if (this.active?.id === message.workspaceId && message.reason === 'opened-elsewhere') {
+        if (this.isActive(machineId, message.workspaceId) && message.reason === 'opened-elsewhere') {
           this.terminalState = 'moved';
         }
         return;
       case 'closed':
-        if (this.active?.id === message.workspaceId) this.back();
+        if (this.isActive(machineId, message.workspaceId)) this.back();
         return;
       case 'workspaces':
         this.claudeVoiceOn = { ...this.claudeVoiceOn, [machineId]: message.claudeVoice === true };
@@ -599,6 +599,11 @@ export class PerchStore {
       default:
         return;
     }
+  }
+
+  // Ids repeat across machines (`<folder>-<n>`), so the open workspace is named by both.
+  isActive(machineId: string, workspaceId: string): boolean {
+    return this.active?.machineId === machineId && this.active.id === workspaceId;
   }
 
   open(workspace: Workspace, focus = false): void {
@@ -1165,7 +1170,8 @@ export class PerchStore {
     // Open the keyboard while the create tap's gesture is still live (see keyboardAnchor).
     this.keyboardAnchor?.();
     this.createError = null;
-    const existingIds = new Set(this.workspaces.map((w) => w.id));
+    // Only this machine's ids: short ids (`<folder>-<n>`) repeat across machines.
+    const existingIds = new Set(this.workspaces.filter((w) => w.machineId === machineId).map((w) => w.id));
     this.pendingCreate = { machineId, projectPath, existingIds };
     this.lastMachineId = machineId;
     this.deps.settings.setLastMachine(machineId);

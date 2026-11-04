@@ -23,6 +23,17 @@ export const status = {
   minutesAgo: (n: number) => `${n}m ago`,
   hoursAgo: (n: number) => `${n}h ago`,
   errorCode: (code: number) => ` (code ${code})`,
+  diagnostic: {
+    timedOut: 'connection timed out',
+    failed: (why: string) => `connection failed (${why})`,
+    closedByAgent: (reason: string) => `closed by agent — ${reason}`,
+    dropped: 'opened then dropped',
+    authRejected: 'auth rejected',
+    legacyEntry: 'old direct entry — no longer supported; pair this machine again',
+    networkError: 'likely network error — relay unreachable',
+    neverOpened: 'never opened',
+    secureChannel: 'secure channel failed',
+  },
   age: {
     underMinute: '<1m',
     minutes: (n: number) => `${n}m`,

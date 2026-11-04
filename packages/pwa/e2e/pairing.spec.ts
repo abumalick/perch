@@ -182,3 +182,18 @@ test('on iOS outside the Home Screen app, a pairing link waits to be carried int
   expect(asked).toEqual([expect.stringContaining('Pair with dev box')]);
   expect(agent.received.find((m) => m.type === 'auth')).toEqual({ type: 'auth', token: SECRET });
 });
+
+test.describe('on a French phone', () => {
+  test.use({ locale: 'fr-FR' });
+
+  test('the pairing link is confirmed in French', async ({ page, baseURL }) => {
+    const asked: string[] = [];
+    page.on('dialog', (dialog) => {
+      asked.push(dialog.message());
+      void dialog.dismiss();
+    });
+    await page.goto(link(baseURL!));
+    await expect(page.getByText('Aucune machine pour l’instant')).toBeVisible();
+    expect(asked).toEqual([expect.stringMatching(/^Associer dev box via 127.0.0.1/)]);
+  });
+});

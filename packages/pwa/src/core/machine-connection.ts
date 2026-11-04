@@ -2,6 +2,10 @@ import { parseAgentMessage, type AgentMessage, type ClientMessage } from '@perch
 import type { CloseInfo, Socket, SocketFactory } from './ports/socket';
 import { REFUSAL } from '@perch/secure-channel';
 import { describeRefusal, type RefusalContext } from './refusal';
+import { en } from './i18n/en';
+
+// Recorded in English for the connection log; the UI words them in the current language.
+const DIAGNOSTIC = en.status.diagnostic;
 
 export type ConnectionStatus = 'connecting' | 'online' | 'offline';
 
@@ -237,7 +241,7 @@ export class MachineConnection {
     let message: string;
     if (this.timedOut) {
       // We reaped the socket ourselves after it stalled in CONNECTING.
-      message = 'connection timed out';
+      message = DIAGNOSTIC.timedOut;
     } else if (!this.opened) {
       // Closed before ever opening: never reached the agent. A 1006 abnormal closure here
       // means the relay could not be reached. A reason means the socket knows better (e.g. the
@@ -245,13 +249,13 @@ export class MachineConnection {
       const why = reason
         ? reason
         : this.errored || code === 1006
-          ? 'likely network error — relay unreachable'
-          : 'never opened';
-      message = `connection failed (${why})`;
+          ? DIAGNOSTIC.networkError
+          : DIAGNOSTIC.neverOpened;
+      message = DIAGNOSTIC.failed(why);
     } else if (reason) {
-      message = `closed by agent — ${reason}`;
+      message = DIAGNOSTIC.closedByAgent(reason);
     } else {
-      message = 'opened then dropped';
+      message = DIAGNOSTIC.dropped;
     }
     return { message, code, at: this.now() };
   }
@@ -292,7 +296,7 @@ export class MachineConnection {
         this.deps.onStatus('online');
       } else {
         this.rejected = true;
-        this.deps.onDiagnostic?.({ message: 'auth rejected', at: this.now() });
+        this.deps.onDiagnostic?.({ message: DIAGNOSTIC.authRejected, at: this.now() });
         this.deps.onStatus('offline');
         this.socket?.close();
       }

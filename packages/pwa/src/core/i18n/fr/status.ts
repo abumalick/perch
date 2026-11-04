@@ -25,6 +25,17 @@ export const status: Messages['status'] = {
   minutesAgo: (n) => `il y a ${n} min`,
   hoursAgo: (n) => `il y a ${n} h`,
   errorCode: (code) => ` (code ${code})`,
+  diagnostic: {
+    timedOut: 'délai de connexion dépassé',
+    failed: (why) => `échec de la connexion (${why})`,
+    closedByAgent: (reason) => `fermée par l’agent — ${reason}`,
+    dropped: 'ouverte puis perdue',
+    authRejected: 'authentification refusée',
+    legacyEntry: 'ancienne entrée directe — plus prise en charge ; associez à nouveau cette machine',
+    networkError: 'probablement une erreur réseau — relais injoignable',
+    neverOpened: 'jamais ouverte',
+    secureChannel: 'échec du canal sécurisé',
+  },
   age: {
     underMinute: '<1 min',
     minutes: (n) => `${n} min`,

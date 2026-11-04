@@ -33,6 +33,16 @@ device key, and streams its terminals. No agent listens on a phone-facing port.
 - `packages/pwa` (`@perch/pwa`) — Svelte 5 (runes) PWA. xterm.js terminal, vite-plugin-pwa
   (auto-update), Playwright e2e. Core logic (connection manager, aggregator, store) is in
   `src/core` + `src/adapters` and unit-tested with a fake socket; `src/lib` is the UI.
+- **The PWA speaks English and French.** Every string a user reads goes in
+  `src/core/i18n/en/<namespace>.ts` and its French twin (typed `Messages['<namespace>']`, so the
+  typecheck fails on a missing entry) and is read with `msg()` from `src/i18n.svelte.ts` at the
+  point of use, never in a module-level constant, which would freeze the language at load.
+  The language follows the phone (`navigator.languages`), unless Settings → Language pins one
+  (`perch.language`); `main.ts` applies it before the pairing prompt. Not translated: what the
+  agent sends, commands inside messages, key caps, model and provider names, the default
+  dictation presets, and anything that only reaches a log. Connection diagnostics stay English
+  at the source (the connection log keeps them) and are worded at display
+  (`lib/machine-status.ts`).
 
 ## Commands (per package via `pnpm --filter @perch/<pkg> …`)
 - Test: `test` (vitest). Types: `typecheck`. Build (pwa): `build`. E2E (pwa):

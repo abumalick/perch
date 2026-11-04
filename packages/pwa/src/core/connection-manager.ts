@@ -2,6 +2,7 @@ import type { AgentMessage, ClientMessage } from '@perch/contracts';
 import { MachineConnection, type ConnectionDiagnostic, type ConnectionStatus } from './machine-connection';
 import type { SocketFactory } from './ports/socket';
 import type { WorkspaceAggregator } from './workspace-aggregator';
+import { en } from './i18n/en';
 import { isConnectable, isRelayMachine, type MachineConfig } from './settings-store';
 import type { RefusalContext } from './refusal';
 
@@ -63,7 +64,7 @@ export class ConnectionManager {
     }
     for (const config of configs) {
       if (!isRelayMachine(config)) {
-        this.notConnecting(config.id, 'old direct entry — no longer supported; pair this machine again');
+        this.notConnecting(config.id, en.status.diagnostic.legacyEntry);
         continue;
       }
       if (config.enabled === false) continue;

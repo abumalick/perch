@@ -24,6 +24,8 @@ import { WakeLockRecorder } from './core/wake-lock-recorder';
 import { WebAudioPcm } from './adapters/web-audio-pcm';
 import { VERSION_FILE, parseVersionJson } from './core/version-file';
 import { acceptPairingLink, outsideInstalledApp, takePairingFragment, type PairingPrompts } from './core/pairing';
+import { setLanguage } from './i18n.svelte';
+import { resolveLanguage } from './core/i18n/language';
 
 // Poll for a new service worker every minute so an OPEN PWA learns about new builds.
 // registerType is 'prompt': the new worker installs and waits instead of reloading on
@@ -64,6 +66,8 @@ const aggregator = new WorkspaceAggregator();
 
 const storage = new LocalStorageAdapter();
 const settings = new SettingsStore(storage);
+// Before anything can speak: a pairing link's confirmation below comes ahead of the first render.
+setLanguage(resolveLanguage(settings.languageChoice(), navigator.languages ?? []));
 const prompts: PairingPrompts = {
   confirm: (message) => window.confirm(message),
   alert: (message) => window.alert(message),

@@ -105,7 +105,9 @@ pnpm --filter @perch/agent exec tsx src/cli.ts install-hooks
 It also registers a second `PreToolUse` hook on `Bash`, `~/.perch/perch-guard.sh`, which refuses
 `pkill`, `killall`, `kill -1`, `xargs kill`, `kill $(pgrep …)` and an unscoped
 `tmux kill-server`/`kill-session -a` run from inside a workspace. The tmux server, the agent and
-every session run as one user, so one pattern kill ends them all.
+every session run as one user, so one pattern kill ends them all. It also refuses a raw socket client
+(`nc -U`, `socat`, `curl --unix-socket`) aimed at another session's message socket, and setting
+`@perch_parent` or `@perch_codex_thread` by hand (docs/MESSAGING.md).
 
 Where Codex is installed (`~/.codex` exists), the same command also merges
 UserPromptSubmit/PreToolUse/PostToolUse/PermissionRequest/Stop hooks into `~/.codex/hooks.json`.

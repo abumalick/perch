@@ -16,10 +16,13 @@ export interface AgentConfig {
   keytermsPath: string;
   clientLogPath: string;
   hookEventLogPath: string;
+  messageLogPath: string;
   workspaceLogPath: string;
   parkedStorePath: string;
   liveSnapshotPath: string;
   claudeSessionsDir: string;
+  // The sockets the Perch extension for Pi binds, one per workspace (docs/MESSAGING.md).
+  inboxDir: string;
   sessionPrefix: string;
   // The relays the agent also serves clients through, one RelayLink each (e.g. the Cloudflare
   // Worker and a self-hosted relay), from PERCH_RELAY_URLS. The account comes from the key
@@ -68,12 +71,14 @@ export function loadConfig(env: NodeJS.ProcessEnv, home: string): AgentConfig {
     keytermsPath: env.PERCH_KEYTERMS_PATH ?? join(home, '.perch', 'keyterms.txt'),
     clientLogPath: join(home, '.perch', 'client-log.jsonl'),
     hookEventLogPath: join(home, '.perch', 'hook-events.jsonl'),
+    messageLogPath: join(home, '.perch', 'messages.jsonl'),
     workspaceLogPath: join(home, '.perch', 'workspace-log.jsonl'),
     parkedStorePath: join(home, '.perch', 'parked.json'),
     liveSnapshotPath: join(home, '.perch', 'live.json'),
     // Claude Code's own registry, not Perch's — read-only, and absent on a machine
     // without Claude Code.
     claudeSessionsDir: join(home, '.claude', 'sessions'),
+    inboxDir: join(home, '.perch', 'inbox'),
     sessionPrefix: 'perch-',
     relayUrls: relayUrls(env),
     relayKeyPath: join(home, '.perch', 'relay-key.json'),

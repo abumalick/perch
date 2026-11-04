@@ -16,6 +16,13 @@ import { ProcSystemStats } from './infrastructure/proc-system-stats';
 import { SystemdScopeReaper } from './infrastructure/systemd-scope-reaper';
 import { FileClientLogStore } from './infrastructure/file-client-log-store';
 import { FileHookEventLog } from './infrastructure/file-hook-event-log';
+import { FileMessageLog } from './infrastructure/file-message-log';
+import { ProcAncestry } from './infrastructure/proc-ancestry';
+import { CompositeDelivery } from './infrastructure/composite-delivery';
+import { ClaudeInboxDelivery } from './infrastructure/claude-inbox-delivery';
+import { PiInboxDelivery } from './infrastructure/pi-inbox-delivery';
+import { CodexAppServer } from './infrastructure/codex-app-server';
+import { CodexDelivery } from './infrastructure/codex-delivery';
 import { FileWorkspaceLogStore } from './infrastructure/file-workspace-log-store';
 import { FileParkedStore } from './infrastructure/file-parked-store';
 import { reconcileParked } from './application/reconcile-parked';
@@ -118,6 +125,15 @@ async function main(): Promise<void> {
     keyterms: new FileKeytermsStore(config.keytermsPath),
     clientLog: new FileClientLogStore(config.clientLogPath),
     hookEventLog: new FileHookEventLog(config.hookEventLogPath),
+    messaging: {
+      ancestry: new ProcAncestry(),
+      delivery: new CompositeDelivery({
+        claude: new ClaudeInboxDelivery(claudeSessions, async (id) => (await tmux.firstPaneId?.(id)) ?? null),
+        pi: new PiInboxDelivery(config.inboxDir),
+        codex: new CodexDelivery(new CodexAppServer()),
+      }),
+      log: new FileMessageLog(config.messageLogPath),
+    },
     workspaceLog,
     parked,
     liveSnapshot,

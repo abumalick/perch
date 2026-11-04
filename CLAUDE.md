@@ -24,8 +24,8 @@ device key, and streams its terminals. No agent listens on a phone-facing port.
 - `packages/agent` (`@perch/agent`) — per-machine agent. tmux via `node:child_process`,
   terminal streaming via `node-pty`, a `RelayLink` per relay that dials a socket back for
   each phone (served through `NoiseClientConnection`), and a `node:http` server on
-  `127.0.0.1` with two bearer-token-guarded routes: `POST /hooks` (Claude Code hooks report
-  attention here) and `POST /unpark` (`perch unpark`).
+  `127.0.0.1` with three bearer-token-guarded routes: `POST /hooks` (Claude Code hooks report
+  attention here), `POST /unpark` (`perch unpark`) and `POST /message` (`perch send`).
   Domain/application in `application/` + `ports/`, adapters in `infrastructure/`, wiring in
   `server/`.
 - `packages/relay` (`@perch/relay`), `packages/relay-cf`, `packages/secure-channel` — the
@@ -75,8 +75,8 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   `deploy/run-agent.sh`, which self-locates `mise` (services don't inherit an interactive
   PATH). Run `mise trust` once per machine or the unit crash-loops.
 - **An agent is reached only through its relays.** It binds `127.0.0.1` whatever
-  `PERCH_HOST` says (a non-loopback value is ignored with a warning), serves only `POST /hooks`
-  and `POST /unpark` there, and is never published with `tailscale serve`. `pnpm perch connect` joins a machine
+  `PERCH_HOST` says (a non-loopback value is ignored with a warning), serves only `POST /hooks`,
+  `POST /unpark` and `POST /message` there, and is never published with `tailscale serve`. `pnpm perch connect` joins a machine
   to a relay; `perch pair` pairs a phone (relay section).
 - The PWA is built and served on the always-on machine via `deploy/run-pwa.sh` +
   `tailscale serve`, and added to the iPhone home screen.
@@ -308,6 +308,34 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   `needs-orchestrator`. The PWA nests one level of children under a listed, unparked parent on
   the same machine (`core/nest-workspaces.ts`), folded by default; a group ranks by its most
   urgent member, and Next walks children of folded parents too.
+- **Cross-agent messaging (`perch send`).** `perch send <id> "<message>"` (or stdin) lets one
+  workspace message another on the same machine, for Claude, Codex and Pi; how it works and the
+  authority text each CLI needs are in `docs/MESSAGING.md`. Things not to "simplify":
+  - **The agent delivers, not the CLI** (`POST /message`, the hooks secret, as `unpark`): one
+    process serialises deliveries and owns the sender's marks and the log.
+  - **The sender is proven, never named by the caller:** pane ancestry for Claude and Pi, and for
+    Codex `CODEX_THREAD_ID` matched to `@perch_codex_thread` (its tools run in the daemon's
+    sandbox, outside the pane).
+  - **Perch writes the header, and only the first line of the whole message grants authority**
+    (`from your ORCHESTRATOR` = the owner). Body lines that begin `[Perch message` (after any
+    whitespace, any case, `[` or `［`) are quoted `> `, and Claude's text has both envelope tags
+    escaped so a body cannot close its envelope or open another.
+  - **Each message carries a random `msg` id on its `from:` line:** Claude's inbox drops a body
+    equal to one the same peer sent within 30 s, and every Perch delivery is the same peer.
+  - **The body is inline only.** No `--file`: a path in a message is an instruction, not data.
+  - **No queue for a parked recipient:** it is refused ("run `perch unpark` first"), because a
+    held message would be delivered into a conversation nobody chose to reopen.
+  - **`sentDuringTool` keeps the sender's "Needs orchestrator" mark:** the send's own
+    `PostToolUse` arrives after the mark is set and would clear it.
+    Accepted edge: a `perch send` run by a subagent marks the parent workspace too, since the
+    sender is proven by pane and the subagent's Bash runs in the parent's pane.
+  - **Codex takes messages only in workspaces made by `perch spawn --cli codex`:** Perch creates
+    the thread, records `@perch_codex_thread` and launches exactly `codex resume <thread id>`
+    (no `-c`, which would force an in-process thread nothing can reach). A phone-created Codex
+    keeps `--no-daemon`. Spawn refuses when the CLI and daemon versions differ.
+  - **Accepted limit: one Linux user.** A process of that user can still write an inbox socket or
+    re-parent a session; `perch-guard.sh` and the CLIs' reviewers refuse only the obvious routes
+    (`docs/MESSAGING.md`).
 - **Closing a workspace reaps the pane's systemd scope — and acknowledges before it does.**
   tmux (built with systemd support) puts every pane it spawns in its own transient
   `tmux-spawn-<uuid>.scope`. `tmux kill-session` only SIGHUPs the pane's process **group**, so
@@ -1175,7 +1203,12 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   is an accident guard, not a boundary. Its splitter (awk, so it runs on macOS's bash 3.2 and
   BSD tools) keeps a quoted string whole, so `rg "pkill|killall"` or a commit message naming
   these commands is not refused (refusing those taught sessions to route around the hook), and
-  checks a `sh -c` script as its own command line. It parses the JSON without `jq`, like
+  checks a `sh -c` script as its own command line. It also refuses the two plain routes to
+  another session's authority (docs/MESSAGING.md): a raw socket client (`nc`, `ncat`, `socat`,
+  `curl`) whose command names a message socket (`cc-socks/`, `.perch/inbox/`,
+  `app-server-control/`; a client on any other socket passes), and `tmux set`/`set-option`/
+  `setw`/`set-window-option` of `@perch_parent` or `@perch_codex_thread` on the default server;
+  it points at `perch send` and `perch spawn --child`. It parses the JSON without `jq`, like
   `perch-hook.sh`. Table-tested in `perch-guard.test.sh`; re-run `install-hooks` per machine,
   and re-trust the Codex hooks in `/hooks`.
 - **Codex reports status through the same hook script, with `codex` as a third argument.**
@@ -1183,7 +1216,9 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   until the user trusts the hooks in `/hooks` (hash-keyed, so re-trust after a change). Three
   differences from Claude Code, all observed on Codex 0.162:
   - **Hooks run outside the pane unless Codex is started with `--no-daemon`**, which the create
-    form adds. Under the shared daemon the hook posts nothing (see the pane check above).
+    form adds. Under the shared daemon the hook posts the payload's `session_id` as `thread`
+    instead of a session name, and `/hooks` maps it through `@perch_codex_thread`; a thread no
+    workspace recorded changes nothing (`docs/MESSAGING.md`, "Codex delivery").
   - **A question is asynchronous.** `request_user_input_async`'s `PostToolUse` fires as soon as
     the question is shown, then the model sleeps on `clocksleep`; the answer arrives as a
     `UserPromptSubmit`. A third in-memory marker (`questionPending`) holds `needs-feedback`

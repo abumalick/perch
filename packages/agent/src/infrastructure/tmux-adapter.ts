@@ -26,6 +26,7 @@ const FORMAT = [
   '#{host_short}',
   '#{@perch_command}',
   '#{@perch_parent}',
+  '#{@perch_codex_thread}',
   '#{pane_program_state}',
   '#{pane_program_time}',
   '#{pane_title}',
@@ -63,15 +64,16 @@ export function isMissingSession(err: unknown): boolean {
 function parseLine(line: string): TmuxSessionInfo | null {
   const parts = line.split(SEP);
   if (parts.length < 3) return null;
-  const [name, startPath, created, host, hostShort, command, parent, programState, programTime] = parts;
+  const [name, startPath, created, host, hostShort, command, parent, codexThread, programState, programTime] = parts;
   if (!name || !startPath || !created) return null;
-  const title = parts.slice(9).join(SEP);
+  const title = parts.slice(10).join(SEP);
   return {
     name,
     startPath,
     command: command ?? '',
     createdAt: Number(created) * 1000,
     ...(parent ? { parent } : {}),
+    ...(codexThread ? { codexThread } : {}),
     ...(programState ? { program: { state: programState, changedAt: Number(programTime) * 1000 } } : {}),
     // A pane's title is the host name until its program sets one: that is tmux's, not a name.
     title: title === host || title === hostShort ? '' : title,
@@ -139,7 +141,7 @@ export class TmuxAdapter implements TmuxPort {
       .filter((s): s is TmuxSessionInfo => s !== null && (s.command !== '' || s.name.startsWith(prefix)));
   }
 
-  async createSession(input: { name: string; cwd: string; command: string; parent?: string; storedCommand?: string }): Promise<void> {
+  async createSession(input: { name: string; cwd: string; command: string; parent?: string; storedCommand?: string; codexThread?: string }): Promise<void> {
     try {
       await this.tmux(['new-session', '-d', '-s', input.name, '-c', input.cwd, input.command]);
     } catch (err) {
@@ -148,6 +150,7 @@ export class TmuxAdapter implements TmuxPort {
     }
     await this.tmux(['set-option', '-t', exactTarget(input.name), '@perch_command', input.storedCommand ?? input.command]);
     if (input.parent) await this.tmux(['set-option', '-t', exactTarget(input.name), '@perch_parent', input.parent]);
+    if (input.codexThread) await this.tmux(['set-option', '-t', exactTarget(input.name), '@perch_codex_thread', input.codexThread]);
   }
 
   async killSession(name: string): Promise<void> {
@@ -219,6 +222,27 @@ export class TmuxAdapter implements TmuxPort {
   async capturePane(name: string, historyLines: number): Promise<string> {
     const { stdout } = await this.tmux(['capture-pane', '-p', '-J', '-t', exactTarget(name), '-S', `-${historyLines}`]);
     return stdout;
+  }
+
+  // A pane id (`%N`) is already exact, so it takes no `exactTarget`.
+  async pidOfPane(paneId: string): Promise<number | null> {
+    try {
+      const { stdout } = await this.tmux(['display-message', '-p', '-t', paneId, '#{pane_pid}']);
+      const pid = Number(stdout.trim());
+      return Number.isInteger(pid) && pid > 0 ? pid : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // `-s`: every window's panes, in window then pane order.
+  async firstPaneId(name: string): Promise<string | null> {
+    try {
+      const { stdout } = await this.tmux(['list-panes', '-s', '-t', exactTarget(name), '-F', '#{pane_id}']);
+      return stdout.split('\n')[0]?.trim() || null;
+    } catch {
+      return null;
+    }
   }
 
   async sessionOfPane(paneId: string): Promise<string | null> {

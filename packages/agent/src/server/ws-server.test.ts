@@ -33,6 +33,7 @@ import type { SystemStatsPort } from '../ports/system-stats-port';
 import { connectBrowserUpstream } from '../infrastructure/ws-browser-stream-socket';
 import { wsFrameSocket } from '../infrastructure/ws-frame-socket';
 import type { HookEventEntry } from '../ports/hook-event-log-port';
+import type { MessageLogEntry } from '../ports/message-log-port';
 import type { AgentMessage } from '@perch/contracts';
 import {
   SecureSession,
@@ -193,6 +194,7 @@ function testConfig(home: string, overrides: Partial<AgentConfig> = {}): AgentCo
     keytermsPath: join(home, 'keyterms.txt'),
     clientLogPath: join(home, 'client-log.jsonl'),
     hookEventLogPath: join(home, 'hook-events.jsonl'),
+    messageLogPath: join(home, 'messages.jsonl'),
     workspaceLogPath: join(home, 'workspace-log.jsonl'),
     parkedStorePath: join(home, 'parked.json'),
     liveSnapshotPath: join(home, 'live.json'),
@@ -201,6 +203,7 @@ function testConfig(home: string, overrides: Partial<AgentConfig> = {}): AgentCo
     devicesPath: join(home, 'devices.json'),
     pairingPath: join(home, 'pairing.json'),
     claudeSessionsDir: join(home, 'claude-sessions'),
+    inboxDir: join(home, 'inbox'),
     sessionPrefix: 'perch-',
     ...overrides,
   };
@@ -2325,5 +2328,182 @@ describe('WsServer lost-workspace tracking', () => {
     server = new WsServer({ ...makeServerDeps(config, noClientLog), liveSnapshot });
     server.forgetWorkspace('perch-a');
     await until(async () => (await liveSnapshot.read())?.workspaces.length === 0);
+  });
+});
+
+// `perch send` asks the agent, which proves the caller runs inside the pane it names and holds
+// the marks the send sets.
+describe('WsServer POST /message', () => {
+  const sockets: WebSocket[] = [];
+  afterEach(() => {
+    for (const socket of sockets.splice(0)) socket.close();
+  });
+
+  async function messagingServer(descends: boolean, opts: { extra?: TmuxSessionInfo[]; listDelays?: number[] } = {}) {
+    const home = await mkdtemp(join(tmpdir(), 'perch-message-'));
+    dirs.push(home);
+    const delays = [...(opts.listDelays ?? [])];
+    const tmux: TmuxPort = {
+      listSessions: async () => {
+        const delay = delays.shift();
+        if (delay) await new Promise((r) => setTimeout(r, delay));
+        return [
+          { name: 'perch-child-1', startPath: tmpdir(), command: 'claude', createdAt: 1000, parent: 'perch-orch-1', title: '' },
+          { name: 'perch-orch-1', startPath: tmpdir(), command: 'claude', createdAt: 1000, title: '' },
+          { name: 'perch-cx-1', startPath: tmpdir(), command: 'codex resume t1', createdAt: 1000, codexThread: 't1', title: '' },
+          ...(opts.extra ?? []),
+        ];
+      },
+      createSession: async () => undefined,
+      killSession: async () => undefined,
+      hasSession: async () => true,
+      sessionOfPane: async (pane) => (pane === '%3' ? 'perch-child-1' : null),
+      panePid: async () => 4000,
+      pidOfPane: async (pane) => (pane === '%3' ? 4000 : null),
+    };
+    const status = new InMemoryStatusStore();
+    status.set('perch-child-1', 'working');
+    const delivered: Array<{ id: string; text: string }> = [];
+    const logged: MessageLogEntry[] = [];
+    server = new WsServer({
+      ...makeServerDeps(testConfig(home), noClientLog),
+      tmux,
+      status,
+      messaging: {
+        ancestry: { isAncestor: async (ancestor, pid) => descends && ancestor === 4000 && pid === 4242 },
+        delivery: {
+          deliver: async (target, text) => {
+            delivered.push({ id: target.id, text });
+            return { ok: true };
+          },
+        },
+        log: { append: async (e) => void logged.push(e) },
+      },
+    });
+    await server.start();
+    const port = server.address().port;
+    const post = (route: string, body: unknown, token = HOOK_TOKEN) =>
+      fetch(`http://127.0.0.1:${port}${route}`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    return { status, delivered, logged, post };
+  }
+
+  const send = { pane: '%3', pid: 4242, to: 'perch-orch-1', body: 'done: see PR' };
+
+  it('delivers over POST /message and marks the sender waiting', async () => {
+    const { status, delivered, logged, post } = await messagingServer(true);
+    const socket = new WebSocket(await clientUrl());
+    sockets.push(socket);
+    await new Promise((r) => socket.once('open', r));
+    socket.send(JSON.stringify({ type: 'auth', token: 'secret' }));
+    await nextMessage(socket);
+    // Not simply the next frame: a poll tick may broadcast another workspace first.
+    const pushed = new Promise<AgentMessage>((resolve) => {
+      socket.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString()) as AgentMessage;
+        if (msg.type === 'workspaceUpdated' && msg.workspace.id === 'perch-child-1') resolve(msg);
+      });
+    });
+
+    const res = await post('/message', send);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ result: 'delivered' });
+    expect(delivered.map((d) => d.id)).toEqual(['perch-orch-1']);
+    expect(delivered[0]!.text).toContain('done: see PR');
+    expect(logged).toMatchObject([{ from: 'perch-child-1', to: 'perch-orch-1', relation: 'child', outcome: 'delivered' }]);
+    expect(await pushed).toMatchObject({ type: 'workspaceUpdated', workspace: { id: 'perch-child-1', waitingOn: 'parent' } });
+
+    // The Bash call that ran perch send ends, then the turn does: the child is still waiting.
+    expect((await post('/hooks', { sessionName: 'perch-child-1', event: 'PostToolUse', claude: { tool_name: 'Bash' } })).status).toBe(204);
+    expect((await post('/hooks', { sessionName: 'perch-child-1', event: 'Stop', claude: {} })).status).toBe(204);
+    expect(status.get('perch-child-1')).toBe('working');
+    socket.send(JSON.stringify({ type: 'list' }));
+    let list = await nextMessage(socket);
+    while (list.type !== 'workspaces') list = await nextMessage(socket);
+    expect(list.workspaces.find((w) => w.id === 'perch-child-1')).toMatchObject({ waitingOn: 'parent' });
+  });
+
+  // Ids are reused: a send's pending mark must not reach the next workspace that takes the id.
+  it('drops the send-during-tool mark with the rest of a gone workspace', async () => {
+    const { post } = await messagingServer(true);
+    expect(await (await post('/message', send)).json()).toEqual({ result: 'delivered' });
+    const marks = (server as unknown as { sentDuringTool: Set<string> }).sentDuringTool;
+    expect(marks.has('perch-child-1')).toBe(true);
+    server!.dropWorkspaceState('perch-child-1');
+    expect(marks.has('perch-child-1')).toBe(false);
+  });
+
+  it('refuses a pane the pid does not descend from', async () => {
+    const { status, delivered, post } = await messagingServer(false);
+    const res = await post('/message', send);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ result: 'refused', reason: 'not run from a Perch workspace' });
+    expect(delivered).toEqual([]);
+    expect(status.getMessagedLast('perch-child-1')).toBe(false);
+  });
+
+  it('names a Codex sender by the thread id it posts', async () => {
+    const { delivered, logged, post } = await messagingServer(false);
+    const res = await post('/message', { ...send, pane: '', codexThread: 't1' });
+    expect(await res.json()).toEqual({ result: 'delivered' });
+    expect(delivered.map((d) => d.id)).toEqual(['perch-orch-1']);
+    expect(logged).toMatchObject([{ from: 'perch-cx-1', outcome: 'delivered' }]);
+    expect((await post('/message', { ...send, codexThread: 42 })).status).toBe(400);
+  });
+
+  it('a Codex hook by thread lands on its workspace', async () => {
+    const { status, post } = await messagingServer(true);
+    expect((await post('/hooks', { thread: 't1', event: 'UserPromptSubmit', agent: 'codex', claude: { session_id: 't1' } })).status).toBe(204);
+    expect(status.get('perch-cx-1')).toBe('working');
+  });
+
+  it('an unknown thread changes nothing', async () => {
+    const { status, post } = await messagingServer(true);
+    expect((await post('/hooks', { thread: 'zz', event: 'Stop', agent: 'codex', claude: {} })).status).toBe(204);
+    expect(status.get('perch-cx-1')).toBeUndefined();
+    expect(status.get('perch-child-1')).toBe('working');
+    expect((await post('/hooks', { event: 'Stop', agent: 'codex', claude: {} })).status).toBe(400);
+  });
+
+  it('drops a thread post that is not from Codex, or names a thread only a non-Codex session records', async () => {
+    const extra = [{ name: 'perch-cl-1', startPath: tmpdir(), command: 'claude', createdAt: 1000, codexThread: 't2', title: '' }];
+    const { status, post } = await messagingServer(true, { extra });
+    expect((await post('/hooks', { thread: 't1', event: 'UserPromptSubmit', claude: {} })).status).toBe(204);
+    expect((await post('/hooks', { thread: 't1', event: 'UserPromptSubmit', agent: 'claude', claude: {} })).status).toBe(204);
+    expect(status.get('perch-cx-1')).toBeUndefined();
+    expect((await post('/hooks', { thread: 't2', event: 'UserPromptSubmit', agent: 'codex', claude: {} })).status).toBe(204);
+    expect(status.get('perch-cl-1')).toBeUndefined();
+  });
+
+  it('drops a hook for a thread more than one session records', async () => {
+    const extra = [{ name: 'perch-cx-2', startPath: tmpdir(), command: 'codex resume t1', createdAt: 1000, codexThread: 't1', title: '' }];
+    const { status, post } = await messagingServer(true, { extra });
+    expect((await post('/hooks', { thread: 't1', event: 'UserPromptSubmit', agent: 'codex', claude: {} })).status).toBe(204);
+    expect(status.get('perch-cx-1')).toBeUndefined();
+    expect(status.get('perch-cx-2')).toBeUndefined();
+  });
+
+  // The first post's session lookup is the slow one: applied on lookup, it would land last.
+  it('applies thread hooks in the order they arrive', async () => {
+    const { status, post } = await messagingServer(true, { listDelays: [80, 0] });
+    const first = post('/hooks', { thread: 't1', event: 'UserPromptSubmit', agent: 'codex', claude: {} });
+    await new Promise((r) => setTimeout(r, 20));
+    const second = post('/hooks', { thread: 't1', event: 'Stop', agent: 'codex', claude: {} });
+    expect((await first).status).toBe(204);
+    expect((await second).status).toBe(204);
+    expect(status.get('perch-cx-1')).toBe('needs-feedback');
+  });
+
+  it('401 without the secret, 400 for a malformed body', async () => {
+    const { delivered, post } = await messagingServer(true);
+    expect((await post('/message', send, 'wrong')).status).toBe(401);
+    expect((await post('/message', { ...send, pid: '4242' })).status).toBe(400);
+    expect((await post('/message', { ...send, pid: 42.5 })).status).toBe(400);
+    expect((await post('/message', { ...send, body: undefined })).status).toBe(400);
+    expect((await post('/message', 'not json at all')).status).toBe(400);
+    expect(delivered).toEqual([]);
   });
 });

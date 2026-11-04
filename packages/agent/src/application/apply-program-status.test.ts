@@ -18,6 +18,7 @@ function setup(initial: Record<string, WorkspaceStatus> = {}) {
     },
     deferred: new Set<string>(),
     messagedLast: new Set<string>(),
+    sentDuringTool: new Set<string>(),
     questionPending: new Set<string>(),
     seen: new Map<string, string>(),
     oscTurnEnded: new Set<string>(),

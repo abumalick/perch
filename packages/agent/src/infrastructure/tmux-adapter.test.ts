@@ -136,6 +136,19 @@ describe('TmuxAdapter (real tmux)', () => {
     expect(() => process.kill(pid!, 0)).not.toThrow();
   });
 
+  it('reads a pane pid by pane id, and the first pane id of the exact session', async () => {
+    const adapter = new TmuxAdapter();
+    const base = `${PREFIX}${Date.now()}-pane`;
+    const live = `${base}-10`;
+    created.push(live);
+    await adapter.createSession({ name: live, cwd: tmpdir(), command: 'sleep 30' });
+    const pane = await adapter.firstPaneId(live);
+    expect(pane).toMatch(/^%\d+$/);
+    expect(await adapter.pidOfPane(pane!)).toBe(await adapter.panePid(live));
+    expect(await adapter.firstPaneId(`${base}-1`)).toBeNull();
+    expect(await adapter.pidOfPane('%999999')).toBeNull();
+  });
+
   it('returns null for the pane pid of an absent session', async () => {
     // The close path asks for the pid of a session that may already be gone (the inner
     // process exited on its own); that is an answer, not an error.

@@ -37,7 +37,12 @@ import { trackLiveWorkspaces } from '../application/track-live-workspaces';
 import type { Workspace } from '@perch/contracts';
 import { ConnectionHandler } from './connection-handler';
 import { ViewerRegistry } from './viewer-registry';
-import { applyHookEvent } from '../application/apply-hook-event';
+import { applyHookEvent, markSent } from '../application/apply-hook-event';
+import { sessionOfCodexThread } from '../application/agent-message';
+import { sendMessage } from '../application/send-message';
+import type { MessageDelivery } from '../ports/message-delivery-port';
+import type { MessageLog } from '../ports/message-log-port';
+import type { ProcessAncestry } from '../ports/process-ancestry-port';
 import { applyProgramStatus } from '../application/apply-program-status';
 import type { HookEventLogPort } from '../ports/hook-event-log-port';
 import { listWorkspaces } from '../application/list-workspaces';
@@ -70,6 +75,8 @@ export interface WsServerDeps {
   clientLog: ClientLogPort;
   // Optional: where every hook event and its decision is recorded (applyHookEvent).
   hookEventLog?: HookEventLogPort;
+  // What `POST /message` (perch send) needs. Without it the route is not served.
+  messaging?: { ancestry: ProcessAncestry; delivery: MessageDelivery; log: MessageLog };
   workspaceLog: WorkspaceLogPort;
   parked: ParkedStorePort;
   // Optional: where the live workspaces are snapshotted so those lost with their tmux server
@@ -138,11 +145,15 @@ export class WsServer {
     add: (id: string) => this.deps.status.setMessagedLast(id, true),
     delete: (id: string) => this.deps.status.setMessagedLast(id, false),
   };
+  // Sessions that ran perch send inside their current tool call — see markSent.
+  private readonly sentDuringTool = new Set<string>();
   // Codex sessions with a question waiting on the user — see applyHookEvent.
   private readonly questionPending = new Set<string>();
   // Sessions whose needs-feedback an OSC 7501 turn end set — see applyProgramStatus. In-memory:
   // losing it costs one race won by needs-feedback, never a hidden prompt.
   private readonly oscTurnEnded = new Set<string>();
+  // Hooks posted by Codex thread, applied one after another in arrival order.
+  private threadHooks: Promise<void> = Promise.resolve();
   // The panes showing a question or menu at the last poll.
   private asking = new Set<string>();
   // The last OSC 7501 record seen per pane, so only a change is applied (applyProgramStatus).
@@ -177,6 +188,7 @@ export class WsServer {
     this.deps.status.forget(id);
     this.deferred.delete(id);
     this.questionPending.delete(id);
+    this.sentDuringTool.delete(id);
     this.oscTurnEnded.delete(id);
     this.programSeen.delete(id);
   }
@@ -295,11 +307,12 @@ export class WsServer {
     });
   }
 
-  // Two routes, both behind the hooks secret: `/hooks` for Claude Code's hook events, and
-  // `/unpark` for `perch unpark`, which must go through the agent because it holds status.json in
-  // memory and writes parked.json itself.
+  // Three routes, all behind the hooks secret: `/hooks` for Claude Code's hook events, `/unpark`
+  // for `perch unpark`, which must go through the agent because it holds status.json in memory and
+  // writes parked.json itself, and `/message` for `perch send`, whose marks live here too.
   private handleHttp(req: IncomingMessage, res: ServerResponse): void {
-    if (req.method !== 'POST' || (req.url !== '/hooks' && req.url !== '/unpark')) {
+    const routes = this.deps.messaging ? ['/hooks', '/unpark', '/message'] : ['/hooks', '/unpark'];
+    if (req.method !== 'POST' || !routes.includes(req.url ?? '')) {
       res.writeHead(404).end();
       return;
     }
@@ -330,44 +343,79 @@ export class WsServer {
         void this.handleUnpark(body, res);
         return;
       }
+      if (route === '/message') {
+        void this.handleMessage(body, res);
+        return;
+      }
       try {
         const parsed: unknown = JSON.parse(body);
-        const { sessionName, event, claude, agent } = parsed as {
+        const { sessionName, thread, event, claude, agent } = parsed as {
           sessionName?: unknown;
+          thread?: unknown;
           event?: unknown;
           claude?: unknown;
           agent?: unknown;
         };
-        if (typeof sessionName !== 'string' || typeof event !== 'string') {
+        if (typeof event !== 'string') {
           res.writeHead(400).end();
           return;
         }
-        const statusBefore = this.deps.status.get(sessionName);
-        const messagedBefore = this.messagedLast.has(sessionName);
-        applyHookEvent(
-          {
-            store: this.deps.status,
-            deferred: this.deferred,
-            messagedLast: this.messagedLast,
-            questionPending: this.questionPending,
-            oscTurnEnded: this.oscTurnEnded,
-            log: this.deps.hookEventLog,
-          },
-          { sessionName, event, claude, agent: typeof agent === 'string' ? agent : undefined },
-        );
-        // The mark drives `waitingOn`, and it flips with the status unchanged, so onChange
-        // (which already pushed any status change) said nothing.
-        if (
-          this.messagedLast.has(sessionName) !== messagedBefore &&
-          this.deps.status.get(sessionName) === statusBefore
-        ) {
-          void this.broadcastWorkspace(sessionName).catch(() => undefined);
+        if (typeof sessionName === 'string') {
+          this.applyHook(sessionName, event, claude, agent);
+          res.writeHead(204).end();
+          return;
         }
-        res.writeHead(204).end();
+        if (typeof thread !== 'string') {
+          res.writeHead(400).end();
+          return;
+        }
+        if (agent !== 'codex') {
+          res.writeHead(204).end();
+          return;
+        }
+        // Each lookup awaits tmux, so unchained a later hook could land before an earlier one.
+        this.threadHooks = this.threadHooks.then(() => this.applyHookByThread(thread, event, claude, agent, res));
       } catch {
         res.writeHead(400).end();
       }
     });
+  }
+
+  // Codex under its daemon runs hooks outside every pane, so perch-hook.sh names the thread
+  // instead; one no workspace recorded is dropped.
+  private async applyHookByThread(thread: string, event: string, claude: unknown, agent: unknown, res: ServerResponse): Promise<void> {
+    try {
+      const session = sessionOfCodexThread(await this.deps.tmux.listSessions(this.deps.config.sessionPrefix), thread);
+      if (session) this.applyHook(session.name, event, claude, agent);
+      res.writeHead(204).end();
+    } catch {
+      res.writeHead(500).end();
+    }
+  }
+
+  private applyHook(sessionName: string, event: string, claude: unknown, agent: unknown): void {
+    const statusBefore = this.deps.status.get(sessionName);
+    const messagedBefore = this.messagedLast.has(sessionName);
+    applyHookEvent(
+      {
+        store: this.deps.status,
+        deferred: this.deferred,
+        messagedLast: this.messagedLast,
+        sentDuringTool: this.sentDuringTool,
+        questionPending: this.questionPending,
+        oscTurnEnded: this.oscTurnEnded,
+        log: this.deps.hookEventLog,
+      },
+      { sessionName, event, claude, agent: typeof agent === 'string' ? agent : undefined },
+    );
+    // The mark drives `waitingOn`, and it flips with the status unchanged, so onChange
+    // (which already pushed any status change) said nothing.
+    if (
+      this.messagedLast.has(sessionName) !== messagedBefore &&
+      this.deps.status.get(sessionName) === statusBefore
+    ) {
+      void this.broadcastWorkspace(sessionName).catch(() => undefined);
+    }
   }
 
   private async handleUnpark(body: string, res: ServerResponse): Promise<void> {
@@ -385,6 +433,49 @@ export class WsServer {
       const { parked, tmux, isDirectory, status } = this.deps;
       const result = await unparkWorkspace({ parked, tmux, isDirectory, status }, id);
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ result }));
+    } catch (err) {
+      res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: (err as Error).message }));
+    }
+  }
+
+  private async handleMessage(body: string, res: ServerResponse): Promise<void> {
+    let req: { pane?: unknown; pid?: unknown; to?: unknown; body?: unknown; codexThread?: unknown } | null;
+    try {
+      req = JSON.parse(body) as typeof req;
+    } catch {
+      req = null;
+    }
+    const { pane, pid, to, body: text, codexThread } = req ?? {};
+    if (
+      typeof pane !== 'string' ||
+      !Number.isInteger(pid) ||
+      typeof to !== 'string' ||
+      typeof text !== 'string' ||
+      (codexThread !== undefined && typeof codexThread !== 'string')
+    ) {
+      res.writeHead(400).end();
+      return;
+    }
+    try {
+      const { ancestry, delivery, log } = this.deps.messaging!;
+      const result = await sendMessage(
+        {
+          tmux: this.deps.tmux,
+          parked: this.deps.parked,
+          ancestry,
+          delivery,
+          log,
+          machineId: this.deps.config.machineId,
+          sessionPrefix: this.deps.config.sessionPrefix,
+          now: () => this.deps.clock.now(),
+          onSent: (senderId) => {
+            markSent({ sentDuringTool: this.sentDuringTool, messagedLast: this.messagedLast }, senderId);
+            void this.broadcastWorkspace(senderId).catch(() => undefined);
+          },
+        },
+        { pane, pid: pid as number, to, body: text, ...(codexThread !== undefined ? { codexThread } : {}) },
+      );
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(result));
     } catch (err) {
       res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: (err as Error).message }));
     }

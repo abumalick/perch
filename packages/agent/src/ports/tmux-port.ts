@@ -5,6 +5,8 @@ export interface TmuxSessionInfo {
   createdAt: number;
   // The orchestrator workspace this one was spawned for (`@perch_parent`); absent when none.
   parent?: string;
+  // The Codex app-server thread the pane's `codex resume` is bound to (`@perch_codex_thread`).
+  codexThread?: string;
   // The pane's OSC 7501 status (Program Status Protocol) and when tmux saw it change. Only a
   // tmux patched to keep it reports one; absent otherwise, and while the program reports nothing.
   program?: { state: string; changedAt: number };
@@ -23,8 +25,9 @@ export interface TmuxPort {
   // name has the old id prefix, which a tmux-resurrect bare shell keeps without the marker.
   listSessions(prefix: string): Promise<TmuxSessionInfo[]>;
   // `storedCommand` is what `@perch_command` records when it differs from the command launched
-  // (a spawn launches with its brief, but unpark must resume without it).
-  createSession(input: { name: string; cwd: string; command: string; parent?: string; storedCommand?: string }): Promise<void>;
+  // (a spawn launches with its brief, but unpark must resume without it). `codexThread` is
+  // recorded as `@perch_codex_thread`.
+  createSession(input: { name: string; cwd: string; command: string; parent?: string; storedCommand?: string; codexThread?: string }): Promise<void>;
   killSession(name: string): Promise<void>;
   hasSession(name: string): Promise<boolean>;
   // The pid of the session's first pane, or null when the session is gone. Optional for the
@@ -50,4 +53,8 @@ export interface TmuxPort {
   capturePane?(name: string, historyLines: number): Promise<string>;
   // The session holding a pane (e.g. `$TMUX_PANE`), or null when tmux cannot find it.
   sessionOfPane?(paneId: string): Promise<string | null>;
+  // The pid of the pane with that id (`%N`), or null when tmux cannot find it.
+  pidOfPane?(paneId: string): Promise<number | null>;
+  // The id (`%N`) of the session's first pane, or null when the session is gone.
+  firstPaneId?(name: string): Promise<string | null>;
 }

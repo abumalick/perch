@@ -53,6 +53,7 @@ function ids(
     status: { ids: () => taken.status ?? [] },
     claudeSessions: {
       addressesByTmuxSession: async () => Object.fromEntries((taken.addresses ?? []).map((a, i) => [`s${i}`, a])),
+      inboxOf: async () => null,
     },
   });
 }

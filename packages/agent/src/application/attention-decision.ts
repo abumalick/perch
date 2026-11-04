@@ -18,6 +18,7 @@ export type AttentionReason =
   | 'question'
   | 'blocking-tool'
   | 'tool'
+  | 'perch-send'
   | 'session-start'
   | 'compact'
   | 'unknown-event';
@@ -113,6 +114,8 @@ export function attentionDecision(input: {
   claude?: unknown;
   wasDeferred: boolean;
   messagedLast?: boolean;
+  // Whether a `perch send` marked this session during the tool call this PostToolUse closes.
+  sentDuringTool?: boolean;
   questionPending?: boolean;
   currentStatus?: WorkspaceStatus;
   // Whether the current needs-feedback was set by an OSC 7501 turn end (applyProgramStatus).
@@ -169,6 +172,10 @@ export function attentionDecision(input: {
         return { reason: 'blocking-tool', status: 'needs-feedback', deferral: 'clear' };
       }
       if (input.event === 'PostToolUse') {
+        // The send ran inside this very tool call, so its PostToolUse is not a later tool call.
+        if (input.sentDuringTool && !isPeerMessage(input.claude)) {
+          return { reason: 'perch-send', status: 'working', deferral: 'keep' };
+        }
         return {
           reason: 'tool',
           status: 'working',

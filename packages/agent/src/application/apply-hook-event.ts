@@ -82,7 +82,15 @@ export interface MarkSet {
 interface Marks {
   deferred: Set<string>;
   messagedLast: MarkSet;
+  sentDuringTool: MarkSet;
   questionPending: Set<string>;
+}
+
+// A `perch send` runs inside a tool call, whose own PostToolUse arrives after the mark is set and
+// would clear it; `sentDuringTool` makes that one PostToolUse leave the mark alone.
+export function markSent(marks: Pick<Marks, 'sentDuringTool' | 'messagedLast'>, id: string): void {
+  marks.sentDuringTool.add(id);
+  marks.messagedLast.add(id);
 }
 
 // The sessions whose needs-feedback an OSC 7501 turn end set (applyProgramStatus); optional, as
@@ -128,6 +136,7 @@ export function applyHookEvent(
     claude: input.claude,
     wasDeferred: before.deferred,
     messagedLast: before.messagedLast,
+    sentDuringTool: deps.sentDuringTool.has(input.sessionName),
     questionPending: before.questionPending,
     currentStatus,
     endedByOsc: deps.oscTurnEnded?.has(input.sessionName),
@@ -138,10 +147,15 @@ export function applyHookEvent(
   } else if (decision.deferral === 'clear') {
     deps.deferred.delete(input.sessionName);
   }
+  if (decision.reason === 'perch-send') {
+    deps.sentDuringTool.delete(input.sessionName);
+  }
   if (decision.messagedLast === 'set') {
     deps.messagedLast.add(input.sessionName);
+    deps.sentDuringTool.delete(input.sessionName);
   } else if (decision.messagedLast === 'clear') {
     deps.messagedLast.delete(input.sessionName);
+    deps.sentDuringTool.delete(input.sessionName);
   }
 
   if (decision.question === 'set') {

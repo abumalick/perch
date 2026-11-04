@@ -38,6 +38,11 @@ import { FileParkedStore } from './infrastructure/file-parked-store';
 import { FsFileWriter } from './infrastructure/fs-file-writer';
 import { fsResolveDirectory } from './infrastructure/fs-directory-checker';
 import { spawnWorkspace } from './application/spawn-workspace';
+import { sessionOfCodexThread, type AgentCli } from './application/agent-message';
+import { loginShellResolver } from './infrastructure/installed-detector';
+import type { CodexSpawnPort } from './ports/codex-spawn-port';
+import { CodexAppServer } from './infrastructure/codex-app-server';
+import { codexVersions } from './infrastructure/codex-versions';
 import { formatWorkspaceTable } from './application/format-workspace-table';
 import { isUnderPath, WORKSPACE_ROLES, workspaceRole, type WorkspaceRole } from './application/workspace-role';
 import type { TmuxPort } from './ports/tmux-port';
@@ -61,11 +66,14 @@ export interface CliIo {
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   fetch?: typeof fetch;
+  codex?: CodexSpawnPort;
+  // Whether a command resolves through the login shell, as tmux will run it.
+  resolveCommand?: (name: string) => Promise<boolean>;
 }
 
 export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo = {}): Promise<string> {
   if (argv[0] === 'connect' || argv[0] === 'pair') return relaySetup(argv[0], argv.slice(1), env, home);
-  if (argv[0] === 'ls' || argv[0] === 'spawn' || argv[0] === 'peek' || argv[0] === 'unpark' || argv[0] === 'rename') {
+  if (argv[0] === 'ls' || argv[0] === 'spawn' || argv[0] === 'peek' || argv[0] === 'unpark' || argv[0] === 'rename' || argv[0] === 'send') {
     return orchestration(argv[0], argv.slice(1), env, home, io);
   }
   const config = loadConfig({ ...env, ...(await agentEnvValues(env)) }, home);
@@ -196,14 +204,16 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, 
 }
 
 const LS_USAGE = `usage: perch ls [--json] [--mine] [--parent <workspace id>] [--role ${WORKSPACE_ROLES.join('|')}] [--path <project dir>]`;
-const SPAWN_USAGE = 'usage: perch spawn [--title <title>] [--child] [--model <model>] <projectPath>   (brief on stdin)';
+const SPAWN_USAGE = 'usage: perch spawn [--title <title>] [--child] [--model <model>] [--cli claude|codex|pi] <projectPath>   (brief on stdin)';
+const SPAWN_CLIS: readonly AgentCli[] = ['claude', 'codex', 'pi'];
 const PEEK_USAGE = 'usage: perch peek <workspace id> [-n <lines>]';
 const UNPARK_USAGE = 'usage: perch unpark <workspace id>...';
 const RENAME_USAGE = 'usage: perch rename [<workspace id>] <title>   (without an id: the workspace this runs in)';
+const SEND_USAGE = 'usage: perch send <workspace id> "<message>"   (or the message on stdin)';
 
 // `ls`, `spawn` and `peek` serve sessions in any repo, so none of them needs deploy/agent.env:
 // it only lends the machine id, and the store paths come from $HOME.
-async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rename', argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo): Promise<string> {
+async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rename' | 'send', argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo): Promise<string> {
   const values = await agentEnvValues(env).catch(() => ({}) as Record<string, string>);
   const config = loadConfig({ PERCH_MACHINE_ID: hostname().split('.')[0], ...env, ...values }, home);
   const tmux = io.tmux ?? new TmuxAdapter();
@@ -256,14 +266,19 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rena
       const child = flag('--child');
       const title = takeOption(args, '--title', SPAWN_USAGE);
       const model = takeOption(args, '--model', SPAWN_USAGE);
+      const cli = takeOption(args, '--cli', SPAWN_USAGE) ?? 'claude';
       const [projectPath, ...extra] = args;
       if (!projectPath || extra.length > 0 || projectPath.startsWith('--')) throw new Error(SPAWN_USAGE);
+      if (!SPAWN_CLIS.includes(cli as AgentCli)) throw new Error(SPAWN_USAGE);
       const cwd = io.cwd ?? process.cwd();
       const resolveDirectory = fsResolveDirectory(cwd);
       if (!(await resolveDirectory(projectPath))) throw new Error(`not a directory: ${resolvePath(cwd, projectPath)}`);
+      // Without it the pane's command fails at once and the workspace vanishes with no trace.
+      if (cli === 'pi' && !(await (io.resolveCommand ?? loginShellResolver())('pi-reviewed'))) {
+        throw new Error('perch spawn --cli pi needs pi-reviewed on PATH');
+      }
       const parentId = child ? await callerWorkspace(env, tmux, config.sessionPrefix) : undefined;
-      const parent = parentId ? { id: parentId, name: (await claudeSessions.addressesByTmuxSession())[parentId] ?? parentId } : undefined;
-      const brief = await (io.stdin ?? readStdin)();
+      const brief = await (io.stdin ?? (() => readStdin("pass the brief on stdin, e.g. perch spawn <path> <<'EOF'")))();
       return spawnWorkspace(
         {
           tmux: withSpawnMethods(tmux),
@@ -279,8 +294,16 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rena
           nonce: () => randomBytes(6).toString('hex'),
           sleep: io.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
           spawnDir: joinPath(home, '.perch', 'spawn'),
+          codex: io.codex ?? { versions: codexVersions(), createThread: (input) => new CodexAppServer().createThread(input) },
         },
-        { projectPath, brief, ...(model ? { model } : {}), ...(title ? { title } : {}), ...(parent ? { parent } : {}) },
+        {
+          projectPath,
+          brief,
+          cli: cli as AgentCli,
+          ...(model ? { model } : {}),
+          ...(title ? { title } : {}),
+          ...(parentId ? { parent: { id: parentId } } : {}),
+        },
       );
     }
     case 'peek': {
@@ -301,16 +324,42 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rena
     }
     case 'unpark': {
       if (args.length === 0 || args.some((id) => id.startsWith('-'))) throw new Error(UNPARK_USAGE);
-      const unpark = agentUnparker(config.port, home, io.fetch ?? fetch);
+      const post = agentPost(config.port, home, io.fetch ?? fetch);
       const lines: string[] = [];
       let failed = false;
       for (const id of args) {
-        const result = await unpark(id);
+        const { status, json } = await post('/unpark', { id });
+        const result = json.result;
+        if (status !== 200 || typeof result !== 'string') {
+          throw new Error(`${id}: the agent answered ${status}${json.error ? ` (${json.error})` : ''}`);
+        }
         failed ||= result !== 'unparked';
         lines.push(`${id}: ${UNPARK_WORDS[result] ?? result}`);
       }
       if (failed) throw new Error(lines.join('\n'));
       return lines.join('\n');
+    }
+    case 'send': {
+      const [to, message, ...extra] = args;
+      if (!to || to.startsWith('-') || extra.length > 0 || args.some((a) => a === '-f' || a === '--file' || a.startsWith('--file='))) {
+        throw new Error(SEND_USAGE);
+      }
+      // Codex under its daemon runs this outside the pane, with a stale TMUX_PANE or none; its
+      // thread id names the sender instead.
+      const codexThread = env.CODEX_THREAD_ID || undefined;
+      const pane = env.TMUX_PANE ?? '';
+      if (!pane && !codexThread) throw new Error('not inside a Perch workspace: $TMUX_PANE is unset');
+      const body = message ?? (await (io.stdin ?? (() => readStdin(`pass the message as an argument or on stdin: ${SEND_USAGE}`)))());
+      const { status, json } = await agentPost(config.port, home, io.fetch ?? fetch)('/message', {
+        pane,
+        pid: process.pid,
+        to,
+        body,
+        ...(codexThread ? { codexThread } : {}),
+      });
+      if (status === 200 && json.result === 'delivered') return `delivered to ${to}`;
+      if (status === 200 && json.result === 'refused' && typeof json.reason === 'string') throw new Error(json.reason);
+      throw new Error(`the agent answered ${status}${status === 404 ? ' (it predates perch send: restart it)' : ''}${json.error ? ` (${json.error})` : ''}`);
     }
     case 'rename': {
       if (args.length === 0) throw new Error(RENAME_USAGE);
@@ -339,13 +388,13 @@ const UNPARK_WORDS: Record<string, string> = {
   'missing-directory': 'its project directory no longer exists',
 };
 
-// Unparking goes through the running agent, the one process that writes status.json (it holds
-// it in memory, so a write from here would be overwritten) and parked.json, and the one that
-// tells the phones. It authenticates with the hooks secret the agent writes at each start.
-function agentUnparker(port: number, home: string, fetchFn: typeof fetch) {
+// `unpark` and `send` go through the running agent, the one process that writes status.json (it
+// holds it in memory, so a write from here would be overwritten) and parked.json, and the one
+// that tells the phones. It authenticates with the hooks secret the agent writes at each start.
+function agentPost(port: number, home: string, fetchFn: typeof fetch) {
   const notRunning = `the Perch agent is not running (nothing answered on 127.0.0.1:${port})`;
   let token: Promise<string> | undefined;
-  return async (id: string): Promise<string> => {
+  return async (route: string, body: unknown): Promise<{ status: number; json: Record<string, unknown> }> => {
     token ??= readFile(joinPath(home, '.perch', 'token'), 'utf8').then(
       (text) => text.trim(),
       () => {
@@ -355,24 +404,30 @@ function agentUnparker(port: number, home: string, fetchFn: typeof fetch) {
     const secret = await token;
     let res: Response;
     try {
-      res = await fetchFn(`http://127.0.0.1:${port}/unpark`, {
+      res = await fetchFn(`http://127.0.0.1:${port}${route}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${secret}` },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify(body),
       });
     } catch {
       throw new Error(notRunning);
     }
-    const body = (await res.json().catch(() => ({}))) as { result?: string; error?: string };
     if (res.status === 401) throw new Error('the agent refused the hooks secret: was it restarted since ~/.perch/token was read?');
-    if (!res.ok || !body.result) throw new Error(`${id}: the agent answered ${res.status}${body.error ? ` (${body.error})` : ''}`);
-    return body.result;
+    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    return { status: res.status, json };
   };
 }
 
 // The workspace the caller's own pane belongs to. Targeted at $TMUX_PANE: an untargeted
-// display-message answers for whichever session was most recently active.
+// display-message answers for whichever session was most recently active. Codex under its daemon
+// runs tools outside the pane with a stale TMUX_PANE, so its thread names the caller instead.
 async function callerWorkspace(env: NodeJS.ProcessEnv, tmux: TmuxPort, sessionPrefix: string): Promise<string> {
+  const thread = env.CODEX_THREAD_ID;
+  if (thread) {
+    const session = sessionOfCodexThread(await tmux.listSessions(sessionPrefix), thread);
+    if (!session) throw new Error(`not inside a Perch workspace: no workspace records Codex thread ${thread}`);
+    return session.name;
+  }
   const pane = env.TMUX_PANE;
   if (!pane) throw new Error('not inside a Perch workspace: $TMUX_PANE is unset');
   const session = tmux.sessionOfPane ? await tmux.sessionOfPane(pane) : null;
@@ -405,8 +460,8 @@ function readOnlyStatus(path: string): Pick<StatusStorePort, 'get' | 'getChanged
   }
 }
 
-async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) throw new Error('pass the brief on stdin, e.g. perch spawn <path> <<\'EOF\'');
+async function readStdin(ttyError: string): Promise<string> {
+  if (process.stdin.isTTY) throw new Error(ttyError);
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
   return Buffer.concat(chunks).toString('utf8');

@@ -785,6 +785,13 @@ No agent is reached that way any more: phones go through relays. What still hold
   is what keeps that to the maintainer. Moving origins also means a new device key (a new
   origin has empty storage), so every phone pairs again.
 - **Pairing links name the PWA's origin** (`PERCH_PWA_ORIGIN`), so they follow it.
+- **A device that is off the tailnet never updates, and nothing says so.** It keeps running its
+  cached service-worker build and still connects through a public relay, so the app looks
+  healthy while `sw.js` cannot be fetched. Killing and relaunching the app does not help. When
+  one device misses a deploy that another one picked up (a new field missing, an old badge in the
+  header), ask first whether Tailscale is up on it. Only then look further: the update banner,
+  `chrome://serviceworker-internals` → Unregister, or adb. Never suggest "clear site data": it
+  deletes the device key, and the device has to pair again.
 
 What no longer needs the tailnet: the Cloudflare Worker relay is public and reachable from any
 origin, so a PWA served elsewhere would work against it. **Where people without a tailnet load

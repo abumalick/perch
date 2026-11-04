@@ -41,6 +41,12 @@ describe('loadConfig', () => {
     expect(loadConfig({ ...base, PERCH_STATS: 'on' }, '/home/u').stats).toBeUndefined();
   });
 
+  it('plays Claude voice into the loopback subdevice PERCH_VOICE_DEVICE names', () => {
+    expect(loadConfig(base, '/home/u').voiceDevice).toBeUndefined();
+    expect(loadConfig({ ...base, PERCH_VOICE_DEVICE: ' ' }, '/home/u').voiceDevice).toBeUndefined();
+    expect(loadConfig({ ...base, PERCH_VOICE_DEVICE: ' plughw:Loopback,0,1 ' }, '/home/u').voiceDevice).toBe('plughw:Loopback,0,1');
+  });
+
   it('has no relay unless PERCH_RELAY_URLS is set; the old PERCH_RELAY_URL is not read', () => {
     expect(loadConfig(base, '/home/u').relayUrls).toEqual([]);
     expect(loadConfig({ ...base, PERCH_RELAY_URLS: ' , ' }, '/home/u').relayUrls).toEqual([]);

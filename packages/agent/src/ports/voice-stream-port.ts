@@ -10,6 +10,8 @@ export interface VoiceStream {
 
 export interface VoicePlayerPort {
   open(): VoiceStream;
+  // Whether this machine has the virtual mic to play into at all.
+  available(): Promise<boolean>;
 }
 
 // Claude Code's own voice settings on this machine, as raw JSON (null when unreadable).

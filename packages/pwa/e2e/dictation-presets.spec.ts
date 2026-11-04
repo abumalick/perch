@@ -110,3 +110,35 @@ test("the mic menu's Add preset opens a new preset in Settings, above the highli
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('li[aria-current="true"]')).toContainText('Fast');
 });
+
+test('a Claude voice preset falls back on a machine whose agent cannot do Claude voice', async ({ page }) => {
+  const claudeAgent = await startFakeAgent([
+    { machineId: 'agent-machine-id', id: 'perch-demo', name: 'demo', projectPath: '/home/u/workspace/demo', command: 'claude', createdAt: 1, lastActivityAt: 1, status: 'idle' },
+  ]);
+  try {
+    await page.addInitScript(() => {
+      localStorage.setItem('perch.elevenLabsApiKey', 'sk-el-test');
+      localStorage.setItem(
+        'perch.dictationPresets',
+        JSON.stringify([
+          { id: 'scribe', name: 'Scribe', badge: 'EL', provider: 'elevenlabs' },
+          { id: 'cv', name: 'Claude voice', badge: 'CV', provider: 'claude', fallbackId: 'scribe' },
+        ]),
+      );
+      localStorage.setItem('perch.dictationPreset', 'cv');
+    });
+    await seedMachine(page, claudeAgent);
+    await openTerminal(page);
+    await expect(mic(page)).toHaveAccessibleName('Dictate (Scribe)');
+    await holdMic(page);
+    const option = page.getByRole('option', { name: /Claude voice/ });
+    await expect(option).toContainText('not on this machine');
+    await expect(option).toBeDisabled();
+
+    claudeAgent.claudeVoice = true;
+    await openTerminal(page);
+    await expect(mic(page)).toHaveAccessibleName('Dictate (Claude voice)');
+  } finally {
+    await claudeAgent.close();
+  }
+});

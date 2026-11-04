@@ -129,6 +129,9 @@ export interface FakeAgent {
   // Holds every `workspaces` reply to `list` until the returned release is called, so a spec
   // can watch the home screen of a machine that is online but has not listed yet.
   holdList: () => () => void;
+  // Whether the `workspaces` reply says Claude voice works on this machine (mutable; false, as
+  // on a Mac or with no loopback, until a spec sets it).
+  claudeVoice: boolean;
   close: () => Promise<void>;
 }
 
@@ -181,6 +184,7 @@ export async function startFakeAgent(
   const store = new FileDeviceStore(join(home, 'devices.json'));
   const pairings = new FilePairingStore(join(home, 'pairing.json'));
   let upgrades = 0;
+  let claudeVoice = false;
   const relay = await startRelayServer({
     port: 0,
     host: '127.0.0.1',
@@ -325,8 +329,8 @@ export async function startFakeAgent(
             // machineId here is the AGENT's PERCH_MACHINE_ID, deliberately DIFFERENT from the
             // PWA's machine config id (seeded as 'test' in the E2E). The client must route
             // attach/input by the connection id, not this value — so the E2E covers that.
-            if (heldLists) heldLists.push(() => send({ type: 'workspaces', workspaces }));
-            else send({ type: 'workspaces', workspaces });
+            if (heldLists) heldLists.push(() => send({ type: 'workspaces', workspaces, claudeVoice }));
+            else send({ type: 'workspaces', workspaces, claudeVoice });
             // Faithful to the real agent: browserSessions follows every workspaces reply;
             // sending the (possibly empty) list also marks the agent as browser-capable.
             send({ type: 'browserSessions', sessions: browserSessions });
@@ -522,6 +526,12 @@ export async function startFakeAgent(
       },
       set upgrades(n: number) {
         upgrades = n;
+      },
+      get claudeVoice() {
+        return claudeVoice;
+      },
+      set claudeVoice(on: boolean) {
+        claudeVoice = on;
       },
       created,
       received,

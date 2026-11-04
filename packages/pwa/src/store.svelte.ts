@@ -161,6 +161,8 @@ export class PerchStore {
   // Pushed by the agent on a timer and dropped when the machine goes offline: a reading is
   // only true for the moment it was taken.
   machineStats = $state<Record<string, MachineStats>>({});
+  // Whether each machine's agent can play a Claude voice dictation, from its `workspaces` reply.
+  private claudeVoiceOn = $state<Record<string, boolean>>({});
   // The cgroup's cumulative OOM-kill count when this client first saw it, per machine. The
   // absolute figure is meaningless (it counts the life of the cgroup); only growth since we
   // started watching means a kill the user just took. Deliberately NOT dropped on offline:
@@ -534,6 +536,9 @@ export class PerchStore {
         return;
       case 'closed':
         if (this.active?.id === message.workspaceId) this.back();
+        return;
+      case 'workspaces':
+        this.claudeVoiceOn = { ...this.claudeVoiceOn, [machineId]: message.claudeVoice === true };
         return;
       case 'recentPaths':
         this.recentPaths = { ...this.recentPaths, [machineId]: message.paths };
@@ -1086,7 +1091,9 @@ export class PerchStore {
   get presetKeys(): PresetKeys {
     const keys = { elevenlabs: !!this.elevenLabsApiKey, openrouter: !!this.openRouterApiKey };
     if (!this.active) return keys;
-    return { ...keys, claude: !runsClaude(this.active.command) ? 'not-claude' : this.active.asking ? 'asking' : 'ok' };
+    const { machineId, command, asking } = this.active;
+    const claude = !this.claudeVoiceOn[machineId] ? 'unavailable' : !runsClaude(command) ? 'not-claude' : asking ? 'asking' : 'ok';
+    return { ...keys, claude };
   }
 
   get currentPreset(): DictationPreset {

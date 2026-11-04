@@ -325,8 +325,33 @@ Add preset → Provider "Claude Code /voice".
 - **This is meant for a headless server.** `~/.asoundrc` replaces the default device for every
   ALSA program of that user, playback included, so on a desktop with PipeWire or PulseAudio it
   would take the real microphone and speakers away. That case is untested.
-- One dictation at a time per machine. The text arrives about 1.5 s after you stop speaking.
-  Not available on macOS.
+- One dictation at a time per agent. The text arrives about 1.5 s after you stop speaking.
+- Each agent tells the phone whether Claude voice can work on its machine (the loopback card is
+  loaded). Where it cannot (macOS, or no `snd-aloop`), the preset is greyed out "not on this
+  machine" and the mic uses the preset's Fallback. After loading the module, reopen the app so
+  the phone asks again.
+
+**Several Linux users on one machine (see step 13).** They share the one loopback card, and ALSA
+gives each `aplay` and each recorder the lowest free subdevice, pairing playback subdevice *n*
+with capture subdevice *n*. Two users dictating at once then cross over whenever their programs
+open in a different order, and one user's Claude hears the other's speech (measured with
+`arecord`/`aplay`: a recorder heard the tone another player sent; pinned subdevices kept apart).
+Give every user its own subdevice *n* (0, 1, 2…; the card has 8), **the first user included**,
+since one user left on "lowest free" can still take another's:
+
+```bash
+# In that user's ~/.asoundrc, with its own <n> on both sides:
+pcm.!default {
+  type asym
+  playback.pcm "plughw:Loopback,0,<n>"
+  capture.pcm "plughw:Loopback,1,<n>"
+}
+# And in its deploy/agent.env, the playback side of the same <n>, then restart its agent:
+PERCH_VOICE_DEVICE=plughw:Loopback,0,<n>
+```
+
+The agent plays into `plughw:Loopback,0` when `PERCH_VOICE_DEVICE` is unset, which is right
+only for a machine with one user.
 
 ## 12. Optional: a Claude Code setup that works well here
 
@@ -431,6 +456,8 @@ credentials of its own). In `deploy/agent.env`, three values differ:
 - **`PERCH_MACHINE_ID`** is the name the phone shows: give each agent its own.
 - **`PERCH_STATS`**: each agent shows its own user's memory room on the home screen, which is
   how you see the new user's jobs nearing their cap. `PERCH_STATS=off` hides that line.
+- **`PERCH_VOICE_DEVICE`**: for Claude voice, each user needs its own loopback subdevice, in
+  its `~/.asoundrc` and its `agent.env` (step 11, "Several Linux users on one machine").
 
 **What not to copy from your account.**
 - **`~/.perch`:** never copy it. Two agents with one agent key take turns on the relay instead of

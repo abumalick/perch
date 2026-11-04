@@ -97,11 +97,12 @@ export function parsePresets(raw: string | null): DictationPreset[] | null {
 }
 
 // What each provider needs here: a key for the ones that call an API, and for Claude voice
-// Claude Code's prompt, since its held spaces are typed anywhere else: a workspace running
-// something else (`not-claude`) or a question or menu on screen (`asking`) rules it out, and
-// the mic falls back to another preset. `claude` is absent where there is no workspace to
-// judge, as in Settings.
-export type ClaudeVoiceHere = 'ok' | 'not-claude' | 'asking';
+// a machine whose agent says it can play the dictation (`unavailable`: macOS, no loopback, or
+// an agent too old to say), and Claude Code's prompt, since its held spaces are typed anywhere
+// else: a workspace running something else (`not-claude`) or a question or menu on screen
+// (`asking`) rules it out, and the mic falls back to another preset. `claude` is absent where
+// there is no workspace to judge, as in Settings.
+export type ClaudeVoiceHere = 'ok' | 'unavailable' | 'not-claude' | 'asking';
 export type PresetKeys = Record<DictationProvider, boolean> & { claude?: ClaudeVoiceHere };
 
 export function needsKey(p: DictationPreset, keys: PresetKeys): boolean {
@@ -112,6 +113,7 @@ export function needsKey(p: DictationPreset, keys: PresetKeys): boolean {
 export function unavailableHint(p: DictationPreset, keys: PresetKeys): string | null {
   if (!needsKey(p, keys)) return null;
   if (p.provider !== 'claude') return 'needs key';
+  if (keys.claude === 'unavailable') return 'not on this machine';
   return keys.claude === 'asking' ? 'question open' : 'Claude Code only';
 }
 

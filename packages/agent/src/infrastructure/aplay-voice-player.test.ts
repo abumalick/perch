@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { APLAY_ARGS, AplayVoicePlayer, FileClaudeSettings, LOOPBACK_DEVICE } from './aplay-voice-player';
+import { APLAY_ARGS, AplayVoicePlayer, FileClaudeSettings, LOOPBACK_DEVICE, aplayArgs } from './aplay-voice-player';
 
 let dir: string;
 beforeEach(async () => {
@@ -13,6 +13,17 @@ afterEach(() => rm(dir, { recursive: true, force: true }));
 describe('AplayVoicePlayer', () => {
   it('plays raw 16 kHz mono PCM into the loopback', () => {
     expect(APLAY_ARGS).toEqual(['-q', '-D', LOOPBACK_DEVICE, '-t', 'raw', '-f', 'S16_LE', '-c', '1', '-r', '16000', '-']);
+    expect(aplayArgs('plughw:Loopback,0,2')).toEqual(APLAY_ARGS.map((a) => (a === LOOPBACK_DEVICE ? 'plughw:Loopback,0,2' : a)));
+  });
+
+  it('is available only where the kernel lists a loopback card', async () => {
+    const cards = join(dir, 'cards');
+    const player = new AplayVoicePlayer('aplay', APLAY_ARGS, cards);
+    expect(await player.available()).toBe(false);
+    await writeFile(cards, ' 0 [Generic        ]: HDA-Intel - HD-Audio Generic\n');
+    expect(await player.available()).toBe(false);
+    await writeFile(cards, ' 0 [Generic        ]: HDA-Intel - HD-Audio Generic\n 3 [Loopback       ]: Loopback - Loopback\n');
+    expect(await player.available()).toBe(true);
   });
 
   it('streams what is written to the player’s stdin and resolves when it exits', async () => {

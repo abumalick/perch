@@ -196,6 +196,15 @@ describe('agentMessageSchema', () => {
     expect(parseAgentMessage({ type: 'roots' })).toEqual({ type: 'roots', roots: [] });
   });
 
+  it('keeps whether Claude voice works on the machine, which an older agent omits', () => {
+    expect(parseAgentMessage({ type: 'workspaces', workspaces: [], claudeVoice: true })).toEqual({
+      type: 'workspaces',
+      workspaces: [],
+      claudeVoice: true,
+    });
+    expect(parseAgentMessage({ type: 'workspaces', workspaces: [] })).toEqual({ type: 'workspaces', workspaces: [] });
+  });
+
   it('parses a launchers message and defaults both lists for an older agent', () => {
     expect(parseAgentMessage({ type: 'launchers', detected: ['claude'], custom: ['pi'] })).toEqual({
       type: 'launchers',

@@ -163,7 +163,8 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     by hand does not count.
   - **Not while Claude shows a question or a permission menu.** There space is a menu key, not
     /voice: measured, the held spaces were typed into an AskUserQuestion's text answer. The agent
-    refuses when the pane's OSC 7501 state is `blocked` (read live at `voiceStart`), and marks
+    refuses when the pane's OSC 7501 state is `blocked` (read live at `voiceStart`), stops a running
+    dictation when its pane turns `blocked` (at the next program-status poll, `stopVoiceIn`), and marks
     such a workspace `asking`, pushing it from the program-status poll whenever it flips, since the
     status alone does not change (needs-feedback either way). The phone then disables the preset
     ("question open"), so the mic falls back for answering by voice, and comes back once the

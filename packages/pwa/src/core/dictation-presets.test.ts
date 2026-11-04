@@ -64,6 +64,8 @@ describe('parsePresets', () => {
     expect(currentPreset(list, 'cv', { ...both, claude: 'asking' }).id).toBe('clean');
     expect(currentPreset(list, 'cv', { elevenlabs: true, openrouter: false, claude: 'asking' }).id).toBe('scribe');
     expect(parsePresets(JSON.stringify([claude]))).toEqual([claude]);
+    const orphan: DictationPreset = { ...claude, fallbackId: 'deleted' };
+    expect(currentPreset([DEFAULT_PRESETS[0]!, orphan], 'cv', { ...both, claude: 'asking' }).id).toBe('scribe');
   });
 
   it('offers a Claude voice preset only in a workspace running Claude Code', () => {

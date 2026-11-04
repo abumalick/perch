@@ -152,6 +152,12 @@ export class ConnectionHandler {
     }
   }
 
+  // A question or menu opened in a workspace being dictated into: from now on its held spaces
+  // would land on the menu, so the dictation ends (the phone stops recording on the reply).
+  stopVoiceIn(workspaceId: string, reason: string): void {
+    if (this.voice?.workspaceId === workspaceId) this.cancelVoice(reason);
+  }
+
   pushBrowserSessions(sessions: BrowserSession[]): void {
     if (this.authed) {
       this.conn.send({ type: 'browserSessions', sessions });

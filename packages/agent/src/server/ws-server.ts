@@ -449,7 +449,12 @@ export class WsServer {
     const asking = new Set(sessions.filter((s) => s.program?.state === 'blocked').map((s) => s.name));
     const flipped = [...asking, ...this.asking].filter((name) => asking.has(name) !== this.asking.has(name));
     this.asking = asking;
-    for (const name of flipped) void this.broadcastWorkspace(name).catch(() => undefined);
+    for (const name of flipped) {
+      if (asking.has(name)) {
+        for (const handler of this.handlers) handler.stopVoiceIn(name, 'Dictation stopped: Claude asked a question');
+      }
+      void this.broadcastWorkspace(name).catch(() => undefined);
+    }
   }
 
   // Runs whether or not a client is connected: the snapshot must be current when the server dies.

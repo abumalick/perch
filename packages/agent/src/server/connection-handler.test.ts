@@ -1191,6 +1191,24 @@ describe('ConnectionHandler voice stream', () => {
     expect(conn.sent).toContainEqual({ type: 'voiceDone', id: 'v1', ok: false, error: 'Answer Claude’s question first, then dictate' });
   });
 
+  it('stops a running dictation when a question opens in its workspace, and no other', async () => {
+    const handlers: ConnectionHandler[] = [];
+    const fp = fakePty();
+    const conn = fakeConn();
+    const voice = fakeVoice();
+    handlers.push(new ConnectionHandler(conn.conn, { ...baseDeps(), pty: fp.pty, claudeVoice: { start: voice.start } }));
+    conn.emit({ type: 'auth', token: 'secret' });
+    conn.emit({ type: 'attach', workspaceId: 'perch-aa', cols: 80, rows: 24 });
+    await tick();
+    conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
+    await tick();
+    handlers[0]!.stopVoiceIn('perch-bb', 'asked');
+    expect(voice.session.abort).not.toHaveBeenCalled();
+    handlers[0]!.stopVoiceIn('perch-aa', 'Dictation stopped: Claude asked a question');
+    await tick();
+    expect(conn.sent).toContainEqual({ type: 'voiceDone', id: 'v1', ok: false, error: 'Dictation stopped: Claude asked a question' });
+  });
+
   it('answers a superseded dictation under its own id', async () => {
     const { conn, voice } = attached();
     await tick();

@@ -512,12 +512,12 @@ export class PerchStore {
     if (this.channelsFor(machineId).handle(message)) return;
     switch (message.type) {
       case 'output':
-        if (this.active?.id === message.workspaceId) this.onOutput?.(decode(message.data));
+        if (this.isActive(machineId, message.workspaceId)) this.onOutput?.(decode(message.data));
         return;
       case 'fileStored':
         // The agent saved a pasted file under the workspace cwd; type its relative path
         // into the terminal at the cursor, exactly like typed input.
-        if (this.active?.id === message.workspaceId) this.injectInput(message.path);
+        if (this.isActive(machineId, message.workspaceId)) this.injectInput(message.path);
         return;
       case 'voiceDone': {
         const voice = this.voice;
@@ -528,12 +528,12 @@ export class PerchStore {
         return voice.settle(null);
       }
       case 'detached':
-        if (this.active?.id === message.workspaceId && message.reason === 'opened-elsewhere') {
+        if (this.isActive(machineId, message.workspaceId) && message.reason === 'opened-elsewhere') {
           this.terminalState = 'moved';
         }
         return;
       case 'closed':
-        if (this.active?.id === message.workspaceId) this.back();
+        if (this.isActive(machineId, message.workspaceId)) this.back();
         return;
       case 'recentPaths':
         this.recentPaths = { ...this.recentPaths, [machineId]: message.paths };
@@ -594,6 +594,11 @@ export class PerchStore {
       default:
         return;
     }
+  }
+
+  // Ids repeat across machines (`<folder>-<n>`), so the open workspace is named by both.
+  isActive(machineId: string, workspaceId: string): boolean {
+    return this.active?.machineId === machineId && this.active.id === workspaceId;
   }
 
   open(workspace: Workspace, focus = false): void {

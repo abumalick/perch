@@ -93,11 +93,11 @@
 
 {#snippet activeView()}
   {#if store.view === 'terminal'}
-    <!-- Keyed on the workspace id so switching sessions (possible while the persistent
+    <!-- Keyed on machine and workspace id (ids repeat across machines) so switching sessions (possible while the persistent
          sidebar stays open in the wide layout) tears down the old terminal and remounts
          a fresh one that attaches to the newly selected workspace. -->
     {#await loadTerminalView() then TerminalView}
-      {#key store.active?.id}
+      {#key store.active ? `${store.active.machineId}:${store.active.id}` : null}
         <TerminalView {store} />
       {/key}
     {/await}

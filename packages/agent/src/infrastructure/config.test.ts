@@ -15,7 +15,6 @@ describe('loadConfig', () => {
       recentStorePath: '/home/u/.perch/recent.json',
       statusStorePath: '/home/u/.perch/status.json',
       hiddenFoldersPath: '/home/u/.perch/hidden-folders.json',
-      commandsPath: '/home/u/.perch/commands.json',
       launchersPath: '/home/u/.perch/launchers.json',
       keytermsPath: '/home/u/.perch/keyterms.txt',
       clientLogPath: '/home/u/.perch/client-log.jsonl',
@@ -30,6 +29,14 @@ describe('loadConfig', () => {
       claudeSessionsDir: '/home/u/.claude/sessions',
       sessionPrefix: 'perch-',
     });
+  });
+
+  it('sends the machine load unless PERCH_STATS turns it off', () => {
+    expect(loadConfig(base, '/home/u').stats).toBeUndefined();
+    for (const off of ['off', '0', 'false', ' OFF ']) {
+      expect(loadConfig({ ...base, PERCH_STATS: off }, '/home/u').stats).toBe(false);
+    }
+    expect(loadConfig({ ...base, PERCH_STATS: 'on' }, '/home/u').stats).toBeUndefined();
   });
 
   it('has no relay unless PERCH_RELAY_URLS is set; the old PERCH_RELAY_URL is not read', () => {

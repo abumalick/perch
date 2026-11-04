@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { TmuxPort, TmuxSessionInfo } from '../ports/tmux-port';
+import { DuplicateSessionError, type TmuxPort, type TmuxSessionInfo } from '../ports/tmux-port';
 import { childEnv } from './child-env';
 
 const exec = promisify(execFile);
@@ -22,12 +22,19 @@ const FORMAT = [
   '#{session_name}',
   '#{session_path}',
   '#{session_created}',
+  '#{host}',
+  '#{host_short}',
   '#{@perch_command}',
   '#{@perch_parent}',
   '#{pane_program_state}',
   '#{pane_program_time}',
   '#{pane_title}',
 ].join(SEP);
+
+// tmux resolves `-t perch-1` to `perch-10` when no `perch-1` exists (a name prefix matches),
+// and short ids are prefixes of each other. `=` asks for the exact name; the trailing `:` makes
+// the same target valid for session, window and pane commands alike.
+export const exactTarget = (name: string) => `=${name}:`;
 
 export function isNoServer(err: unknown): boolean {
   const stderr = (err as { stderr?: string }).stderr ?? '';
@@ -56,8 +63,9 @@ export function isMissingSession(err: unknown): boolean {
 function parseLine(line: string): TmuxSessionInfo | null {
   const parts = line.split(SEP);
   if (parts.length < 3) return null;
-  const [name, startPath, created, command, parent, programState, programTime] = parts;
+  const [name, startPath, created, host, hostShort, command, parent, programState, programTime] = parts;
   if (!name || !startPath || !created) return null;
+  const title = parts.slice(9).join(SEP);
   return {
     name,
     startPath,
@@ -65,7 +73,8 @@ function parseLine(line: string): TmuxSessionInfo | null {
     createdAt: Number(created) * 1000,
     ...(parent ? { parent } : {}),
     ...(programState ? { program: { state: programState, changedAt: Number(programTime) * 1000 } } : {}),
-    title: parts.slice(7).join(SEP),
+    // A pane's title is the host name until its program sets one: that is tmux's, not a name.
+    title: title === host || title === hostShort ? '' : title,
   };
 }
 
@@ -127,20 +136,25 @@ export class TmuxAdapter implements TmuxPort {
       .split('\n')
       .filter((line) => line.length > 0)
       .map(parseLine)
-      .filter((s): s is TmuxSessionInfo => s !== null && s.name.startsWith(prefix));
+      .filter((s): s is TmuxSessionInfo => s !== null && (s.command !== '' || s.name.startsWith(prefix)));
   }
 
   async createSession(input: { name: string; cwd: string; command: string; parent?: string; storedCommand?: string }): Promise<void> {
-    await this.tmux(['new-session', '-d', '-s', input.name, '-c', input.cwd, input.command]);
-    await this.tmux(['set-option', '-t', input.name, '@perch_command', input.storedCommand ?? input.command]);
-    if (input.parent) await this.tmux(['set-option', '-t', input.name, '@perch_parent', input.parent]);
+    try {
+      await this.tmux(['new-session', '-d', '-s', input.name, '-c', input.cwd, input.command]);
+    } catch (err) {
+      if (((err as { stderr?: string }).stderr ?? '').includes('duplicate session')) throw new DuplicateSessionError(input.name);
+      throw err;
+    }
+    await this.tmux(['set-option', '-t', exactTarget(input.name), '@perch_command', input.storedCommand ?? input.command]);
+    if (input.parent) await this.tmux(['set-option', '-t', exactTarget(input.name), '@perch_parent', input.parent]);
   }
 
   async killSession(name: string): Promise<void> {
     // Idempotent: when the inner process exits, tmux destroys the session on its own, so a
     // later close finds nothing to kill. Treat an already-absent session as success.
     try {
-      await this.tmux(['kill-session', '-t', name]);
+      await this.tmux(['kill-session', '-t', exactTarget(name)]);
     } catch (err) {
       if (isMissingSession(err)) return;
       throw err;
@@ -150,7 +164,7 @@ export class TmuxAdapter implements TmuxPort {
   async panePid(name: string): Promise<number | null> {
     let stdout: string;
     try {
-      const res = await this.tmux(['list-panes', '-t', name, '-F', '#{pane_pid}']);
+      const res = await this.tmux(['list-panes', '-t', exactTarget(name), '-F', '#{pane_pid}']);
       stdout = res.stdout;
     } catch (err) {
       if (isMissingSession(err)) return null;
@@ -174,7 +188,7 @@ export class TmuxAdapter implements TmuxPort {
 
   async hasSession(name: string): Promise<boolean> {
     try {
-      await this.tmux(['has-session', '-t', name]);
+      await this.tmux(['has-session', '-t', exactTarget(name)]);
       return true;
     } catch {
       return false;
@@ -182,7 +196,9 @@ export class TmuxAdapter implements TmuxPort {
   }
 
   async setPaneTitle(name: string, title: string): Promise<void> {
-    await this.tmux(['select-pane', '-t', name, '-T', title]);
+    // `select-pane -T` expands formats in its argument (`#S`, `#{…}`, `#(…)`, and `##` to `#`),
+    // which would rewrite a name on every park/unpark. `##` is tmux's literal `#`.
+    await this.tmux(['select-pane', '-t', exactTarget(name), '-T', title.replaceAll('#', '##')]);
   }
 
   // `allow-set-title` exists from tmux 3.5; an older server answers "invalid option". No server
@@ -197,11 +213,11 @@ export class TmuxAdapter implements TmuxPort {
   }
 
   async lockPaneTitle(name: string): Promise<void> {
-    await this.tmux(['set-option', '-p', '-t', name, 'allow-set-title', 'off']);
+    await this.tmux(['set-option', '-p', '-t', exactTarget(name), 'allow-set-title', 'off']);
   }
 
   async capturePane(name: string, historyLines: number): Promise<string> {
-    const { stdout } = await this.tmux(['capture-pane', '-p', '-J', '-t', name, '-S', `-${historyLines}`]);
+    const { stdout } = await this.tmux(['capture-pane', '-p', '-J', '-t', exactTarget(name), '-S', `-${historyLines}`]);
     return stdout;
   }
 

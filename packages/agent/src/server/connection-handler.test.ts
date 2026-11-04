@@ -16,7 +16,6 @@ import type { FileWriterPort } from '../ports/file-writer-port';
 import type { BrowserDiscoveryPort } from '../ports/browser-discovery-port';
 import type { BrowserCommandPort } from '../ports/browser-command-port';
 import type { HiddenFoldersPort } from '../ports/hidden-folders-port';
-import type { CommandsPort } from '../ports/commands-port';
 import type { LaunchersPort } from '../ports/launchers-port';
 import type { AgentConfig } from '../infrastructure/config';
 import type { WorkspaceLogEntry, WorkspaceLogPort } from '../ports/workspace-log-port';
@@ -134,7 +133,7 @@ function baseDeps() {
         startPath: '/home/u/workspace/api',
         command: 'claude',
         createdAt: 7000,
-        title: 'dev',
+        title: '',
       },
     ],
     createSession: async () => undefined,
@@ -150,7 +149,6 @@ function baseDeps() {
     read: async () => ({ bytes: new TextEncoder().encode('file body'), truncated: false }),
   };
   const hiddenFolders: HiddenFoldersPort = { list: async () => [] };
-  const commands: CommandsPort = { list: async () => [] };
   return {
     config,
     tmux,
@@ -160,7 +158,7 @@ function baseDeps() {
     resolvePath: (p: string) => p,
     isDirectory: (async () => true) as DirectoryChecker,
     clock: { now: () => 1000 },
-    ids: { next: () => 'zz' },
+    ids: { next: async () => 'perch-zz' },
     pty: noPty,
     registry: new ViewerRegistry(),
     status: {
@@ -173,6 +171,8 @@ function baseDeps() {
       setClaudeSessionId: () => undefined,
       getMessagedLast: () => false,
       setMessagedLast: () => undefined,
+      ids: () => [],
+      forget: () => undefined,
       onChange: () => undefined,
     } as StatusStorePort,
     writer: {
@@ -185,12 +185,12 @@ function baseDeps() {
     } as BrowserDiscoveryPort,
     browserCommands: stubBrowserCommands(),
     hiddenFolders,
-    commands,
     launchers: fakeLaunchers(),
     detectInstalled: async (names: string[]) => names.filter((n) => n === 'claude'),
     keyterms: { list: async (): Promise<string[]> => [] },
     workspaceLog: { append: async () => {} } as WorkspaceLogPort,
     forgetWorkspace: (_id: string): Workspace | undefined => undefined,
+    dropWorkspaceState: undefined as ((id: string) => void) | undefined,
     broadcastClosed: () => undefined,
     parked: fakeParkedStore(),
     scopes: undefined as ProcessScopePort | undefined,
@@ -211,9 +211,15 @@ beforeEach(() => {
 // tmux fake (a single live session named 'perch-aa'), these scenarios exercise a workspace
 // id ('perch-1') that starts out live in tmux by default, so setStatus/attach can find it.
 function makeHandler(
-  overrides: { isDirectory?: DirectoryChecker; command?: string; claudeSessionId?: string } = {},
+  overrides: {
+    isDirectory?: DirectoryChecker;
+    command?: string;
+    claudeSessionId?: string;
+    forgetWorkspace?: ConnectionHandlerDeps['forgetWorkspace'];
+  } = {},
 ) {
   const deps = baseDeps();
+  if (overrides.forgetWorkspace) deps.forgetWorkspace = overrides.forgetWorkspace;
   const parkedStore = fakeParkedStore();
   deps.parked = parkedStore;
   // Parking requires a known Claude session id, so default to one and let a test opt out by
@@ -344,11 +350,11 @@ describe('ConnectionHandler serving an enrolled device at once', () => {
   }
   const settle = () => new Promise((r) => setTimeout(r, 0));
 
-  it('answers authResult, then the workspaces, commands and dictation vocabulary', async () => {
+  it('answers authResult, then the workspaces and dictation vocabulary', async () => {
     const p = pushed();
     p.fire();
     await settle();
-    expect(p.sent.map((m) => m.type)).toEqual(['authResult', 'workspaces', 'browserSessions', 'commands', 'keyterms']);
+    expect(p.sent.map((m) => m.type)).toEqual(['authResult', 'workspaces', 'browserSessions', 'keyterms']);
     expect(p.sent[0]).toEqual({ type: 'authResult', ok: true, credential: 'device', pushed: true });
     expect(p.sent.at(-1)).toEqual({ type: 'keyterms', keyterms: ['Perch'] });
   });
@@ -421,6 +427,8 @@ describe('ConnectionHandler control routing', () => {
       setClaudeSessionId: () => undefined,
       getMessagedLast: () => false,
       setMessagedLast: () => undefined,
+      ids: () => [],
+      forget: () => undefined,
       onChange: () => undefined,
     };
     new ConnectionHandler(f.conn, deps);
@@ -445,6 +453,8 @@ describe('ConnectionHandler control routing', () => {
       setClaudeSessionId: () => undefined,
       getMessagedLast: () => false,
       setMessagedLast: () => undefined,
+      ids: () => [],
+      forget: () => undefined,
       onChange: () => undefined,
     };
     new ConnectionHandler(f.conn, deps);
@@ -520,33 +530,14 @@ describe('ConnectionHandler control routing', () => {
     expect(f.sent).toContainEqual({ type: 'roots', roots: ['/home/u/workspace', '/srv/code'] });
   });
 
-  it('answers listCommands with the machine configured shortcuts', async () => {
-    const deps = baseDeps();
-    deps.commands = {
-      list: async () => [
-        { command: '/myplugin:task', submit: false },
-        { command: '/rename', submit: true },
-      ],
-    };
-    new ConnectionHandler(f.conn, deps);
-    f.emit({ type: 'auth', token: 'secret' });
-    f.emit({ type: 'listCommands' });
-    await new Promise((r) => setTimeout(r, 0));
-    expect(f.sent).toContainEqual({
-      type: 'commands',
-      commands: [
-        { command: '/myplugin:task', submit: false },
-        { command: '/rename', submit: true },
-      ],
-    });
-  });
-
-  it('answers listCommands with an empty list when the machine has no config file', async () => {
+  it('ignores listCommands from an older PWA, with no reply and no error', async () => {
     new ConnectionHandler(f.conn, baseDeps());
     f.emit({ type: 'auth', token: 'secret' });
+    await new Promise((r) => setTimeout(r, 0));
+    const before = f.sent.length;
     f.emit({ type: 'listCommands' });
     await new Promise((r) => setTimeout(r, 0));
-    expect(f.sent).toContainEqual({ type: 'commands', commands: [] });
+    expect(f.sent.slice(before)).toEqual([]);
   });
 
   it('answers listLaunchers with the installed CLIs and the remembered commands', async () => {
@@ -759,6 +750,19 @@ describe('ConnectionHandler control routing', () => {
     ]);
   });
 
+  // The log entry reads the status entry, so it is dropped only after the entry is written.
+  it('drops the workspace state after logging an explicit close', async () => {
+    const deps = baseDeps();
+    const order: string[] = [];
+    deps.workspaceLog = { append: async () => void order.push('logged') };
+    deps.dropWorkspaceState = (id) => void order.push(`dropped ${id}`);
+    new ConnectionHandler(f.conn, deps);
+    f.emit({ type: 'auth', token: 'secret' });
+    f.emit({ type: 'close', workspaceId: 'perch-aa' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(order).toEqual(['logged', 'dropped perch-aa']);
+  });
+
   it('falls back to a fresh tmux lookup when closing a workspace the poll never observed', async () => {
     const deps = baseDeps();
     const logged: WorkspaceLogEntry[] = [];
@@ -819,6 +823,24 @@ describe('ConnectionHandler park/unpark', () => {
     expect(tmux.killSession).toHaveBeenCalledWith('perch-1');
   });
 
+  // Only a close keeps the poll from taking a still-listed workspace back (WsServer.closing): a
+  // parked workspace stays listed through its record, and unparking revives the same id.
+  it('forgets a parked workspace without marking it closing', async () => {
+    const forgetWorkspace = vi.fn((_id: string, _closing?: boolean) => undefined);
+    const { handler, send } = makeHandler({ forgetWorkspace });
+    await authenticate(handler, send);
+    await send({ type: 'setStatus', workspaceId: 'perch-1', status: 'parked' });
+    expect(forgetWorkspace).toHaveBeenCalledWith('perch-1');
+  });
+
+  it('marks a closed workspace closing', async () => {
+    const forgetWorkspace = vi.fn((_id: string, _closing?: boolean) => undefined);
+    const { handler, send } = makeHandler({ forgetWorkspace });
+    await authenticate(handler, send);
+    await send({ type: 'close', workspaceId: 'perch-1' });
+    expect(forgetWorkspace).toHaveBeenCalledWith('perch-1', true);
+  });
+
   it('does not park for any other status', async () => {
     const { handler, send, tmux, parkedStore } = makeHandler();
     await authenticate(handler, send);
@@ -856,6 +878,7 @@ describe('ConnectionHandler park/unpark', () => {
       name: 'perch-1',
       cwd: '/projects/app',
       command: 'claude --resume sess-1 || exec claude',
+      storedCommand: 'claude',
     });
     expect(await parkedStore.get('perch-1')).toBeUndefined();
   });
@@ -1229,7 +1252,7 @@ describe('ConnectionHandler attach lifecycle', () => {
     await new Promise((r) => setTimeout(r, 0));
 
     const s = fp.sessions[0]!;
-    expect(s.spawnArgs).toEqual({ command: 'tmux', args: ['attach-session', '-t', 'perch-aa'], cols: 80, rows: 24 });
+    expect(s.spawnArgs).toEqual({ command: 'tmux', args: ['attach-session', '-t', '=perch-aa:'], cols: 80, rows: 24 });
     expect(f2.sent).toContainEqual({ type: 'attached', workspaceId: 'perch-aa' });
 
     s.dataListeners.forEach((l) => l('hello'));

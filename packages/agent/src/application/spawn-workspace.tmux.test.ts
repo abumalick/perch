@@ -90,6 +90,7 @@ describe('spawnWorkspace (real tmux, sandbox socket)', () => {
         files: new FsFileWriter(),
         resolveDirectory: fsResolveDirectory(sandbox),
         ids: new RandomIdGenerator(),
+        nonce: () => 'n0nce',
         sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 300))),
         spawnDir: join(sandbox, 'spawn'),
         launcher,
@@ -101,7 +102,7 @@ describe('spawnWorkspace (real tmux, sandbox socket)', () => {
     await expect(t(['has-session', '-t', id])).resolves.toBe('');
 
     const args = await launched();
-    const settings = join(sandbox, 'spawn', `${id}.settings.json`);
+    const settings = join(sandbox, 'spawn', 'n0nce.settings.json');
     expect(args.slice(0, 6)).toEqual(['--model', 'opus[1m]', '--name', id, '--settings', settings]);
     expect(args).toHaveLength(7);
     expect(args[6]!.startsWith(`${brief}\n\n---\n`)).toBe(true);

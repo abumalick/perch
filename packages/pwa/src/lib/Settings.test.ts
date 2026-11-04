@@ -52,6 +52,20 @@ describe('Settings — machines list', () => {
     expect(within(mac.closest('ul')!).queryByRole('button', { name: /remove|delete/i })).toBeNull();
   });
 
+  it('shows which relay each machine goes through', () => {
+    const store = fakeStore({
+      machines: [
+        { id: 'a', name: 'Cloud box', url: 'wss://relay.example.com/acct', token: 't', agentKey: KEY },
+        { id: 'b', name: 'Home box', url: 'wss://box.example.ts.net:8451/acct', token: 't', agentKey: KEY },
+      ],
+    });
+    render(Settings, { props: { store: store as never } });
+    expect(screen.getByRole('button', { name: /^Cloud box/ })).toHaveTextContent('relay.example.com');
+    expect(screen.getByRole('button', { name: /^Home box/ })).toHaveTextContent('box.example.ts.net:8451');
+    const [cloudHost] = screen.getAllByTestId('relay-host');
+    expect(cloudHost?.parentElement).toHaveTextContent(/^Cloud box\s*relay\.example\.com$/);
+  });
+
   it('opens the machine detail on tap, and comes back', async () => {
     const store = fakeStore();
     render(Settings, { props: { store: store as never } });

@@ -122,7 +122,7 @@ while IFS= read -r seg; do
     tmux)
       has_socket_flag "$s" && continue
       [[ $s =~ $kill_server_re ]] && deny 'tmux kill-server without -S/-L ends the shared tmux server every workspace runs in.'
-      [[ $s =~ $kill_others_re ]] && deny 'tmux kill-session -a kills every other workspace; kill one by name with -t.'
+      [[ $s =~ $kill_others_re ]] && deny 'tmux kill-session -a kills every other workspace; kill one by its exact name with -t '\''=<name>'\''.'
       ;;
   esac
 done < <(segments "$1")

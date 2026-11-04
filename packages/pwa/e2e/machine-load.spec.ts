@@ -42,7 +42,7 @@ test('phone width keeps the strip on one line', async ({ page }) => {
 });
 
 // jsdom has no layout, so it cannot see either half of this: that the button survives the
-// strip's `overflow: hidden` (the bug that bit CommandPicker), and that its 32px tap target
+// strip's `overflow: hidden`, and that its 32px tap target
 // really is 32px rather than a padding that collapsed.
 test('the help button is tappable and explains the figures', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

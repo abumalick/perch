@@ -3,11 +3,11 @@ import { join } from 'node:path';
 import { ClaudeVoice } from './application/claude-voice';
 import { AplayVoicePlayer, FileClaudeSettings } from './infrastructure/aplay-voice-player';
 import { loadConfig, assertServerConfig, configWarnings } from './infrastructure/config';
-import { systemClock, RandomIdGenerator, systemPathResolver } from './infrastructure/system';
+import { systemClock, systemPathResolver } from './infrastructure/system';
+import { ShortWorkspaceIds } from './application/short-workspace-ids';
 import { TmuxAdapter } from './infrastructure/tmux-adapter';
 import { FileRecentStore } from './infrastructure/file-recent-store';
 import { FileHiddenFoldersStore } from './infrastructure/file-hidden-folders-store';
-import { FileCommandsStore } from './infrastructure/file-commands-store';
 import { FileLaunchersStore } from './infrastructure/file-launchers-store';
 import { detectInstalled, loginShellResolver } from './infrastructure/installed-detector';
 import { FileKeytermsStore } from './infrastructure/file-keyterms-store';
@@ -66,6 +66,7 @@ async function main(): Promise<void> {
   const parked = new FileParkedStore(config.parkedStorePath);
   const liveSnapshot = new FileLiveSnapshotStore(config.liveSnapshotPath);
   const workspaceLog = new FileWorkspaceLogStore(config.workspaceLogPath);
+  const claudeSessions = new FileClaudeSessionsStore(config.claudeSessionsDir);
   // Parks the workspaces lost with the tmux server (a reboot, a stray `pkill`) while their
   // status entries, and so their session ids, still exist. Before reconcileParked, which then
   // kills any bare shell tmux-resurrect put back under a now-parked id.
@@ -89,7 +90,7 @@ async function main(): Promise<void> {
   }
   // Kill any tmux session tmux-continuum resurrected under a parked workspace's id, so the
   // parked record stays the single source of truth. Must run before prune/list below.
-  await reconcileParked({ parked, tmux, sessionPrefix: config.sessionPrefix });
+  await reconcileParked({ parked, tmux });
   const sessions = await tmux.listSessions(config.sessionPrefix);
   const parkedIds = (await parked.list()).map((p) => p.id);
   // Parked workspaces have no live session, so their status entries must be preserved
@@ -105,14 +106,13 @@ async function main(): Promise<void> {
     resolvePath: systemPathResolver,
     isDirectory: fsIsDirectory,
     clock: systemClock,
-    ids: new RandomIdGenerator(),
+    ids: new ShortWorkspaceIds({ tmux, sessionPrefix: config.sessionPrefix, parked, status, claudeSessions }),
     pty: new NodePtyAdapter(),
     status,
     writer: new FsFileWriter(),
     browserDiscovery: new FsBrowserDiscovery(),
     browserCommands: new AgentBrowserCli(),
     hiddenFolders: new FileHiddenFoldersStore(config.hiddenFoldersPath),
-    commands: new FileCommandsStore(config.commandsPath),
     launchers: new FileLaunchersStore(config.launchersPath),
     detectInstalled: (names) => detectInstalled(names, loginShellResolver()),
     keyterms: new FileKeytermsStore(config.keytermsPath),
@@ -123,9 +123,9 @@ async function main(): Promise<void> {
     liveSnapshot,
     connectUpstream: connectBrowserUpstream,
     repoRemote: new GitRepoRemote(),
-    claudeSessions: new FileClaudeSessionsStore(config.claudeSessionsDir),
+    claudeSessions,
     scopes: new SystemdScopeReaper(),
-    systemStats: new ProcSystemStats(),
+    ...(config.stats === false ? {} : { systemStats: new ProcSystemStats() }),
     claudeVoice:
       process.platform === 'linux'
         ? new ClaudeVoice({

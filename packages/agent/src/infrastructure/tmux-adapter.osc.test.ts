@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TmuxAdapter } from './tmux-adapter';
+import { unparkWorkspace } from '../application/unpark-workspace';
 
 // Runs only against a tmux built with the OSC 7501 patch (deploy/tmux-osc7501): set
 // PERCH_TMUX_OSC to its binary. A stock tmux keeps no program status, so without it this skips.
@@ -37,6 +38,8 @@ describe.skipIf(!BINARY)('TmuxAdapter against a tmux patched for OSC 7501', () =
     adapter = new TmuxAdapter({ binary: BINARY, socket, config: '/dev/null' });
   });
 
+  const named = async (name: string) => (await adapter.listSessions('perch-')).find((s) => s.name === name);
+
   afterAll(async () => {
     if (socket?.startsWith(`${sandbox}/`)) await t(['kill-server']).catch(() => undefined);
     if (sandbox) await rm(sandbox, { recursive: true, force: true });
@@ -45,8 +48,8 @@ describe.skipIf(!BINARY)('TmuxAdapter against a tmux patched for OSC 7501', () =
   it('lists the program status a pane reports', async () => {
     await adapter.createSession({ name: 'perch-osc1', cwd: sandbox, command: 'sh' });
     await t(['send-keys', '-t', 'perch-osc1', "printf '\\033]7501;state=working:app=claude-code\\033\\\\'", 'Enter']);
-    await until(async () => (await adapter.listSessions('perch-'))[0]?.program?.state === 'working');
-    const [session] = await adapter.listSessions('perch-');
+    await until(async () => (await named('perch-osc1'))?.program?.state === 'working');
+    const session = await named('perch-osc1');
     expect(session?.program?.changedAt).toBeGreaterThan(1_000_000_000_000);
     expect(session?.title).not.toBe('');
   });
@@ -57,7 +60,25 @@ describe.skipIf(!BINARY)('TmuxAdapter against a tmux patched for OSC 7501', () =
     await adapter.lockPaneTitle('perch-osc2');
     await adapter.setPaneTitle('perch-osc2', '✳ ours');
     await t(['send-keys', '-t', 'perch-osc2', "printf '\\033]2;theirs\\007\\033]7501;state=done\\033\\\\'", 'Enter']);
-    await until(async () => (await adapter.listSessions('perch-osc2'))[0]?.program?.state === 'done');
-    expect((await adapter.listSessions('perch-osc2'))[0]?.title).toBe('✳ ours');
+    await until(async () => (await named('perch-osc2'))?.program?.state === 'done');
+    expect((await named('perch-osc2'))?.title).toBe('✳ ours');
+  });
+
+  it('an unparked workspace keeps its parked name when the resumed program writes a title', async () => {
+    const record = { id: 'perch-osc3', name: 'audit workflows #1077', projectPath: sandbox, command: 'sh', machineId: 'm', createdAt: 1, parkedAt: 2 };
+    const statuses: string[] = [];
+    const result = await unparkWorkspace(
+      {
+        parked: { get: async () => record, remove: async () => {} },
+        tmux: adapter,
+        isDirectory: async () => true,
+        status: { set: (_id, status) => void statuses.push(status) },
+      },
+      record.id,
+    );
+    expect(result).toBe('unparked');
+    await t(['send-keys', '-t', 'perch-osc3', "printf '\\033]2;perch-osc3\\007\\033]7501;state=done\\033\\\\'", 'Enter']);
+    await until(async () => (await named('perch-osc3'))?.program?.state === 'done');
+    expect((await named('perch-osc3'))?.title).toBe('✳ audit workflows #1077');
   });
 });

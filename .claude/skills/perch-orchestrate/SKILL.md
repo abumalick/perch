@@ -87,8 +87,9 @@ long wait:
 
 ## Closing
 
-Close each child once its report is read and verified: `tmux kill-session -t <id>`, one
-explicit name at a time, never `kill-server` or `-a`. For a process-heavy child, read its
+Close each child once its report is read and verified: `tmux kill-session -t '=<id>'`, one
+explicit name at a time (the `=` matters: without it `-t perch-1` kills `perch-10` once
+`perch-1` is gone), never `kill-server` or `-a`. For a process-heavy child, read its
 `tmux-spawn-*.scope` from `/proc/<pane_pid>/cgroup` before the kill and
 `systemctl --user stop` it afterwards. Leave sessions you did not spawn alone.
 

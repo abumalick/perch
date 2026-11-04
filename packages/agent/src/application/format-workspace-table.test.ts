@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import type { Workspace } from '@perch/contracts';
 import { formatAge, formatWorkspaceTable } from './format-workspace-table';
+import type { WorkspaceRole } from './workspace-role';
 
 const NOW = 1_000_000_000_000;
-const ws = (over: Partial<Workspace>): Workspace => ({
+const ws = (over: Partial<Workspace & { role: WorkspaceRole }>): Workspace & { role: WorkspaceRole } => ({
+  role: 'normal',
   machineId: 'dev',
   id: 'perch-aaaaaa',
   name: 'Fix login',
@@ -29,15 +31,15 @@ describe('formatWorkspaceTable', () => {
   it('prints a header and one aligned row per workspace', () => {
     const out = formatWorkspaceTable(
       [
-        ws({ agentAddress: 'foo-ab', parentId: 'perch-pppppp' }),
+        ws({ agentAddress: 'foo-ab', parentId: 'perch-pppppp', role: 'child' }),
         ws({ id: 'perch-bbbbbb', name: 'Other', status: 'needs-feedback', urgent: true, projectPath: '/srv/x', lastActivityAt: NOW - 2 * 86_400_000 }),
       ],
       { now: NOW, home: '/home/u' },
     );
     expect(out.split('\n')).toEqual([
-      'ID            NAME    STATUS                   AGE  PARENT        TITLE      FOLDER',
-      'perch-aaaaaa  foo-ab  working                  5m   perch-pppppp  Fix login  ~/workspace/foo',
-      'perch-bbbbbb  -       needs-feedback (urgent)  2d   -             Other      /srv/x',
+      'ID            NAME    STATUS                   AGE  ROLE    PARENT        TITLE      FOLDER',
+      'perch-aaaaaa  foo-ab  working                  5m   child   perch-pppppp  Fix login  ~/workspace/foo',
+      'perch-bbbbbb  -       needs-feedback (urgent)  2d   normal  -             Other      /srv/x',
     ]);
   });
 
@@ -58,7 +60,7 @@ describe('formatWorkspaceTable', () => {
   });
 
   it('shows a child waiting on its orchestrator as needs-orchestrator', () => {
-    const out = formatWorkspaceTable([ws({ parentId: 'perch-pppppp', waitingOn: 'parent' })], { now: NOW, home: '/home/u' });
-    expect(out.split('\n')[1]).toMatch(/^perch-aaaaaa +- +needs-orchestrator +5m +perch-pppppp/);
+    const out = formatWorkspaceTable([ws({ parentId: 'perch-pppppp', waitingOn: 'parent', role: 'child' })], { now: NOW, home: '/home/u' });
+    expect(out.split('\n')[1]).toMatch(/^perch-aaaaaa +- +needs-orchestrator +5m +child +perch-pppppp/);
   });
 });

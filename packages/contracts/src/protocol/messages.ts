@@ -45,15 +45,6 @@ const dim = z.number().int().positive();
 export const browserSessionSchema = z.object({ name: z.string() });
 export type BrowserSession = z.infer<typeof browserSessionSchema>;
 
-// A shortcut the keyboard bar's command drop-down offers, read from the agent machine's
-// ~/.perch/commands.json. `submit` sends Enter after the command (right for argument-less
-// commands like /rename); otherwise the command lands in the prompt awaiting an argument.
-export const commandEntrySchema = z.object({
-  command: z.string(),
-  submit: z.boolean().default(false),
-});
-export type CommandEntry = z.infer<typeof commandEntrySchema>;
-
 // A machine's current load, pushed by the agent on a timer. `limit` is the usage against
 // the per-user cgroup cap when the machine has one: on a capped machine that ceiling is
 // what the sessions actually run against, and physical RAM alone can look comfortable
@@ -95,6 +86,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   // `dirEntries` for the new (empty) folder so the picker browses into it.
   z.object({ type: z.literal('makeDir'), parent: z.string(), name: z.string() }),
   z.object({ type: z.literal('listRoots') }),
+  // No longer answered; kept so an agent does not refuse it from an older PWA.
   z.object({ type: z.literal('listCommands') }),
   z.object({ type: z.literal('listLaunchers') }),
   z.object({ type: z.literal('forgetLauncher'), command: z.string() }),
@@ -139,7 +131,7 @@ export const agentMessageSchema = z.discriminatedUnion('type', [
   // `credential` is what authenticated the session; `enrolled` says the device key is enrolled (written), so the
   // phone forgets its token and pairing secret. Both optional: an older agent sends neither.
   // `pushed`: the agent served the phone at once (its hello asked) and has sent the opening replies
-  // (workspaces, commands, keyterms) behind it, so the phone does not ask for them.
+  // (workspaces, keyterms) behind it, so the phone does not ask for them.
   z.object({
     type: z.literal('authResult'),
     ok: z.boolean(),
@@ -154,16 +146,12 @@ export const agentMessageSchema = z.discriminatedUnion('type', [
   // `roots` is additive: older agents omit it, so it defaults to [] rather than letting the
   // strict client parser drop the whole message during a version-skewed rollout.
   z.object({ type: z.literal('roots'), roots: z.array(z.string()).default([]) }),
-  // The agent machine's configured command shortcuts. `commands` is additive: older agents
-  // omit it, so it defaults to [] rather than letting the strict client parser drop the
-  // whole message during a version-skewed rollout.
-  z.object({ type: z.literal('commands'), commands: z.array(commandEntrySchema).default([]) }),
   // What the Create Workspace command list offers on this machine: the known CLIs found
   // installed (`claude`, `codex`) and the custom commands launched here before. Additive like
-  // `commands`: an older agent never sends it and the PWA keeps its fixed list.
+  // `roots`: an older agent never sends it and the PWA keeps its fixed list.
   z.object({ type: z.literal('launchers'), detected: z.array(z.string()).default([]), custom: z.array(z.string()).default([]) }),
   // The agent machine's dictation vocabulary (~/.perch/keyterms.txt), passed to ElevenLabs as
-  // keyterms so jargon transcribes correctly. Additive like `commands`: older agents omit it,
+  // keyterms so jargon transcribes correctly. Additive like `roots`: older agents omit it,
   // so it defaults to [] instead of letting the strict client parser drop the whole message.
   z.object({ type: z.literal('keyterms'), keyterms: z.array(z.string()).default([]) }),
   // `files` is additive: older agents that predate it omit the field, so it defaults to []

@@ -17,8 +17,8 @@ Use the CLI rather than raw tmux or a launcher of your own. It is
 
 ## Prepare and launch
 
-1. Run `perch ls` to see whether an existing workspace (parked ones included,
-   listed with title and folder) already holds the task, then resolve an existing
+1. Run `perch ls --path <project>` to see whether an existing workspace (parked
+   ones included, listed with title and role) already holds the task, then resolve an existing
    project directory for each new one (a relative path resolves against the cwd).
 2. Write a self-contained brief. A child has none of this conversation's context.
    Reference an issue if it contains the details; otherwise describe the observed

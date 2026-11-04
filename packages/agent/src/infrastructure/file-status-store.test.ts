@@ -155,6 +155,26 @@ describe('FileStatusStore', () => {
     expect(reloaded.get('perch-a')).toBe('review');
   });
 
+  it('lists the ids it holds', () => {
+    const store = new FileStatusStore(file);
+    store.set('perch-a', 'review');
+    store.setClaudeSessionId('perch-b', 'sid');
+    expect(store.ids().sort()).toEqual(['perch-a', 'perch-b']);
+  });
+
+  it('forget drops one entry whole and persists, so a reused id starts fresh', () => {
+    const store = new FileStatusStore(file);
+    store.set('perch-a', 'parked');
+    store.setClaudeSessionId('perch-a', 'sid');
+    store.setUrgent('perch-a', true);
+    store.set('perch-b', 'blocked');
+    store.forget('perch-a');
+    const reloaded = new FileStatusStore(file);
+    expect(reloaded.ids()).toEqual(['perch-b']);
+    expect(reloaded.getClaudeSessionId('perch-a')).toBeUndefined();
+    expect(reloaded.getUrgent('perch-a')).toBe(false);
+  });
+
   it('returns undefined for claudeSessionId when never set', () => {
     const store = new FileStatusStore(file);
     expect(store.getClaudeSessionId('perch-a')).toBeUndefined();

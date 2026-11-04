@@ -17,8 +17,16 @@ describe('findWorkspaceIds', () => {
     ]);
   });
 
-  it('ignores ids that are not exactly six hex characters', () => {
-    expect(findWorkspaceIds(cells('perch-demo perch-12345 perch-1234567 perch-ABCDEF xperch-123456'))).toEqual([]);
+  it('finds short ids, whatever the folder', () => {
+    expect(findWorkspaceIds(cells('see perch-3, eng-ops-12 and odoo_18-2.')).map((m) => m.id)).toEqual([
+      'perch-3',
+      'eng-ops-12',
+      'odoo_18-2',
+    ]);
+  });
+
+  it('ignores words with no number or hex suffix', () => {
+    expect(findWorkspaceIds(cells('perch-demo perch-ABCDEF perch- -3'))).toEqual([]);
   });
 
   // A wide character (CJK, emoji) takes two cells: the second has width 0 and no chars.

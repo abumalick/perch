@@ -7,6 +7,7 @@
   import StatusDot from './StatusDot.svelte';
   import { inputLog, type InputLogRecord } from '../core/terminal-input-log';
   import { isRelayMachine } from '../core/settings-store';
+  import { relayHost } from '../core/relay-host';
   import PairMachine from './PairMachine.svelte';
   import MachineDetail from './MachineDetail.svelte';
   import DictationPresets from './DictationPresets.svelte';
@@ -117,7 +118,10 @@
               <button type="button" class="open" onclick={() => (openId = machine.id)}>
                 <span class="dot" aria-hidden="true"><StatusDot status={shown} /></span>
                 <span class="text">
-                  <span class="name">{machine.name}</span>
+                  <span class="title">
+                    <span class="name">{machine.name}</span>
+                    <span class="host" data-testid="relay-host">{relayHost(machine.url)}</span>
+                  </span>
                   {#if err}
                     <span class="sub diag" data-testid="diagnostic">{describeConnectionError(err)}</span>
                   {:else}
@@ -283,6 +287,9 @@
   .list .row:has(.open) { padding-left: 0; }
   .text { display: flex; flex-direction: column; flex: 1; min-width: 0; text-align: left; }
   .name { font-weight: 600; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .title { display: flex; align-items: baseline; gap: 0.4rem; min-width: 0; }
+  .title .name { flex-shrink: 0; max-width: 60%; }
+  .host { font-size: 0.8rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .sub { font-size: 0.8rem; color: var(--text-dim); word-break: break-word; }
   .sub.diag { color: var(--danger); }
   .legacy { padding: 0.6rem 0.9rem !important; }

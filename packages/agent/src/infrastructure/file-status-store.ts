@@ -101,6 +101,14 @@ export class FileStatusStore implements StatusStorePort {
     this.listeners.push(listener);
   }
 
+  ids(): string[] {
+    return [...this.statuses.keys()];
+  }
+
+  forget(workspaceId: string): void {
+    if (this.statuses.delete(workspaceId)) this.persist();
+  }
+
   // Drop persisted statuses for sessions that no longer exist, so a reused
   // session name cannot inherit a dead one's status. Called once at startup.
   prune(liveIds: Iterable<string>): void {

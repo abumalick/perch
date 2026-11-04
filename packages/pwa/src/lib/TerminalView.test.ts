@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
-import type { CommandEntry } from '@perch/contracts';
 
 const writes: string[] = [];
 const pasted: string[] = [];
@@ -108,7 +107,6 @@ function fakeStore(
     setWorkspaceStatus: vi.fn(),
     browserSessionsFor: vi.fn(() => [] as string[]),
     supportsBrowser: vi.fn(() => false),
-    machineCommands: {} as Record<string, CommandEntry[]>,
     openBrowserView: vi.fn(),
     startBrowser: vi.fn(),
   };
@@ -139,24 +137,6 @@ describe('TerminalView', () => {
     expect(focusCount).toBe(0);
     render(TerminalView, { props: { store: fakeStore(true) as never } });
     expect(focusCount).toBe(1);
-  });
-
-  // The drop-down offers the shortcuts of the machine the active workspace lives on, and
-  // picking one writes to that workspace's pty.
-  it('offers the active machine command shortcuts and sends the picked one', async () => {
-    const store = fakeStore();
-    store.machineCommands = { mac: [{ command: '/rename', submit: true }] };
-    render(TerminalView, { props: { store: store as never } });
-    await fireEvent.click(screen.getByRole('button', { name: /commands/i }));
-    await fireEvent.click(screen.getByRole('option', { name: '/rename' }));
-    expect(store.sendInput).toHaveBeenCalledWith('/rename\r');
-  });
-
-  it('hides the commands trigger when the active machine has no shortcuts', () => {
-    const store = fakeStore();
-    store.machineCommands = { other: [{ command: '/rename', submit: true }] };
-    render(TerminalView, { props: { store: store as never } });
-    expect(screen.queryByRole('button', { name: /commands/i })).toBeNull();
   });
 
   it('attaches on mount and wires output + input + buttons', async () => {

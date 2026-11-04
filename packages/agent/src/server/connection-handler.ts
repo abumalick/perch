@@ -1,3 +1,4 @@
+import { exactTarget } from '../infrastructure/tmux-adapter';
 import { REFUSAL, constantTimeEqual } from '@perch/secure-channel';
 import { parseClientMessage, isWorkspaceStatus, type BrowserSession, type ClientMessage, type Workspace, type MachineStats } from '@perch/contracts';
 import type { ClientConnection } from '../ports/client-connection';
@@ -18,7 +19,6 @@ import type { StatusStorePort } from '../ports/status-store-port';
 import type { BrowserDiscoveryPort } from '../ports/browser-discovery-port';
 import type { BrowserCommandPort } from '../ports/browser-command-port';
 import type { HiddenFoldersPort } from '../ports/hidden-folders-port';
-import type { CommandsPort } from '../ports/commands-port';
 import type { LaunchersPort } from '../ports/launchers-port';
 import { normalizeCommand } from '../application/remember-launcher';
 import { KNOWN_CLIS } from '../infrastructure/installed-detector';
@@ -71,7 +71,6 @@ export interface ConnectionHandlerDeps {
   browserDiscovery: BrowserDiscoveryPort;
   browserCommands: BrowserCommandPort;
   hiddenFolders: HiddenFoldersPort;
-  commands: CommandsPort;
   launchers: LaunchersPort;
   // Which of KNOWN_CLIS this machine can run, resolved the way a workspace's command is.
   detectInstalled: (names: string[]) => Promise<string[]>;
@@ -82,7 +81,10 @@ export interface ConnectionHandlerDeps {
   connectUpstream: ConnectUpstream;
   // Browser viewers, shared by every connection: one viewer per session across them all.
   browserViewers: ViewerRegistry;
-  forgetWorkspace: (id: string) => Workspace | undefined;
+  // `closing` is set by an explicit close only: see WsServer.forgetWorkspace.
+  forgetWorkspace: (id: string, closing?: boolean) => Workspace | undefined;
+  // See WsServer.dropWorkspaceState. Optional so a test without it still closes.
+  dropWorkspaceState?: (id: string) => void;
   broadcastClosed: (id: string) => void;
   // WsServer's SendMessage mark, which listWorkspaces turns into `waitingOn`.
   messagedLast?: Pick<ReadonlySet<string>, 'has'>;
@@ -216,7 +218,7 @@ export class ConnectionHandler {
   private async serveAtOnce(): Promise<void> {
     this.authed = true;
     this.conn.send({ type: 'authResult', ok: true, credential: 'device', pushed: true });
-    for (const type of ['list', 'listCommands', 'listKeyterms'] as const) {
+    for (const type of ['list', 'listKeyterms'] as const) {
       try {
         await this.route({ type });
       } catch (err) {
@@ -226,7 +228,7 @@ export class ConnectionHandler {
   }
 
   protected async route(message: Exclude<ClientMessage, { type: 'auth' }>): Promise<void> {
-    const { config, tmux, recent, lister, reader, resolvePath, isDirectory, clock, ids, status, hiddenFolders, commands, repoRemote, claudeSessions } = this.deps;
+    const { config, tmux, recent, lister, reader, resolvePath, isDirectory, clock, ids, status, hiddenFolders, repoRemote, claudeSessions } = this.deps;
     switch (message.type) {
       case 'list': {
         const hidden = await hiddenFolders.list();
@@ -269,10 +271,10 @@ export class ConnectionHandler {
         this.conn.send({ type: 'roots', roots: config.projectRoots });
         return;
       }
-      case 'listCommands': {
-        this.conn.send({ type: 'commands', commands: await commands.list() });
+      // Sent by PWAs from before the keyboard bar lost its command shortcuts; answering it
+      // with an error would show them a banner on every connect.
+      case 'listCommands':
         return;
-      }
       case 'listLaunchers':
         await this.sendLaunchers();
         return;
@@ -302,7 +304,7 @@ export class ConnectionHandler {
       case 'close': {
         const parkedRecord = await this.deps.parked.get(message.workspaceId);
         const workspace =
-          this.deps.forgetWorkspace(message.workspaceId) ??
+          this.deps.forgetWorkspace(message.workspaceId, true) ??
           (parkedRecord
             ? {
                 machineId: parkedRecord.machineId,
@@ -315,6 +317,10 @@ export class ConnectionHandler {
                 status: 'parked' as const,
               }
             : await this.snapshotWorkspace(message.workspaceId));
+        // Read first: once neither tmux nor parked.json holds the id, the poll may drop its
+        // status entry (WsServer.dropGoneWorkspaces) before the log entry below is written.
+        const lastStatus = this.deps.status.get(message.workspaceId);
+        const claudeSessionId = parkedRecord ? parkedRecord.claudeSessionId : this.deps.status.getClaudeSessionId(message.workspaceId);
         if (parkedRecord) {
           await this.deps.parked.remove(message.workspaceId);
         }
@@ -326,18 +332,14 @@ export class ConnectionHandler {
           await recordWorkspaceClosed(
             {
               workspaceLog: this.deps.workspaceLog,
-              status: parkedRecord
-                ? {
-                    get: (id: string) => this.deps.status.get(id),
-                    getClaudeSessionId: () => parkedRecord.claudeSessionId,
-                  }
-                : this.deps.status,
+              status: { get: () => lastStatus, getClaudeSessionId: () => claudeSessionId },
               clock: this.deps.clock,
             },
             workspace,
             'closed-by-user',
           );
         }
+        this.deps.dropWorkspaceState?.(message.workspaceId);
         // The tmux session is gone, so the workspace is closed as far as any device is
         // concerned — say so now. What remains (tearing down agent-browser sessions, which
         // waits on a Chrome shutdown, and stopping the pane's scope, which waits on
@@ -619,7 +621,7 @@ export class ConnectionHandler {
     }
     const session = this.deps.pty.spawn({
       command: 'tmux',
-      args: ['attach-session', '-t', workspaceId],
+      args: ['attach-session', '-t', exactTarget(workspaceId)],
       cols,
       rows,
     });

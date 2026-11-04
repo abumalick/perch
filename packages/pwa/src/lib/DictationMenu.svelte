@@ -1,6 +1,6 @@
 <script lang="ts">
   // The mic's long-press menu: pick the dictation preset the next recording uses. Positioned
-  // fixed against the viewport like CommandPicker, since the keyboard bar clips its overflow.
+  // fixed against the viewport, since the keyboard bar clips its overflow.
   // A preset that cannot be used here (no key; Claude voice outside Claude Code) is shown but
   // disabled; with none usable there is no mic.
   import { unavailableHint, type DictationPreset, type PresetKeys } from '../core/dictation-presets';

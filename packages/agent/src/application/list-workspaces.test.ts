@@ -13,7 +13,7 @@ const noStatus: StatusFake = {
 
 const baseTmux: TmuxPort = {
   listSessions: async () => [
-    { name: 'perch-1', startPath: '/home/u/workspace/foo', command: 'claude', createdAt: 1, title: 'dev' },
+    { name: 'perch-1', startPath: '/home/u/workspace/foo', command: 'claude', createdAt: 1, title: '' },
   ],
   createSession: async () => undefined,
   killSession: async () => undefined,
@@ -36,7 +36,7 @@ describe('listWorkspaces', () => {
           startPath: '/home/u/workspace/api',
           command: 'claude',
           createdAt: 5000,
-          title: 'dev',
+          title: '',
         },
       ],
       createSession: async () => undefined,
@@ -109,8 +109,8 @@ describe('listWorkspaces', () => {
   it('uses the stored status when present, defaulting others to idle', async () => {
     const tmux: TmuxPort = {
       listSessions: async () => [
-        { name: 'perch-bb', startPath: '/p/web', command: 'claude', createdAt: 1, title: 'dev' },
-        { name: 'perch-cc', startPath: '/p/api', command: 'claude', createdAt: 1, title: 'dev' },
+        { name: 'perch-bb', startPath: '/p/web', command: 'claude', createdAt: 1, title: '' },
+        { name: 'perch-cc', startPath: '/p/api', command: 'claude', createdAt: 1, title: '' },
       ],
       createSession: async () => undefined,
       killSession: async () => undefined,
@@ -130,8 +130,8 @@ describe('listWorkspaces', () => {
   it('stamps the urgent flag from the store', async () => {
     const tmux: TmuxPort = {
       listSessions: async () => [
-        { name: 'perch-bb', startPath: '/p/web', command: 'claude', createdAt: 1, title: 'dev' },
-        { name: 'perch-cc', startPath: '/p/api', command: 'claude', createdAt: 1, title: 'dev' },
+        { name: 'perch-bb', startPath: '/p/web', command: 'claude', createdAt: 1, title: '' },
+        { name: 'perch-cc', startPath: '/p/api', command: 'claude', createdAt: 1, title: '' },
       ],
       createSession: async () => undefined,
       killSession: async () => undefined,
@@ -151,8 +151,8 @@ describe('listWorkspaces', () => {
   it('uses the status change time as lastActivityAt, falling back to createdAt', async () => {
     const tmux: TmuxPort = {
       listSessions: async () => [
-        { name: 'perch-bb', startPath: '/p/web', command: 'claude', createdAt: 100, title: 'dev' },
-        { name: 'perch-cc', startPath: '/p/api', command: 'claude', createdAt: 200, title: 'dev' },
+        { name: 'perch-bb', startPath: '/p/web', command: 'claude', createdAt: 100, title: '' },
+        { name: 'perch-cc', startPath: '/p/api', command: 'claude', createdAt: 200, title: '' },
       ],
       createSession: async () => undefined,
       killSession: async () => undefined,
@@ -172,8 +172,8 @@ describe('listWorkspaces', () => {
   it('stamps github owner/repo from the repo-remote port, omitting it when null', async () => {
     const tmux: TmuxPort = {
       listSessions: async () => [
-        { name: 'perch-gh', startPath: '/p/perch', command: 'claude', createdAt: 1, title: 'dev' },
-        { name: 'perch-no', startPath: '/p/plain', command: 'claude', createdAt: 1, title: 'dev' },
+        { name: 'perch-gh', startPath: '/p/perch', command: 'claude', createdAt: 1, title: '' },
+        { name: 'perch-no', startPath: '/p/plain', command: 'claude', createdAt: 1, title: '' },
       ],
       createSession: async () => undefined,
       killSession: async () => undefined,
@@ -198,7 +198,7 @@ describe('listWorkspaces', () => {
   it('omits github entirely when no repo-remote port is provided', async () => {
     const tmux: TmuxPort = {
       listSessions: async () => [
-        { name: 'perch-aa', startPath: '/p/api', command: 'claude', createdAt: 1, title: 'dev' },
+        { name: 'perch-aa', startPath: '/p/api', command: 'claude', createdAt: 1, title: '' },
       ],
       createSession: async () => undefined,
       killSession: async () => undefined,
@@ -282,8 +282,8 @@ describe('listWorkspaces', () => {
 describe('listWorkspaces agent address', () => {
   const twoSessions: TmuxPort = {
     listSessions: async () => [
-      { name: 'perch-cc', startPath: '/p/perch', command: 'claude', createdAt: 1, title: 'dev' },
-      { name: 'perch-sh', startPath: '/p/plain', command: 'zsh', createdAt: 1, title: 'dev' },
+      { name: 'perch-cc', startPath: '/p/perch', command: 'claude', createdAt: 1, title: '' },
+      { name: 'perch-sh', startPath: '/p/plain', command: 'zsh', createdAt: 1, title: '' },
     ],
     createSession: async () => undefined,
     killSession: async () => undefined,

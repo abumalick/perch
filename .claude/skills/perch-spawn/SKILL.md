@@ -7,9 +7,10 @@ description: Use when asked to launch, spawn, or open one or more new Perch work
 
 ## Overview
 
-A Perch workspace *is* a detached tmux session named `perch-<6 hex>`. The Perch
-agent discovers workspaces by running `tmux list-sessions` — nothing registers
-them. The `perch` CLI starts one (`perch spawn`); it needs no agent restart and no
+A Perch workspace *is* a detached tmux session named after its folder and a small
+number (`perch-3`, `eng-ops-1`; older ones are `perch-<6 hex>`). The Perch agent
+discovers workspaces by running `tmux list-sessions` — nothing registers them.
+`perch rename [<id>] <title>` changes a workspace's title, never its id. The `perch` CLI starts one (`perch spawn`); it needs no agent restart and no
 token. It is on PATH once `deploy/install-cli.sh` has run on the machine (see
 "Perch CLI" in the Perch repo's `docs/DEPLOY.md`).
 
@@ -30,9 +31,9 @@ this conversation. **The brief is the only thing it will ever know.**
 
 ## Workflow
 
-1. **Check nothing already covers it.** `perch ls` lists every workspace, parked
-   ones included, with its title and folder; resume or message an existing one
-   rather than spawning a duplicate.
+1. **Check nothing already covers it.** `perch ls --path <project>` lists every
+   workspace in that project, parked ones included, with its title and role;
+   resume or message an existing one rather than spawning a duplicate.
 2. **Resolve a project path per item** — it must exist (a relative one resolves
    against your cwd). Two items on the same repo get the same path (see Isolation).
 3. **Write a self-contained brief per item** (see below).
@@ -82,9 +83,12 @@ with ten near-identical summaries, and the tiles cannot be told apart. Give each
 the identifier the rest of the work already uses — the branch, the ticket, the
 row — and a tile matches a log line without guessing.
 
-The title survives for the life of the session. It does **not** survive an
-unpark: a resumed workspace starts a fresh Claude Code without the flag that
-suppresses renaming, so it goes back to naming itself.
+The title survives for the life of the session, and an unpark: opening a parked
+workspace puts back the name it had when parked and holds it (on tmux 3.5+), so
+it keeps that name from then on whether it came from `--title` or not.
+
+`perch unpark <id>...` reopens parked workspaces from a shell, the same way
+opening one on the phone does (it asks the running agent).
 
 Always pass the brief through a **quoted** heredoc (`<<'PROMPT'`). An unquoted
 one lets the shell expand `$` and backticks in the brief before it is written.

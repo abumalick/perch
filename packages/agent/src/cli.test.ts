@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -303,6 +303,8 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
 
   function fakeTmux(pane: Record<string, string> = {}) {
     const created: Array<{ name: string; cwd: string; command: string; parent?: string; storedCommand?: string }> = [];
+    const locked: string[] = [];
+    const titles: string[] = [];
     const tmux: TmuxPort = {
       listSessions: async (prefix) => live.filter((s) => s.name.startsWith(prefix)),
       createSession: async (input) => {
@@ -311,12 +313,18 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
       killSession: async () => {
         throw new Error('ls/spawn/peek must never kill');
       },
-      hasSession: async () => true,
-      setPaneTitle: async () => {},
+      hasSession: async (name) => live.some((s) => s.name === name) || created.some((c) => c.name === name),
+      setPaneTitle: async (name, title) => {
+        titles.push(`${name} ${title}`);
+      },
+      supportsTitleLock: async () => true,
+      lockPaneTitle: async (name) => {
+        locked.push(name);
+      },
       capturePane: async () => 'old\n\nline 1\n   \nline 2\nline 3\n\n\n',
       sessionOfPane: async (id) => pane[id] ?? null,
     };
-    return { tmux, created };
+    return { tmux, created, locked, titles };
   }
 
   async function machine() {
@@ -331,6 +339,13 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     return { home, env };
   }
 
+  // The brief file is named by a nonce; the launch command names it.
+  const spawnedBrief = (home: string, created: Array<{ name: string; command: string }>, id: string) => {
+    const path = /cat '([^']+)'/.exec(created.find((c) => c.name === id)!.command)![1]!;
+    expect(path.startsWith(join(home, '.perch', 'spawn'))).toBe(true);
+    return readFile(path, 'utf8');
+  };
+
   const io = (tmux: TmuxPort, extra: Partial<CliIo> = {}): CliIo => ({ tmux, now: () => NOW, sleep: async () => {}, ...extra });
 
   it('lists live and parked workspaces with their stored status, without an agent.env', async () => {
@@ -342,15 +357,16 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     );
     const out = await run(['ls'], env, home, io(fakeTmux().tmux));
     const lines = out.split('\n');
-    expect(lines[0]).toMatch(/^ID +NAME +STATUS +AGE +PARENT +TITLE +FOLDER$/);
-    expect(out).toMatch(/perch-aaaaaa +- +idle +1h +- +Fix login +\/w\/foo/);
-    expect(out).toMatch(/perch-bbbbbb +- +needs-feedback \(urgent\) +2m +perch-aaaaaa +Child/);
-    expect(out).toMatch(/perch-pppppp +- +parked +1d/);
+    expect(lines[0]).toMatch(/^ID +NAME +STATUS +AGE +ROLE +PARENT +TITLE +FOLDER$/);
+    expect(out).toMatch(/perch-aaaaaa +- +idle +1h +orchestrator +- +Fix login +\/w\/foo/);
+    expect(out).toMatch(/perch-bbbbbb +- +needs-feedback \(urgent\) +2m +child +perch-aaaaaa +Child/);
+    expect(out).toMatch(/perch-pppppp +- +parked +1d +normal /);
     expect(out).not.toContain('perch-hhhhhh');
     const json = JSON.parse(await run(['ls', '--json'], env, home, io(fakeTmux().tmux))) as Workspace[];
     expect(json.map((w) => w.id)).toEqual(['perch-aaaaaa', 'perch-bbbbbb', 'perch-pppppp']);
     expect(json[0]!.machineId).toBe(hostname().split('.')[0]);
     expect(json[1]!.parentId).toBe('perch-aaaaaa');
+    expect(json.map((w) => (w as Workspace & { role: string }).role)).toEqual(['orchestrator', 'child', 'normal']);
   });
 
   it('shows a child whose last act was SendMessage as waiting on its orchestrator', async () => {
@@ -382,6 +398,40 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     expect(await run(['ls'], env, home, io(fakeTmux().tmux))).toContain('perch-aaaaaa');
   });
 
+  it('filters by role, keeping the role the whole list gives', async () => {
+    const { home, env } = await machine();
+    const ids = async (...argv: string[]) => (JSON.parse(await run(['ls', '--json', ...argv], env, home, io(fakeTmux().tmux))) as Workspace[]).map((w) => w.id);
+    expect(await ids('--role', 'orchestrator')).toEqual(['perch-aaaaaa']);
+    expect(await ids('--role', 'child')).toEqual(['perch-bbbbbb']);
+    expect(await ids('--role', 'normal')).toEqual([]);
+    await expect(run(['ls', '--role', 'boss'], env, home, io(fakeTmux().tmux))).rejects.toThrow(/usage: perch ls/);
+  });
+
+  it('filters by project path: the directory and everything under it, relative to the caller', async () => {
+    const { home, env } = await machine();
+    const ids = async (cwd: string, ...argv: string[]) =>
+      (JSON.parse(await run(['ls', '--json', ...argv], env, home, io(fakeTmux().tmux, { cwd }))) as Workspace[]).map((w) => w.id);
+    expect(await ids('/', '--path', '/w/foo')).toEqual(['perch-aaaaaa']);
+    expect(await ids('/', '--path', '/w')).toEqual(['perch-aaaaaa', 'perch-bbbbbb']);
+    expect(await ids('/w', '--path', 'bar')).toEqual(['perch-bbbbbb']);
+    expect(await ids('/w/bar', '--path', '.')).toEqual(['perch-bbbbbb']);
+    expect(await ids('/', '--path', '/w/fo')).toEqual([]);
+    const out = await run(['ls', '--path', '/w/bar'], env, home, io(fakeTmux().tmux, { cwd: '/' }));
+    expect(out).toMatch(/perch-bbbbbb .* child +perch-aaaaaa/);
+  });
+
+  it('matches --path through a symlink, since spawn stores the resolved folder', async () => {
+    const { home, env } = await machine();
+    const real = await realpath(await mkdtemp(join(home, 'real-')));
+    await symlink(real, join(home, 'link'));
+    await writeFile(
+      join(home, '.perch', 'parked.json'),
+      JSON.stringify([{ id: 'perch-pppppp', name: 'Parked one', projectPath: real, command: 'claude', machineId: 'm', createdAt: 1, parkedAt: NOW }]),
+    );
+    const out = await run(['ls', '--json', '--path', join(home, 'link')], env, home, io(fakeTmux().tmux, { cwd: '/' }));
+    expect((JSON.parse(out) as Workspace[]).map((w) => w.id)).toEqual(['perch-pppppp']);
+  });
+
   it('filters by parent, and --mine by the workspace the caller runs in', async () => {
     const { home, env } = await machine();
     const { tmux } = fakeTmux({ '%7': 'perch-aaaaaa' });
@@ -393,15 +443,51 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     await expect(run(['ls', '--parent'], env, home, io(tmux))).rejects.toThrow(/usage: perch ls/);
   });
 
+  it('unparks through the running agent, one line per id, failing if any did not open', async () => {
+    const { home } = await machine();
+    await writeFile(join(home, '.perch', 'token'), 'hook-secret');
+    const env = { PERCH_AGENT_ENV: join(home, 'agent.env') };
+    await writeFile(env.PERCH_AGENT_ENV, 'PERCH_PORT=9911\n');
+    const calls: Array<{ url: string; auth: string; body: string }> = [];
+    const results: Record<string, string> = { 'perch-aaaaaa': 'unparked', 'perch-bbbbbb': 'not-parked', 'perch-cccccc': 'missing-directory' };
+    const fetch = async (url: string | URL | Request, init?: RequestInit) => {
+      const body = String(init?.body);
+      calls.push({ url: String(url), auth: new Headers(init?.headers).get('authorization') ?? '', body });
+      const { id } = JSON.parse(body) as { id: string };
+      return new Response(JSON.stringify({ result: results[id] }), { status: 200 });
+    };
+    expect(await run(['unpark', 'perch-aaaaaa'], env, home, io(fakeTmux().tmux, { fetch }))).toBe('perch-aaaaaa: opened');
+    expect(calls[0]).toEqual({ url: 'http://127.0.0.1:9911/unpark', auth: 'Bearer hook-secret', body: '{"id":"perch-aaaaaa"}' });
+    // Every id is tried; the failures are reported together.
+    await expect(run(['unpark', 'perch-bbbbbb', 'perch-aaaaaa', 'perch-cccccc'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(
+      'perch-bbbbbb: not parked\nperch-aaaaaa: opened\nperch-cccccc: its project directory no longer exists',
+    );
+    await expect(run(['unpark'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/usage: perch unpark/);
+  });
+
+  it('says the agent is not running when nothing answers', async () => {
+    const { home, env } = await machine();
+    await writeFile(join(home, '.perch', 'token'), 'hook-secret');
+    const fetch = async () => {
+      throw new TypeError('fetch failed', { cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }) });
+    };
+    await expect(run(['unpark', 'perch-aaaaaa'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/agent is not running/);
+    await rm(join(home, '.perch', 'token'));
+    await expect(run(['unpark', 'perch-aaaaaa'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/agent is not running/);
+  });
+
   it('spawns from the caller cwd with the brief from stdin, and prints the id', async () => {
     const { home, env } = await machine();
     await mkdir(join(home, 'proj'));
-    const { tmux, created } = fakeTmux();
+    const { tmux, created, locked } = fakeTmux();
     const id = await run(['spawn', '--title', 'T', 'proj'], env, home, io(tmux, { cwd: home, stdin: async () => 'Do it.\n' }));
-    expect(id).toMatch(/^perch-[0-9a-f]{6}$/);
+    expect(id).toBe('proj-1');
     expect(created[0]!.cwd).toBe(await realpath(join(home, 'proj')));
     expect(created[0]!.storedCommand).toBe(`claude --model 'opus[1m]' --name ${id}`);
-    expect(await readFile(join(home, '.perch', 'spawn', `${id}.md`), 'utf8')).toBe('Do it.\n');
+    // The title is held by tmux's lock, not by the env switch that also silences OSC 7501.
+    expect(locked).toEqual([id]);
+    expect(created[0]!.command).not.toContain('CLAUDE_CODE_DISABLE_TERMINAL_TITLE');
+    expect(await spawnedBrief(home, created, id)).toBe('Do it.\n');
   });
 
   it('spawns a child of the caller, naming the parent by its current messaging name', async () => {
@@ -412,9 +498,34 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     const id = await run(['spawn', '--child', '--model', 'sonnet[1m]', home], { ...env, TMUX_PANE: '%7' }, home, io(tmux, { stdin: async () => 'b' }));
     expect(created[0]!.parent).toBe('perch-aaaaaa');
     expect(created[0]!.storedCommand).toContain("--model 'sonnet[1m]'");
-    const brief = await readFile(join(home, '.perch', 'spawn', `${id}.md`), 'utf8');
+    const brief = await spawnedBrief(home, created, id);
     expect(brief).toContain('(to: "orch-name")');
     expect(brief).toContain('look for workspace perch-aaaaaa');
+  });
+
+  it('gives a spawn the smallest free id for its folder', async () => {
+    const { home, env } = await machine();
+    const project = join(home, 'My.App');
+    await mkdir(project);
+    const { tmux } = fakeTmux();
+    const first = await run(['spawn', project], env, home, io(tmux, { stdin: async () => 'b' }));
+    const second = await run(['spawn', project], env, home, io(tmux, { stdin: async () => 'b' }));
+    expect([first, second]).toEqual(['my-app-1', 'my-app-2']);
+  });
+
+  it('renames the caller, or the workspace a first word names, under a locked title', async () => {
+    const { home, env } = await machine();
+    const { tmux, locked, titles } = fakeTmux({ '%7': 'perch-aaaaaa' });
+    const pane = { ...env, TMUX_PANE: '%7' };
+    expect(await run(['rename', 'Invoice', 'PDF', 'fix'], pane, home, io(tmux))).toBe('perch-aaaaaa: renamed to "Invoice PDF fix"');
+    expect(await run(['rename', 'perch-bbbbbb', 'Child', 'two'], pane, home, io(tmux))).toBe('perch-bbbbbb: renamed to "Child two"');
+    // One word is always a title, even one that looks like an id.
+    expect(await run(['rename', 'perch-bbbbbb'], pane, home, io(tmux))).toBe('perch-aaaaaa: renamed to "perch-bbbbbb"');
+    expect(locked).toEqual(['perch-aaaaaa', 'perch-bbbbbb', 'perch-aaaaaa']);
+    expect(titles).toEqual(['perch-aaaaaa ✳ Invoice PDF fix', 'perch-bbbbbb ✳ Child two', 'perch-aaaaaa ✳ perch-bbbbbb']);
+    await expect(run(['rename', 'perch-9', 'x'], pane, home, io(tmux))).rejects.toThrow(/no workspace perch-9/);
+    await expect(run(['rename'], pane, home, io(tmux))).rejects.toThrow(/usage: perch rename/);
+    await expect(run(['rename', 'x'], env, home, io(tmux))).rejects.toThrow(/TMUX_PANE/);
   });
 
   it('refuses a child outside a Perch pane, and a spawn without a path', async () => {

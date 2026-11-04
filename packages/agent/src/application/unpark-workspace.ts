@@ -8,7 +8,7 @@ export type UnparkResult = 'not-parked' | 'unparked' | 'missing-directory';
 
 export interface UnparkWorkspaceDeps {
   parked: Pick<ParkedStorePort, 'get' | 'remove'>;
-  tmux: Pick<TmuxPort, 'createSession'>;
+  tmux: Pick<TmuxPort, 'createSession' | 'supportsTitleLock' | 'lockPaneTitle' | 'setPaneTitle'>;
   isDirectory: DirectoryChecker;
   status: Pick<StatusStorePort, 'set'>;
 }
@@ -40,10 +40,28 @@ export async function unparkWorkspace(
     name: record.id,
     cwd: record.projectPath,
     command: resumeCommand(record.command, record.claudeSessionId),
+    // Recorded bare, so parking this workspace again resumes it instead of re-wrapping the
+    // `|| exec` fallback, whose first arm would then start a fresh session.
+    storedCommand: record.command,
     ...(record.parent ? { parent: record.parent } : {}),
   });
+  // The workspace's name is its pane title, and the resumed Claude would write a new one: the
+  // bare id for a `--name perch-…` spawn, a fresh summary otherwise. So the parked name is put
+  // back, glyph-prefixed because deriveWorkspaceName trusts only such a title, and locked on
+  // every unpark (tmux 3.5+): unlocked it would last until Claude's first title write. The
+  // record cannot tell an explicit `--title` from a name Claude chose, and a frozen known name
+  // beats one that moves to something the user does not recognise. Where tmux cannot lock, the
+  // title is still set, best-effort: the spawn's env switch would cover only the left half of
+  // `<cmd> --resume <id> || exec <cmd>`, and it silences Claude's OSC 7501 status too.
+  // A failure here must not fail the unpark: the session already exists, and the record must go.
+  await restoreName(deps.tmux, record.id, record.name).catch(() => undefined);
   await deps.parked.remove(record.id);
   // Back to a normal live workspace. The next hook event moves it to `working`.
   deps.status.set(record.id, 'idle');
   return 'unparked';
+}
+
+async function restoreName(tmux: UnparkWorkspaceDeps['tmux'], id: string, name: string): Promise<void> {
+  if (tmux.lockPaneTitle && (await tmux.supportsTitleLock?.())) await tmux.lockPaneTitle(id);
+  await tmux.setPaneTitle?.(id, `✳ ${name}`);
 }

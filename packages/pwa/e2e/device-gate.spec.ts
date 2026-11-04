@@ -50,7 +50,7 @@ test('a paired key is served at once: the list arrives without the phone asking 
   agent.received.length = 0;
   await page.reload();
   await expect(page.getByText('demo', { exact: true })).toBeVisible();
-  expect(agent.received.filter((m) => ['list', 'listCommands', 'listKeyterms'].includes(String(m.type)))).toEqual([]);
+  expect(agent.received.filter((m) => ['list', 'listKeyterms'].includes(String(m.type)))).toEqual([]);
 });
 
 test('a revoked key loses its session at once and is refused from then on', async ({ page, baseURL }) => {

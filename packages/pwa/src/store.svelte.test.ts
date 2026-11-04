@@ -967,21 +967,6 @@ describe('PerchStore folder picker', () => {
     expect(last).toEqual({ type: 'create', projectPath: '/p', command: 'claude' });
   });
 
-  it('stores the command shortcuts a machine reports', () => {
-    const { store } = connected();
-    store.handleMessage('mac', {
-      type: 'commands',
-      commands: [
-        { command: '/myplugin:task', submit: false },
-        { command: '/rename', submit: true },
-      ],
-    });
-    expect(store.machineCommands['mac']).toEqual([
-      { command: '/myplugin:task', submit: false },
-      { command: '/rename', submit: true },
-    ]);
-  });
-
   const withKills = (oomKills: number | undefined) => ({
     cpuPercent: 12,
     memory: { usedBytes: 100, totalBytes: 400 },
@@ -1054,15 +1039,6 @@ describe('PerchStore folder picker', () => {
     store.handleMessage('mac', { type: 'stats', stats: withKills(undefined) });
     expect(store.oomKillsSince('mac')).toBe(0);
     expect(store.oomKillsSince('mini')).toBe(0);
-  });
-
-  // Keyed by connection id, so two machines' drop-downs never bleed into each other.
-  it('keeps each machine command shortcuts separate', () => {
-    const { store } = connected();
-    store.handleMessage('mac', { type: 'commands', commands: [{ command: '/mac-only', submit: false }] });
-    store.handleMessage('mini', { type: 'commands', commands: [{ command: '/mini-only', submit: true }] });
-    expect(store.machineCommands['mac']).toEqual([{ command: '/mac-only', submit: false }]);
-    expect(store.machineCommands['mini']).toEqual([{ command: '/mini-only', submit: true }]);
   });
 
   it('stores the dictation vocabulary a machine reports', () => {

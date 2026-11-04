@@ -1,4 +1,5 @@
 import type { Workspace } from '@perch/contracts';
+import type { WorkspaceRole } from './workspace-role';
 
 const TITLE_MAX = 40;
 
@@ -27,15 +28,16 @@ function statusCell(w: Workspace): string {
 
 // `perch ls`'s human table. NAME is the Claude session's messaging name (what SendMessage
 // takes), TITLE the workspace's display name, AGE the time in its current status.
-export function formatWorkspaceTable(workspaces: Workspace[], opts: { now: number; home: string }): string {
+export function formatWorkspaceTable(workspaces: Array<Workspace & { role: WorkspaceRole }>, opts: { now: number; home: string }): string {
   if (workspaces.length === 0) return 'no workspaces';
   const rows = [
-    ['ID', 'NAME', 'STATUS', 'AGE', 'PARENT', 'TITLE', 'FOLDER'],
+    ['ID', 'NAME', 'STATUS', 'AGE', 'ROLE', 'PARENT', 'TITLE', 'FOLDER'],
     ...workspaces.map((w) => [
       w.id,
       w.agentAddress ?? '-',
       statusCell(w),
       formatAge(opts.now - w.lastActivityAt),
+      w.role,
       w.parentId ?? '-',
       shorten(w.name),
       tildePath(w.projectPath, opts.home),

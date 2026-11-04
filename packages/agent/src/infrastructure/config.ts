@@ -12,7 +12,6 @@ export interface AgentConfig {
   recentStorePath: string;
   statusStorePath: string;
   hiddenFoldersPath: string;
-  commandsPath: string;
   launchersPath: string;
   keytermsPath: string;
   clientLogPath: string;
@@ -33,6 +32,9 @@ export interface AgentConfig {
   pairingPath: string;
   // Where phones open the PWA; the origin of the pairing links `perch pair` prints.
   pwaOrigin?: string;
+  // false when PERCH_STATS turns the machine load strip off, e.g. for a second Linux user on a
+  // machine whose load another agent already reports.
+  stats?: false;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv, home: string): AgentConfig {
@@ -60,7 +62,6 @@ export function loadConfig(env: NodeJS.ProcessEnv, home: string): AgentConfig {
     recentStorePath: join(home, '.perch', 'recent.json'),
     statusStorePath: join(home, '.perch', 'status.json'),
     hiddenFoldersPath: join(home, '.perch', 'hidden-folders.json'),
-    commandsPath: join(home, '.perch', 'commands.json'),
     launchersPath: join(home, '.perch', 'launchers.json'),
     // Usually a symlink to a vocabulary kept with the user's own dotfiles, so one list can
     // serve every machine; PERCH_KEYTERMS_PATH points at it directly instead.
@@ -80,6 +81,7 @@ export function loadConfig(env: NodeJS.ProcessEnv, home: string): AgentConfig {
     pairingPath: join(home, '.perch', 'pairing.json'),
     ...(env.PERCH_PWA_ORIGIN ? { pwaOrigin: env.PERCH_PWA_ORIGIN } : {}),
     ...(env.PERCH_DEFAULT_PATH ? { defaultPath: env.PERCH_DEFAULT_PATH } : {}),
+    ...(['off', '0', 'false'].includes(env.PERCH_STATS?.trim().toLowerCase() ?? '') ? { stats: false as const } : {}),
   };
 }
 

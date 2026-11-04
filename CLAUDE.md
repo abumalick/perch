@@ -24,8 +24,8 @@ device key, and streams its terminals. No agent listens on a phone-facing port.
 - `packages/agent` (`@perch/agent`) — per-machine agent. tmux via `node:child_process`,
   terminal streaming via `node-pty`, a `RelayLink` per relay that dials a socket back for
   each phone (served through `NoiseClientConnection`), and a `node:http` server on
-  `127.0.0.1` whose only route is the bearer-token-guarded `POST /hooks` (Claude Code hooks
-  report attention here).
+  `127.0.0.1` with two bearer-token-guarded routes: `POST /hooks` (Claude Code hooks report
+  attention here) and `POST /unpark` (`perch unpark`).
   Domain/application in `application/` + `ports/`, adapters in `infrastructure/`, wiring in
   `server/`.
 - `packages/relay` (`@perch/relay`), `packages/relay-cf`, `packages/secure-channel` — the
@@ -76,7 +76,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   PATH). Run `mise trust` once per machine or the unit crash-loops.
 - **An agent is reached only through its relays.** It binds `127.0.0.1` whatever
   `PERCH_HOST` says (a non-loopback value is ignored with a warning), serves only `POST /hooks`
-  there, and is never published with `tailscale serve`. `pnpm perch connect` joins a machine
+  and `POST /unpark` there, and is never published with `tailscale serve`. `pnpm perch connect` joins a machine
   to a relay; `perch pair` pairs a phone (relay section).
 - The PWA is built and served on the always-on machine via `deploy/run-pwa.sh` +
   `tailscale serve`, and added to the iPhone home screen.
@@ -95,16 +95,6 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   immediately with no agent restart. Missing or malformed file → empty list (opt-in;
   filtering only activates once the file exists). Manage it directly on each machine (there's
   no CLI/PWA UI to edit it), and set it up separately per machine — nothing syncs it.
-- **Command shortcuts are per-machine, file-based config too — but they cross the wire.** A
-  gitignored `~/.perch/commands.json` (JSON array of `{command, submit?}`) on each agent
-  machine fills the keyboard bar's `/` drop-down. Unlike hidden folders (agent-internal, only
-  the *effect* crosses the wire), the PWA needs the contents, so it follows the
-  `listRoots`/`roots` request/reply shape: `listCommands` → `commands`. The PWA asks on every
-  (re)connect and keys the result by connection id (`store.machineCommands`), so **an edit
-  takes effect on the next reconnect, not immediately** — that's the one property this gives
-  up versus hidden folders. Missing/malformed file → empty list → the `/` button doesn't
-  render at all. `parse-commands.ts` degrades entry-by-entry (a bad `submit` costs the flag,
-  not the command) since the file is hand-edited. Set it up separately per machine.
 - **The Create Workspace command list is per machine: detected CLIs plus remembered ones.**
   The PWA sends `listLaunchers` each time the form opens (`askCreateData`) and the agent answers
   `launchers {detected, custom}`. `detected` is `claude`/`codex` resolved **through the login
@@ -217,7 +207,9 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   or crash the poll's fire-and-forget interval). No PWA/UI, no protocol change; read the file
   by hand on the box. Log writes failing silently is accepted by design. A poll landing between the close's
   forget and its async tmux kill no longer logs a duplicate `exited`: `WsServer.closing` keeps it
-  from taking the workspace back until tmux stops listing it.
+  from taking the workspace back until tmux stops listing it (at most 10 s). Only an explicit close
+  sets it: a park forgets the workspace too, but its parked record keeps it listed and an unpark
+  revives the same id, so marking it would hide that workspace from the poll for good.
 - **Parking a workspace — stop the session, keep the conversation.** Setting a workspace's
   status to `parked` (renamed from `postponed`) kills its tmux session to free the `claude`
   process, and snapshots what's needed to revive it — id, name, path, command, and the
@@ -227,7 +219,19 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   and no PWA logic — and the disappearance poll never sees it vanish, so it logs no
   spurious `exited`. Opening it recreates the session with `--resume` injected into the
   **original** command (`claude --model 'opus[1m]' --resume <id>`, preserving flags), then
-  clears the record. **The parked record — not `status === 'parked'` — is the source of
+  clears the record. **The name is put back and held:** a workspace's name is its pane title,
+  and the resumed Claude writes a new one at once (the bare id for a `--name perch-…` spawn, a
+  fresh summary otherwise), so unpark sets `✳ <parked name>` (the glyph is what makes
+  `deriveWorkspaceName` trust it) and locks it with `allow-set-title off` on tmux 3.5+. The lock
+  applies to **every** unpark: the record cannot tell an explicit `--title` from a name Claude
+  chose, and a frozen name the user knows beats one that moves to something they do not; the
+  cost is that an unparked workspace stops renaming itself. On an older tmux the title is set
+  unlocked and may not hold: the spawn's `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` prefix would cover
+  only the left half of `<cmd> --resume <id> || exec <cmd>`, and it silences OSC 7501 too.
+  `perch unpark <id>...` opens parked workspaces from a shell through the same path, by asking
+  the running agent (`POST /unpark`, the hooks secret): the agent holds `status.json` in memory
+  and writes `parked.json`, so a CLI writing either would race it, and only the agent tells the
+  phones. **The parked record — not `status === 'parked'` — is the source of
   truth for behavior:** the rename migration relabels pre-existing live workspaces to
   `parked` with no record, so status-keyed logic would try to recreate a live session on
   attach. The unpark command carries a `|| exec <original>` tail because
@@ -264,11 +268,36 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   with its last session, that last workspace exiting on its own comes back parked; close it.
   Nothing reopens on its own: starting every lost `claude` at once is a real memory cost.
 
+- **Workspace ids are `<folder>-<n>`, the smallest free n** (`short-workspace-ids.ts`), so one
+  is easy to say aloud; older workspaces keep their `perch-<6 hex>`. Three things follow, don't
+  undo any: **Perch finds its sessions by the `@perch_command` it sets on each**, not by name
+  (`listSessions` also takes the old prefix, for a tmux-resurrect shell, which has no marker;
+  `reconcileParked` looks parked ids up by name for the same reason; such a shell under a new id
+  whose workspace had no Claude session id to park stays invisible, holding its name). **tmux
+  matches a `-t` name as a prefix** when none has it exactly, and `perch-1` is a prefix of
+  `perch-10`, so every target goes through `exactTarget` (`=name:`); a bare `-t <id>` once
+  killed the wrong workspace. **An id is claimed by creating its session**
+  (`createWithFreshId` retries on tmux's "duplicate session"), and a spawn's brief and hook files
+  are named by a nonce, never the id, since two spawns into one folder race for the same number. **A number is reused, so
+  nothing keyed by an id may outlive its workspace:** a close or exit calls
+  `WsServer.dropWorkspaceState` (the status entry with its Claude session id, and the in-memory
+  marks; `dropGoneWorkspaces` on every tick catches exits with no phone connected), and the
+  allocator also skips any id still in `status.json` or `parked.json`, any tmux
+  session at all, and any live Claude session's name (Claude names an unnamed session
+  `<folder>-<2 hex>`, a valid id). **A Create-form workspace gets no `--name`:** measured on
+  Claude Code 2.1.316, a named session writes its name as its title and never a summary, so the
+  messaging address stays Claude's own and `perch spawn`'s explicit `--name <id>` is the
+  exception. Claude's `/rename` writes a title with no glyph, which `deriveWorkspaceName` takes
+  for a `claude` pane (but not `Claude Code` or the id; the adapter reads tmux's host-name
+  default as no title).
+
 - **The `perch` CLI and the orchestrator → child link.** `deploy/install-cli.sh` links
   `deploy/perch-cli.sh` to `~/.local/bin/perch` on each machine, so any session in any repo can
-  run `perch spawn [--child]`, `perch ls [--mine]` and `perch peek <id>`. These three read
-  tmux and the `~/.perch` stores directly (read-only, no agent.env needed) and skip the GitHub
-  lookup, so `ls` answers in a fraction of a second. **Orchestration is explicit:** a plain
+  run `perch spawn [--child]`, `perch ls [--mine|--role|--path]`, `perch peek <id>`, `perch unpark <id>...`
+  and `perch rename [<id>] <title>`. `rename` sets `✳ <title>` locked, as unpark does, so Claude
+  stops renaming that workspace; without an id it renames the caller's own. The first three read tmux and the `~/.perch` stores directly (read-only, no agent.env needed)
+  and skip the GitHub lookup, so `ls` answers in a fraction of a second; `unpark` asks the
+  running agent (parking section). **Orchestration is explicit:** a plain
   `perch spawn` is an ordinary workspace; `--child` records the caller's **workspace id** (never
   its Claude session name, which changes on rename) as the tmux option `@perch_parent`, read
   into `Workspace.parentId`. The link is carried in `parked.json` and `live.json` and re-set by
@@ -348,7 +377,9 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   `ProcSystemStats` is Linux-only by construction: elsewhere `read()` returns null, no
   `stats` is sent, and the strip does not render. All the headroom reads are best-effort — a
   kernel that exposes none of them still yields a reading, and the fields are optional on the
-  wire so a version-skewed agent degrades to the old strip. Requires an agent restart per machine.
+  wire so a version-skewed agent degrades to the old strip. `PERCH_STATS=off` in `agent.env`
+  takes the collector away the same way (`serve.ts`), for a second Linux user on a box whose load
+  another agent already shows. Requires an agent restart per machine.
 - **Reconnect must replace the connect chain, never stack a second one.** `MachineConnection`'s
   backoff retry is a fire-and-forget timer with no cancel handle, and `reconnect()` clears the
   `closedByUser` kill-switch. Before the fix, tapping Reconnect (or the app auto-firing
@@ -563,7 +594,8 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     answered without taking `pairing.json`'s lock, so made-up ones cannot keep `perch pair` out.
   - **The hooks have their own secret, kept off every command line.** `POST /hooks` takes a
     random secret the agent writes to `~/.perch/token` at each start (the path installed hooks
-    already read), never `PERCH_TOKEN`, which enrols phones. `perch-hook.sh` gives curl the header
+    already read), never `PERCH_TOKEN`, which enrols phones. `POST /unpark` takes the same
+    secret, which `perch unpark` reads from that file into a header in-process. `perch-hook.sh` gives curl the header
     through a file (process substitution) and the body on stdin, built with the `printf` builtin:
     any local user can read a process's argv. `perch-hook.test.sh` asserts neither reaches it.
   - **An agent refuses a `ws://` relay off loopback** (`isCleartextRemote`): `perch connect`
@@ -715,7 +747,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
       reads back malformed fails with a way out, never a `TypeError` and never a silent new key.
   - **An enrolled phone with no credential is served at once, right behind message 2.** Its
     device hello carries `push`; when the agent finds the key enrolled it answers `authResult`
-    (`pushed`) and the opening replies (workspaces, commands, keyterms) without waiting for the
+    (`pushed`) and the opening replies (workspaces, keyterms) without waiting for the
     phone's `auth`, which saves the two round trips that followed the handshake (on Cloudflare,
     the list came ~480 ms after the handshake, now ~90). The phone still sends its `auth`; the
     handler answers it with nothing (a token is still refused as not needed). Things not to
@@ -828,7 +860,7 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   cover this.
 - **List on connect:** the agent sends workspaces in response to an explicit `list`, or pushes
   them right behind the handshake to a phone it serves at once (relay section). Otherwise the
-  PWA sends `list` (with `listCommands`, `listKeyterms`) once each relay session is
+  PWA sends `list` (with `listKeyterms`) once each relay session is
   authenticated, on every (re)connect (`openingRequests`). The e2e fake agent is faithful to both.
 - **Restarting the agent must NOT kill tmux sessions:** the agent spawns the tmux server
   as a child, so it lives in the systemd unit's cgroup. The default
@@ -1001,9 +1033,8 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   value when one axis scrolls — `overflow-y: visible` is impossible there. So an
   absolutely-positioned menu inside the bar renders in the DOM but is invisibly clipped
   (jsdom has no layout, so unit tests happily pass; only the Playwright e2e caught it).
-  `CommandPicker` measures its trigger's rect on open and positions the menu fixed against
-  the viewport, which also keeps it anchored as the bar scrolls and the soft keyboard
-  resizes the viewport. Don't "simplify" it back to `absolute`.
+  `DictationMenu` is positioned fixed against the viewport from the mic's rect, measured
+  when it opens. Don't "simplify" it back to `absolute`.
 - **A keyboard-bar key commits on release, never on `pointerdown`.** The bar is a horizontal
   scroller, so a drag that starts on a key is usually the user scrolling it — and firing on
   `pointerdown` typed a space / submitted the line / sent an Escape before the gesture could

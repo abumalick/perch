@@ -2,6 +2,9 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { TmuxAdapter, isMissingSession, isNoServer, tmux } from './tmux-adapter';
 
 const exec = promisify(execFile);
@@ -150,15 +153,33 @@ describe('TmuxAdapter (real tmux)', () => {
     expect(await adapter.serverId()).toBe(id);
   });
 
-  it('returns sessions filtered by prefix', async () => {
+  // tmux matches a `-t` name as a prefix when nothing has it exactly, and `<folder>-1` is a
+  // prefix of `<folder>-10`: closing a gone `-1` must never kill the live `-10`.
+  it('acts on the exact session only, never on one its name is a prefix of', async () => {
     const adapter = new TmuxAdapter();
-    const name = `${PREFIX}${Date.now()}-x`;
-    created.push(name);
-    await adapter.createSession({ name, cwd: tmpdir(), command: 'sleep 30' });
+    const base = `${PREFIX}${Date.now()}`;
+    const live = `${base}-10`;
+    created.push(live);
+    await adapter.createSession({ name: live, cwd: tmpdir(), command: 'sleep 30' });
 
-    const sessions = await adapter.listSessions('perch-nonexistent-');
-    expect(sessions.every((s) => s.name.startsWith('perch-nonexistent-'))).toBe(true);
-    expect(sessions.find((s) => s.name === name)).toBeUndefined();
+    expect(await adapter.hasSession(`${base}-1`)).toBe(false);
+    expect(await adapter.panePid(`${base}-1`)).toBeNull();
+    await adapter.killSession(`${base}-1`);
+    expect(await adapter.hasSession(live)).toBe(true);
+    await expect(adapter.setPaneTitle(`${base}-1`, 'x')).rejects.toThrow();
+  });
+
+  it("lists the sessions it started under any name, and nobody else's", async () => {
+    const adapter = new TmuxAdapter();
+    const ours = `short-${Date.now()}-1`;
+    const theirs = `other-${Date.now()}`;
+    created.push(ours, theirs);
+    await adapter.createSession({ name: ours, cwd: tmpdir(), command: 'sleep 30' });
+    await exec('tmux', ['new-session', '-d', '-s', theirs, '-c', tmpdir(), 'sleep 30']);
+
+    const names = (await adapter.listSessions('perch-nonexistent-')).map((s) => s.name);
+    expect(names).toContain(ours);
+    expect(names).not.toContain(theirs);
   });
 });
 
@@ -180,6 +201,27 @@ describe('tmux (the agent\'s tmux client)', () => {
       if (saved === undefined) delete process.env.PERCH_TOKEN;
       else process.env.PERCH_TOKEN = saved;
       await exec('tmux', ['-L', socket, 'kill-server']).catch(() => undefined);
+    }
+  });
+});
+
+// ISOLATION: its own server on a sandbox socket (`-S`, which beats $TMUX), with no config.
+describe('TmuxAdapter.setPaneTitle against a real tmux', () => {
+  it('sets the title literally: tmux format characters are not expanded', async () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '.tmp');
+    await mkdir(root, { recursive: true });
+    const sandbox = await mkdtemp(join(root, 'title-'));
+    const socket = join(sandbox, 's');
+    const adapter = new TmuxAdapter({ socket, config: '/dev/null' });
+    try {
+      await adapter.createSession({ name: 'perch-title', cwd: sandbox, command: 'sleep 30' });
+      const title = '✳ fix #S and #{session_name}, ## and #(true) #1077';
+      await adapter.setPaneTitle('perch-title', title);
+      const { stdout } = await exec('tmux', ['-S', socket, 'display-message', '-p', '-t', 'perch-title', '#{pane_title}']);
+      expect(stdout.replace(/\n$/, '')).toBe(title);
+    } finally {
+      await exec('tmux', ['-S', socket, 'kill-server']).catch(() => undefined);
+      await rm(sandbox, { recursive: true, force: true });
     }
   });
 });

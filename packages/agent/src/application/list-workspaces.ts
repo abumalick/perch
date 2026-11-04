@@ -49,7 +49,7 @@ export async function listWorkspaces(deps: ListWorkspacesDeps): Promise<Workspac
         return {
           machineId: deps.machineId,
           id: s.name,
-          name: deriveWorkspaceName(s.title, s.startPath, s.command),
+          name: deriveWorkspaceName(s.title, s.startPath, s.command, s.name),
           projectPath: s.startPath,
           command: s.command,
           createdAt: s.createdAt,

@@ -1,3 +1,4 @@
 export interface IdGenerator {
-  next(): string;
+  // A new workspace id for a workspace in this folder.
+  next(projectPath: string): Promise<string>;
 }

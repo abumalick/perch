@@ -132,6 +132,52 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   - **The long press ends the key's press itself** (`cancel()` in the hold timer): the finger
     lifts over the menu's backdrop, so the mic never sees its own `pointerup`. While recording
     the hold is not armed, so a slow press still stops the recording.
+- **A Claude voice preset (Linux) streams the dictation to Claude Code's own `/voice`.**
+  While the user speaks, the phone sends 16 kHz PCM from Web Audio (`adapters/web-audio-pcm.ts`)
+  as `voiceStart` / `voiceChunk` / `voiceEnd`, each naming the dictation's `id`; the agent (`application/claude-voice.ts`)
+  holds space in the attached workspace from `voiceStart` (a space every 30 ms: a terminal has
+  no key release, so Claude reads a held key from its repeats), plays the audio into an ALSA
+  loopback with `aplay` as it arrives, releases after the end, and answers `voiceDone`. Claude
+  writes the transcript into the prompt, unsent; the phone types nothing. Things not to
+  "simplify":
+  - **Playback starts `LEAD_MS` (1 s) after the hold, with the audio that arrived meanwhile.**
+    Claude warms up for about a second before it records, so starting at once loses the first
+    words; the cost is a second of lag, and the text lands about 1.5 s after the user stops.
+  - **PCM, not MediaRecorder.** Safari's MP4 has its index at the end and cannot be decoded
+    until it is finished, which is what forced record-then-send (and a second, real-time
+    playback of the whole clip). An underrun from late chunks is harmless: `aplay` plays on and
+    Claude still hears the speech (measured with a 1.5 s stall).
+  - **The hold always ends:** no chunk for `IDLE_MS`, `MAX_MS` in all, a player still going
+    `DRAIN_MS` after the end or dying mid-stream, and losing the attachment (detach, another
+    workspace opened, a takeover, the phone disconnecting; `cancelVoice`) all end it. A failure
+    can arrive while the user still talks, and stops the recording at once (`SpeechToText.abort`);
+    the phone fails its dictation itself when the machine goes offline, since no reply can come.
+  - **Every reply is matched by the dictation's `id`,** never the workspace: a superseded
+    dictation's late "Superseded" reply would otherwise stop the new one on the same workspace.
+  - **Refused before anything is pressed** unless voice is explicitly on in hold mode in
+    `~/.claude/settings.json` (voice is off until `/voice`, and in tap mode each space would
+    toggle recording and submit), and unless the workspace's command runs `claude` (anywhere
+    else the spaces are typed). The phone applies the same `runsClaude` (contracts) first: in a
+    Codex or shell workspace the preset is disabled ("Claude Code only") and the mic falls back to
+    another preset, through the `claude` flag of `PresetKeys`. A shell where `claude` was started
+    by hand does not count.
+  - **Not while Claude shows a question or a permission menu.** There space is a menu key, not
+    /voice: measured, the held spaces were typed into an AskUserQuestion's text answer. The agent
+    refuses when the pane's OSC 7501 state is `blocked` (read live at `voiceStart`), stops a running
+    dictation when its pane turns `blocked` (at the next program-status poll, `stopVoiceIn`), and marks
+    such a workspace `asking`, pushing it from the program-status poll whenever it flips, since the
+    status alone does not change (needs-feedback either way). The phone then disables the preset
+    ("question open"), so the mic falls back for answering by voice, and comes back once the
+    question closes. The fallback is the preset's own `fallbackId` (its editor's Fallback
+    field), else the first preset that can run (`currentPreset`). Needs the patched tmux; a stock tmux reports neither.
+  - **One dictation's recorder and transcriber use the preset it started with**
+    (`PresetRecorder.startedWith`): picking another mid-recording would hand a stream to a
+    clip transcriber.
+  One dictation at a time per machine (one loopback). The PWA gives up `VOICE_REPLY_MS` after
+  the end, since an older agent's `bad_message` is silent. Set up by hand per machine
+  (`docs/SETUP-MACHINE.md`, step 11): `alsa-utils`, the user in `audio`, `snd-aloop` loaded at
+  boot, a `~/.asoundrc` whose default capture is `plughw:Loopback,1` (Claude records from the
+  default device), and `/voice` on in hold mode.
 - **Connection-event log — a client→agent diagnostic that survives drops.** The PWA records
   connection lifecycle events (`connect`/`online`/`close`/`manual-reconnect` per machine —
   `manual-reconnect` = the user tapped Reconnect, `auto-reconnect` = a foreground/`online`
@@ -767,6 +813,13 @@ No agent is reached that way any more: phones go through relays. What still hold
   is what keeps that to the maintainer. Moving origins also means a new device key (a new
   origin has empty storage), so every phone pairs again.
 - **Pairing links name the PWA's origin** (`PERCH_PWA_ORIGIN`), so they follow it.
+- **A device that is off the tailnet never updates, and nothing says so.** It keeps running its
+  cached service-worker build and still connects through a public relay, so the app looks
+  healthy while `sw.js` cannot be fetched. Killing and relaunching the app does not help. When
+  one device misses a deploy that another one picked up (a new field missing, an old badge in the
+  header), ask first whether Tailscale is up on it. Only then look further: the update banner,
+  `chrome://serviceworker-internals` → Unregister, or adb. Never suggest "clear site data": it
+  deletes the device key, and the device has to pair again.
 
 What no longer needs the tailnet: the Cloudflare Worker relay is public and reachable from any
 origin, so a PWA served elsewhere would work against it. **Where people without a tailnet load

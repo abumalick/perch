@@ -1,5 +1,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { ClaudeVoice } from './application/claude-voice';
+import { AplayVoicePlayer, FileClaudeSettings } from './infrastructure/aplay-voice-player';
 import { loadConfig, assertServerConfig, configWarnings } from './infrastructure/config';
 import { systemClock, systemPathResolver } from './infrastructure/system';
 import { ShortWorkspaceIds } from './application/short-workspace-ids';
@@ -140,6 +142,13 @@ async function main(): Promise<void> {
     claudeSessions,
     scopes: new SystemdScopeReaper(),
     ...(config.stats === false ? {} : { systemStats: new ProcSystemStats() }),
+    claudeVoice:
+      process.platform === 'linux'
+        ? new ClaudeVoice({
+            player: new AplayVoicePlayer(),
+            settings: new FileClaudeSettings(join(homedir(), '.claude', 'settings.json')),
+          })
+        : undefined,
   });
   await server.start();
   process.stdout.write(`perch agent: hooks on 127.0.0.1:${server.address().port}\n`);

@@ -40,6 +40,8 @@ import { browseDir } from '../application/browse-dir';
 import { makeDir } from '../application/make-dir';
 import { readFile } from '../application/read-file';
 import { storePastedFile } from '../application/store-pasted-file';
+import type { ClaudeVoice, VoiceSession } from '../application/claude-voice';
+import { runsClaude } from '@perch/contracts';
 import type { FileWriterPort } from '../ports/file-writer-port';
 import type { ClientLogPort } from '../ports/client-log-port';
 import type { ConnectUpstream } from '../ports/browser-stream-port';
@@ -89,10 +91,17 @@ export interface ConnectionHandlerDeps {
   repoRemote?: RepoRemotePort;
   claudeSessions?: ClaudeSessionsPort;
   scopes?: ProcessScopePort;
+  // Shared by every connection (one virtual mic per machine); absent where it can't work.
+  claudeVoice?: Pick<ClaudeVoice, 'start'>;
 }
+
+// `cancelled` stops a dictation still in its checks, before it has a session to abort.
+type PendingVoice = { id: string; workspaceId: string; session: VoiceSession | null; queue: Uint8Array[]; ended: boolean; cancelled: string | null };
 
 export class ConnectionHandler {
   private authed = false;
+  // The dictation this phone is streaming; chunks that arrive before its checks pass wait in `queue`.
+  private voice: PendingVoice | null = null;
   private attachment:
     | { workspaceId: string; session: PtySession; terminated: boolean; viewer: Viewer }
     | null = null;
@@ -143,6 +152,12 @@ export class ConnectionHandler {
     }
   }
 
+  // A question or menu opened in a workspace being dictated into: from now on its held spaces
+  // would land on the menu, so the dictation ends (the phone stops recording on the reply).
+  stopVoiceIn(workspaceId: string, reason: string): void {
+    if (this.voice?.workspaceId === workspaceId) this.cancelVoice(reason);
+  }
+
   pushBrowserSessions(sessions: BrowserSession[]): void {
     if (this.authed) {
       this.conn.send({ type: 'browserSessions', sessions });
@@ -150,6 +165,7 @@ export class ConnectionHandler {
   }
 
   protected onClose(): void {
+    this.cancelVoice('The phone disconnected');
     this.media.stop();
     this.browsers.closeAll();
     const att = this.attachment;
@@ -441,6 +457,48 @@ export class ConnectionHandler {
         this.conn.send({ type: 'fileStored', workspaceId: message.workspaceId, path });
         return;
       }
+      case 'voiceStart': {
+        const { workspaceId, id } = message;
+        this.cancelVoice('Superseded by a newer dictation');
+        const voice: PendingVoice = { id, workspaceId, session: null, queue: [], ended: false, cancelled: null };
+        this.voice = voice;
+        const reply = (error: string | null) => {
+          if (this.voice === voice) this.voice = null;
+          this.conn.send(error ? { type: 'voiceDone', id, ok: false, error } : { type: 'voiceDone', id, ok: true });
+        };
+        if (!this.deps.claudeVoice) return reply('Claude voice needs a Linux machine with the voice loopback set up');
+        if (this.attachment?.workspaceId !== workspaceId) return reply('Open the workspace before dictating');
+        // Anywhere but Claude's prompt the held spaces would be typed.
+        const tmuxSession = (await this.deps.tmux.listSessions(this.deps.config.sessionPrefix)).find((s) => s.name === workspaceId);
+        if (!tmuxSession || !runsClaude(tmuxSession.command)) return reply('Claude voice works only in a Claude Code workspace');
+        // A question or permission menu takes space as a key (into its text field, or toggling a
+        // choice), not as /voice. Only a tmux patched for OSC 7501 can tell; elsewhere this passes.
+        if (tmuxSession.program?.state === 'blocked') return reply('Answer Claude’s question first, then dictate');
+        if (voice.cancelled) return reply(voice.cancelled);
+        const session = this.deps.claudeVoice.start(() => {
+          if (this.attachment?.workspaceId === workspaceId) this.attachment.session.write(' ');
+        });
+        voice.session = session;
+        for (const pcm of voice.queue.splice(0)) session.write(pcm);
+        if (voice.ended) session.end();
+        void session.done.then(reply);
+        return;
+      }
+      case 'voiceChunk': {
+        const voice = this.voice;
+        if (voice?.id !== message.id || voice.ended) return;
+        const pcm = new Uint8Array(Buffer.from(message.data, 'base64'));
+        if (voice.session) voice.session.write(pcm);
+        else voice.queue.push(pcm);
+        return;
+      }
+      case 'voiceEnd': {
+        const voice = this.voice;
+        if (voice?.id !== message.id) return;
+        voice.ended = true;
+        voice.session?.end();
+        return;
+      }
       case 'ping': {
         this.conn.send({ type: 'pong' });
         return;
@@ -576,6 +634,7 @@ export class ConnectionHandler {
     const viewer: Viewer = {
       detach: () => {
         if (this.attachment?.session !== session) return;
+        this.cancelVoice('The workspace was opened on another device');
         this.attachment.terminated = true;
         session.kill();
         this.attachment = null;
@@ -596,6 +655,7 @@ export class ConnectionHandler {
     session.onExit(() => {
       if (att.terminated) return;
       if (this.attachment === att) {
+        this.cancelVoice('The workspace closed');
         this.attachment = null;
       }
       this.deps.registry.release(workspaceId, viewer);
@@ -605,9 +665,20 @@ export class ConnectionHandler {
     this.conn.send({ type: 'attached', workspaceId });
   }
 
+  // A dictation lives only as long as its attachment: without one the held spaces go nowhere,
+  // and the machine's one dictation slot would stay taken.
+  private cancelVoice(reason: string): void {
+    const voice = this.voice;
+    if (!voice) return;
+    this.voice = null;
+    voice.cancelled = reason;
+    voice.session?.abort(reason);
+  }
+
   private teardownAttachment(reason: 'closed'): void {
     const att = this.attachment;
     if (!att) return;
+    this.cancelVoice('The workspace was closed');
     att.terminated = true;
     att.session.kill();
     this.deps.registry.release(att.workspaceId, att.viewer);

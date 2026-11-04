@@ -27,7 +27,7 @@
   import { startKeyRepeat } from '../core/key-repeat';
   import { startGesture, moveGesture, type PadState, type PadDirection } from '../core/cursor-pad';
   import DictationMenu from './DictationMenu.svelte';
-  import { currentPreset, hasUsablePreset, type DictationPreset, type DictationProvider } from '../core/dictation-presets';
+  import { currentPreset, hasUsablePreset, type DictationPreset, type PresetKeys } from '../core/dictation-presets';
 
   let {
     send,
@@ -54,7 +54,7 @@
     onDictate?: () => void;
     presets?: DictationPreset[];
     currentPresetId?: string | null;
-    presetKeys?: Record<DictationProvider, boolean>;
+    presetKeys?: PresetKeys;
     onSelectPreset?: (id: string) => void;
     onAddPreset?: () => void;
     // When wired (terminal view), shows an attach-file button backed by the OS file picker.

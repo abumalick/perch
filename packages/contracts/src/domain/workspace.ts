@@ -36,6 +36,10 @@ export interface Workspace {
   // it "Needs orchestrator" while its status stays `working`. Derived from the durable
   // `messagedLast` mark in status.json, and only while the status is `working`.
   waitingOn?: 'parent';
+  // Set while the pane shows a question or permission menu (OSC 7501 `blocked`), where space
+  // is a menu key: the PWA then keeps Claude voice off and uses another preset. Only a tmux
+  // patched for OSC 7501 reports it; absent otherwise and on an older agent.
+  asking?: boolean;
 }
 
 export interface Machine {

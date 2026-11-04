@@ -781,6 +781,66 @@ describe('WsServer (E2E, real tmux)', () => {
     });
   });
 
+  it('pushes a workspace whose pane starts or stops showing a question', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-asking-'));
+    dirs.push(home);
+    const config = testConfig(home);
+    let state = 'working';
+    const tmux: TmuxPort = {
+      listSessions: async () => [
+        { name: 'perch-ask', startPath: tmpdir(), command: 'claude', createdAt: 1, title: '', program: { state, changedAt: state === 'working' ? 1 : 2 } },
+      ],
+      createSession: async () => undefined,
+      killSession: async () => undefined,
+      hasSession: async () => true,
+    };
+    server = new WsServer({
+      config,
+      hookToken: HOOK_TOKEN,
+      tmux,
+      recent: new FileRecentStore(config.recentStorePath),
+      lister: new FsProjectLister(),
+      reader: new FsFileReader(),
+      resolvePath: systemPathResolver,
+      isDirectory: fsIsDirectory,
+      clock: systemClock,
+      ids: new RandomIdGenerator(),
+      pty: new NodePtyAdapter(),
+      status: new InMemoryStatusStore(),
+      writer: new FsFileWriter(),
+      browserDiscovery: noBrowserDiscovery,
+      browserCommands: noBrowserCommands,
+      hiddenFolders: noHiddenFolders,
+      launchers: noLaunchers,
+      detectInstalled: async () => [],
+      keyterms: noKeyterms,
+      clientLog: noClientLog,
+      workspaceLog: noWorkspaceLog,
+      parked: new FileParkedStore(config.parkedStorePath),
+      connectUpstream: noConnectUpstream,
+      titlePollMs: 50,
+    });
+    await server.start();
+    const socket = new WebSocket(await clientUrl());
+    await new Promise((r) => socket.once('open', r));
+    socket.send(JSON.stringify({ type: 'auth', token: 'secret' }));
+    await nextMessage(socket); // authResult
+    const updates: boolean[] = [];
+    socket.on('message', (raw) => {
+      const msg = JSON.parse(raw.toString()) as AgentMessage;
+      if (msg.type === 'workspaceUpdated' && msg.workspace.id === 'perch-ask') updates.push(msg.workspace.asking ?? false);
+    });
+    await new Promise((r) => setTimeout(r, 200));
+    state = 'blocked';
+    await vi.waitFor(() => expect(updates).toContain(true));
+    state = 'idle';
+    await vi.waitFor(() => expect(updates.at(-1)).toBe(false));
+    await new Promise<void>((resolve) => {
+      socket.on('close', () => resolve());
+      socket.close();
+    });
+  });
+
   it('polls tmux and pushes a closed when a session disappears', async () => {
     const home = await mkdtemp(join(tmpdir(), 'perch-gone-'));
     dirs.push(home);

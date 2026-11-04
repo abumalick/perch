@@ -1,7 +1,7 @@
 import { generateAgentKeys, pairingLink } from '@perch/secure-channel';
 import { audioMediaType, imageMediaType, pdfMediaType } from '@perch/contracts';
 import { describe, it, expect, vi } from 'vitest';
-import { PerchStore } from './store.svelte';
+import { PerchStore, VOICE_REPLY_MS } from './store.svelte';
 import { ConnectionManager } from './core/connection-manager';
 import { WorkspaceAggregator } from './core/workspace-aggregator';
 import { SettingsStore, type MachineConfig } from './core/settings-store';
@@ -323,6 +323,97 @@ describe('PerchStore', () => {
     const sent = sockets['wss://mac']!.sent.map((s) => JSON.parse(s));
     expect(sent.some((m) => m.type === 'putFile' && m.name === 'archive.zip')).toBe(true);
     expect(store.actionError).toBeNull();
+  });
+
+  describe('voiceLink', () => {
+    function opened() {
+      const built = build([mac]);
+      built.store.start();
+      built.sockets['wss://mac']!.open();
+      built.sockets['wss://mac']!.deliver({ type: 'authResult', ok: true });
+      built.store.open({ machineId: 'mac', id: 'perch-a', name: 'a', projectPath: '/a', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'idle' as const });
+      return built;
+    }
+    const sentVoice = (sockets: ReturnType<typeof opened>['sockets']) =>
+      sockets['wss://mac']!.sent.map((s) => JSON.parse(s)).filter((m: { type: string }) => m.type.startsWith('voice'));
+
+    it('streams start, chunks and end, and resolves once the agent is done, restarting the input field', async () => {
+      const { store, sockets } = opened();
+      let injected = 0;
+      store.onInjectedInput = () => injected++;
+      store.voiceLink.begin();
+      store.voiceLink.chunk(new Uint8Array([1, 2, 3]));
+      const done = store.voiceLink.finish();
+      const [start, ...rest] = sentVoice(sockets);
+      const id = start.id as string;
+      expect(start).toEqual({ type: 'voiceStart', workspaceId: 'perch-a', id });
+      expect(rest).toEqual([
+        { type: 'voiceChunk', id, data: btoa(String.fromCharCode(1, 2, 3)) },
+        { type: 'voiceEnd', id },
+      ]);
+      store.handleMessage('mac', { type: 'voiceDone', id: 'some-older-one', ok: true });
+      expect(injected).toBe(0);
+      store.handleMessage('mac', { type: 'voiceDone', id, ok: true });
+      await expect(done).resolves.toBeUndefined();
+      expect(injected).toBe(1);
+    });
+
+    it('needs an open workspace', () => {
+      const { store } = build([mac]);
+      expect(() => store.voiceLink.begin()).toThrow('Open a workspace first');
+    });
+
+    it('rejects with the agent’s reason, even one that came before the end, and stops sending', async () => {
+      const { store, sockets } = opened();
+      store.voiceLink.begin();
+      const id = sentVoice(sockets)[0].id as string;
+      store.handleMessage('mac', { type: 'voiceDone', id, ok: false, error: 'Voice is off' });
+      store.voiceLink.chunk(new Uint8Array([1]));
+      await expect(store.voiceLink.finish()).rejects.toThrow('Voice is off');
+      expect(sentVoice(sockets)).toHaveLength(1);
+    });
+
+    it('gives up on an agent that never answers, and starts the input field over', async () => {
+      vi.useFakeTimers();
+      try {
+        const { store } = opened();
+        let injected = 0;
+        store.onInjectedInput = () => injected++;
+        store.voiceLink.begin();
+        const caught = store.voiceLink.finish().catch((e: Error) => e);
+        await vi.advanceTimersByTimeAsync(VOICE_REPLY_MS - 1);
+        expect(injected).toBe(0);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(String(await caught)).toMatch(/does not support Claude voice/);
+        expect(injected).toBe(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('fails a dictation whose machine drops', async () => {
+      const { store } = opened();
+      store.voiceLink.begin();
+      store.setStatus('mac', 'offline');
+      await expect(store.voiceLink.finish()).rejects.toThrow('connection dropped');
+    });
+
+    it('offers Claude voice only in a workspace running Claude Code', () => {
+      const { store } = opened();
+      expect(store.presetKeys.claude).toBe('ok');
+      store.open({ machineId: 'mac', id: 'perch-c', name: 'c', projectPath: '/c', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'needs-feedback' as const, asking: true });
+      expect(store.presetKeys.claude).toBe('asking');
+      store.open({ machineId: 'mac', id: 'perch-b', name: 'b', projectPath: '/b', command: 'codex --no-daemon', createdAt: 0, lastActivityAt: 0, status: 'idle' as const });
+      expect(store.presetKeys.claude).toBe('not-claude');
+    });
+
+    it('supersedes an older dictation', async () => {
+      const { store } = opened();
+      store.voiceLink.begin();
+      const first = store.voiceLink.finish();
+      store.voiceLink.begin();
+      await expect(first).rejects.toThrow('Superseded');
+    });
   });
 
   it('fileStored types the stored path into the terminal as input', () => {

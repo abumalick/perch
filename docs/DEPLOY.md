@@ -33,7 +33,7 @@ install -m 600 deploy/agent.env.example deploy/agent.env
 > `deploy/relay-cf-deploy.sh`.
 >
 > Several agents can share one machine, one per Linux user, each with its own `PERCH_PORT` and
-> `PERCH_MACHINE_ID`: `docs/SETUP-MACHINE.md`, step 12.
+> `PERCH_MACHINE_ID`: `docs/SETUP-MACHINE.md`, step 13.
 
 ## 2. Run the agent as a service
 > Run these from the repo root (the `$(pwd)` substitution bakes in the absolute repo path).

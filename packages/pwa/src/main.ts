@@ -18,6 +18,9 @@ import { MediaRecorderAudio } from './adapters/media-recorder-audio';
 import { ElevenLabsTranscriber } from './adapters/elevenlabs-transcriber';
 import { OpenRouterTranscriber } from './adapters/openrouter-transcriber';
 import { PresetTranscriber } from './core/preset-transcriber';
+import { ClaudeVoiceRecorder, ClaudeVoiceTranscriber } from './core/claude-voice';
+import { PresetRecorder } from './core/preset-recorder';
+import { WebAudioPcm } from './adapters/web-audio-pcm';
 import { VERSION_FILE, parseVersionJson } from './core/version-file';
 import { acceptPairingLink, outsideInstalledApp, takePairingFragment, type PairingPrompts } from './core/pairing';
 
@@ -121,13 +124,20 @@ const connectionLog = createConnectionLog({
   sess: crypto.randomUUID(),
 });
 const logMeta = { ua: navigator.userAgent, shell: 'pwa' };
+const voiceLink = { begin: () => store.voiceLink.begin(), chunk: (pcm: Uint8Array) => store.voiceLink.chunk(pcm), finish: () => store.voiceLink.finish() };
+const recorder = new PresetRecorder(() => store.currentPreset, {
+  clip: new MediaRecorderAudio(),
+  claude: new ClaudeVoiceRecorder(new WebAudioPcm(), voiceLink),
+});
+// The preset the current dictation started with: the recorder and the transcriber must agree.
+const dictationPreset = () => recorder.startedWith ?? store.currentPreset;
 store = new PerchStore({
   settings,
   manager,
   aggregator,
   applyUpdate: () => void updateSW(true),
-  recorder: new MediaRecorderAudio(),
-  transcriber: new PresetTranscriber(() => store.currentPreset, {
+  recorder,
+  transcriber: new PresetTranscriber(dictationPreset, {
     elevenlabs: new ElevenLabsTranscriber(
       () => settings.elevenLabsApiKey(),
       () => store.keyterms(),
@@ -135,11 +145,12 @@ store = new PerchStore({
     openrouter: new OpenRouterTranscriber(
       () => settings.openRouterApiKey(),
       () => {
-        const preset = store.currentPreset;
+        const preset = dictationPreset();
         return preset.provider === 'openrouter' ? preset : { model: '', prompt: '' };
       },
       () => store.keyterms(),
     ),
+    claude: new ClaudeVoiceTranscriber(voiceLink),
   }),
   connectionLog,
   logMeta,

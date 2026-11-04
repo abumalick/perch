@@ -313,15 +313,25 @@ pcm.!default {
 EOF
 ```
 
-Then run `/voice` once in any Claude workspace and keep **hold** mode, the default. The setting
-is global to Claude Code on the machine, and the agent refuses a dictation while voice is off or in tap
-mode (tap mode would submit the prompt). If you had to add the group, reboot: the user services
-run under a user manager that keeps the groups it started with, and restarting that manager
-would take every workspace down with it. On the phone: Settings →
+Then run `/voice` once in any Claude workspace and keep **hold** mode, the default (or set
+`"voice": {"enabled": true, "mode": "hold"}` in `~/.claude/settings.json`). The setting is per
+user, shared by all of that user's workspaces, and the agent refuses a dictation while voice is off
+or in tap mode (tap mode would submit the prompt). If you had to add the group, reboot: the user
+services run under a user manager that keeps the groups it started with, and restarting that
+manager would take every workspace of that user down with it. To use it before the next reboot,
+grant the user the loopback devices directly instead (lost at reboot, when the group takes over):
+
+```bash
+card=$(awk '/\[Loopback/ {print $1}' /proc/asound/cards)
+for d in /dev/snd/controlC$card /dev/snd/pcmC${card}D*; do sudo setfacl -m u:<user>:rw "$d"; done
+``` On the phone: Settings →
 Add preset → Provider "Claude Code /voice".
 
-- **Check:** `aplay -l | grep Loopback` lists the card, `id -nG` includes `audio`, and
-  `jq .voice ~/.claude/settings.json` says `"enabled": true, "mode": "hold"`.
+- **Check:** `aplay -l | grep Loopback` lists the card, `jq .voice ~/.claude/settings.json`
+  says `"enabled": true, "mode": "hold"`, and the agent's own user manager can open the
+  loopback (`id -nG` in a login shell is not enough: it shows a group the manager may not have):
+  `systemd-run --user --quiet --wait --pipe aplay -q -D plughw:Loopback,0 -f S16_LE -r 16000 -c 1 -t raw -d 1 /dev/zero`
+  exits without an error (with several users, use that user's `PERCH_VOICE_DEVICE` as the `-D`).
 - **This is meant for a headless server.** `~/.asoundrc` replaces the default device for every
   ALSA program of that user, playback included, so on a desktop with PipeWire or PulseAudio it
   would take the real microphone and speakers away. That case is untested.
@@ -337,7 +347,8 @@ with capture subdevice *n*. Two users dictating at once then cross over whenever
 open in a different order, and one user's Claude hears the other's speech (measured with
 `arecord`/`aplay`: a recorder heard the tone another player sent; pinned subdevices kept apart).
 Give every user its own subdevice *n* (0, 1, 2…; the card has 8), **the first user included**,
-since one user left on "lowest free" can still take another's:
+since one user left on "lowest free" can still take another's. Each user also needs the rest of
+this step for itself: the `audio` group (or the direct grant above) and `/voice` in hold mode.
 
 ```bash
 # In that user's ~/.asoundrc, with its own <n> on both sides:

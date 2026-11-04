@@ -107,6 +107,20 @@ describe('DictationPresets', () => {
     expect(saved(store)[3]).toEqual({ id: expect.any(String), name: 'Claude voice', badge: 'CV', provider: 'claude' });
   });
 
+  it('saves the Claude voice preset’s fallback', async () => {
+    const store = fakeStore();
+    render(DictationPresets, { props: { store: store as never } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Add preset' }));
+    await fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'claude' } });
+    const fallback = screen.getByLabelText('Fallback');
+    expect([...fallback.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['First available preset', 'Scribe', 'Clean up', 'Fast']);
+    await fireEvent.change(fallback, { target: { value: 'clean' } });
+    await fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'Claude voice' } });
+    await fireEvent.input(screen.getByLabelText('Badge'), { target: { value: 'CV' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save preset' }));
+    expect(saved(store)[3]).toEqual({ id: expect.any(String), name: 'Claude voice', badge: 'CV', provider: 'claude', fallbackId: 'clean' });
+  });
+
   it('deletes and reorders', async () => {
     const store = fakeStore();
     render(DictationPresets, { props: { store: store as never } });

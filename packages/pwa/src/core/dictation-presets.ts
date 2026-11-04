@@ -4,8 +4,10 @@
 export type DictationPreset =
   | { id: string; name: string; badge: string; provider: 'elevenlabs' }
   | { id: string; name: string; badge: string; provider: 'openrouter'; model: string; prompt: string }
-  // Claude Code's own /voice on the machine: the agent plays the clip into its virtual mic.
-  | { id: string; name: string; badge: string; provider: 'claude' };
+  // Claude Code's own /voice on the machine: the agent plays the audio into its virtual mic.
+  // `fallbackId` names the preset the mic uses where Claude voice cannot run (outside Claude
+  // Code, a question open); absent, it is the first preset that can.
+  | { id: string; name: string; badge: string; provider: 'claude'; fallbackId?: string };
 
 // The providers that need an API key on the phone; Claude voice runs on the machine.
 export type DictationProvider = Exclude<DictationPreset['provider'], 'claude'>;
@@ -63,7 +65,9 @@ function asPreset(value: unknown): DictationPreset | null {
   if (typeof v.id !== 'string' || !v.id || typeof v.name !== 'string' || typeof v.badge !== 'string') return null;
   const base = { id: v.id, name: v.name, badge: v.badge };
   let preset: DictationPreset;
-  if (v.provider === 'elevenlabs' || v.provider === 'claude') preset = { ...base, provider: v.provider };
+  if (v.provider === 'elevenlabs') preset = { ...base, provider: 'elevenlabs' };
+  else if (v.provider === 'claude')
+    preset = { ...base, provider: 'claude', ...(typeof v.fallbackId === 'string' && v.fallbackId ? { fallbackId: v.fallbackId } : {}) };
   else if (v.provider === 'openrouter' && typeof v.model === 'string' && typeof v.prompt === 'string')
     preset = { ...base, provider: 'openrouter', model: v.model, prompt: v.prompt };
   else return null;
@@ -115,13 +119,19 @@ export function hasUsablePreset(presets: readonly DictationPreset[], keys: Prese
   return presets.some((p) => !needsKey(p, keys));
 }
 
-// The preset dictation uses: the chosen one if its provider has a key, else the first that does.
-// With no key at all there is no mic, so the plain lookup is only a fallback.
+// The preset dictation uses: the chosen one if it can run here, else its fallback when that
+// can, else the first that can. With none usable there is no mic, so the plain lookup is only
+// a last resort.
 export function currentPreset(
   presets: readonly DictationPreset[],
   id: string | null,
   keys: PresetKeys,
 ): DictationPreset {
   const usable = presets.filter((p) => !needsKey(p, keys));
+  const chosen = presets.find((p) => p.id === id);
+  if (chosen?.provider === 'claude' && chosen.fallbackId && !usable.includes(chosen)) {
+    const fallback = usable.find((p) => p.id === chosen.fallbackId);
+    if (fallback) return fallback;
+  }
   return usable.find((p) => p.id === id) ?? usable[0] ?? presets.find((p) => p.id === id) ?? presets[0]!;
 }

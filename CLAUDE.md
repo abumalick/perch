@@ -176,8 +176,9 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     refuses when the pane's OSC 7501 state is `blocked` (read live at `voiceStart`), and marks
     such a workspace `asking`, pushing it from the program-status poll whenever it flips, since the
     status alone does not change (needs-feedback either way). The phone then disables the preset
-    ("question open"), so the mic falls back to another preset for answering by voice, and comes
-    back once the question closes. Needs the patched tmux; a stock tmux reports neither.
+    ("question open"), so the mic falls back for answering by voice, and comes back once the
+    question closes. The fallback is the preset's own `fallbackId` (its editor's Fallback
+    field), else the first preset that can run (`currentPreset`). Needs the patched tmux; a stock tmux reports neither.
   - **One dictation's recorder and transcriber use the preset it started with**
     (`PresetRecorder.startedWith`): picking another mid-recording would hand a stream to a
     clip transcriber.

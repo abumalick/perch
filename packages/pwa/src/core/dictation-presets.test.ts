@@ -56,6 +56,16 @@ describe('parsePresets', () => {
     expect(needsKey(claude as never, { elevenlabs: false, openrouter: false })).toBe(false);
   });
 
+  it('falls back from Claude voice to the preset it names, when that one can run', () => {
+    const claude: DictationPreset = { id: 'cv', name: 'Claude voice', badge: 'CV', provider: 'claude', fallbackId: 'clean' };
+    const list = [DEFAULT_PRESETS[0]!, DEFAULT_PRESETS[1]!, claude];
+    const both = { elevenlabs: true, openrouter: true };
+    expect(currentPreset(list, 'cv', { ...both, claude: 'ok' }).id).toBe('cv');
+    expect(currentPreset(list, 'cv', { ...both, claude: 'asking' }).id).toBe('clean');
+    expect(currentPreset(list, 'cv', { elevenlabs: true, openrouter: false, claude: 'asking' }).id).toBe('scribe');
+    expect(parsePresets(JSON.stringify([claude]))).toEqual([claude]);
+  });
+
   it('offers a Claude voice preset only in a workspace running Claude Code', () => {
     const claude: DictationPreset = { id: 'cv', name: 'Claude voice', badge: 'CV', provider: 'claude' };
     const keys = { elevenlabs: true, openrouter: false };

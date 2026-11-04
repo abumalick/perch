@@ -139,7 +139,9 @@ export const agentMessageSchema = z.discriminatedUnion('type', [
     enrolled: z.boolean().optional().catch(undefined),
     pushed: z.literal(true).optional().catch(undefined),
   }),
-  z.object({ type: z.literal('workspaces'), workspaces: z.array(workspaceSchema) }),
+  // `claudeVoice`: whether this machine can play a Claude voice dictation (see voiceStart).
+  // An older agent omits it, and the PWA then treats Claude voice as unavailable there.
+  z.object({ type: z.literal('workspaces'), workspaces: z.array(workspaceSchema), claudeVoice: z.boolean().optional() }),
   z.object({ type: z.literal('workspaceUpdated'), workspace: workspaceSchema }),
   z.object({ type: z.literal('recentPaths'), paths: z.array(z.string()) }),
   // The agent's configured project roots — the folder picker's top-level browse points.

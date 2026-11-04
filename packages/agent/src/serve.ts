@@ -1,7 +1,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { ClaudeVoice } from './application/claude-voice';
-import { AplayVoicePlayer, FileClaudeSettings } from './infrastructure/aplay-voice-player';
+import { AplayVoicePlayer, FileClaudeSettings, LOOPBACK_DEVICE, aplayArgs } from './infrastructure/aplay-voice-player';
 import { loadConfig, assertServerConfig, configWarnings } from './infrastructure/config';
 import { systemClock, systemPathResolver } from './infrastructure/system';
 import { ShortWorkspaceIds } from './application/short-workspace-ids';
@@ -129,7 +129,7 @@ async function main(): Promise<void> {
     claudeVoice:
       process.platform === 'linux'
         ? new ClaudeVoice({
-            player: new AplayVoicePlayer(),
+            player: new AplayVoicePlayer('aplay', aplayArgs(config.voiceDevice ?? LOOPBACK_DEVICE)),
             settings: new FileClaudeSettings(join(homedir(), '.claude', 'settings.json')),
           })
         : undefined,

@@ -92,7 +92,7 @@ export interface ConnectionHandlerDeps {
   claudeSessions?: ClaudeSessionsPort;
   scopes?: ProcessScopePort;
   // Shared by every connection (one virtual mic per machine); absent where it can't work.
-  claudeVoice?: Pick<ClaudeVoice, 'start'>;
+  claudeVoice?: Pick<ClaudeVoice, 'start' | 'available'>;
 }
 
 // `cancelled` stops a dictation still in its checks, before it has a session to abort.
@@ -250,7 +250,8 @@ export class ConnectionHandler {
             messagedLast: this.deps.messagedLast,
           })
         ).filter((w) => !isHiddenPath(w.projectPath, hidden));
-        this.conn.send({ type: 'workspaces', workspaces });
+        const claudeVoice = (await this.deps.claudeVoice?.available()) ?? false;
+        this.conn.send({ type: 'workspaces', workspaces, claudeVoice });
         await this.sendBrowserSessions();
         return;
       }

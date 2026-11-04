@@ -35,6 +35,9 @@ export interface AgentConfig {
   // false when PERCH_STATS turns the machine load strip off, e.g. for a second Linux user on a
   // machine whose load another agent already reports.
   stats?: false;
+  // The ALSA device Claude voice plays into (default plughw:Loopback,0). Users sharing a machine
+  // each take their own loopback subdevice, paired with the capture side of their ~/.asoundrc.
+  voiceDevice?: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv, home: string): AgentConfig {
@@ -82,6 +85,7 @@ export function loadConfig(env: NodeJS.ProcessEnv, home: string): AgentConfig {
     ...(env.PERCH_PWA_ORIGIN ? { pwaOrigin: env.PERCH_PWA_ORIGIN } : {}),
     ...(env.PERCH_DEFAULT_PATH ? { defaultPath: env.PERCH_DEFAULT_PATH } : {}),
     ...(['off', '0', 'false'].includes(env.PERCH_STATS?.trim().toLowerCase() ?? '') ? { stats: false as const } : {}),
+    ...(env.PERCH_VOICE_DEVICE?.trim() ? { voiceDevice: env.PERCH_VOICE_DEVICE.trim() } : {}),
   };
 }
 

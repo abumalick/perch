@@ -173,7 +173,19 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   - **One dictation's recorder and transcriber use the preset it started with**
     (`PresetRecorder.startedWith`): picking another mid-recording would hand a stream to a
     clip transcriber.
-  One dictation at a time per machine (one loopback). The PWA gives up `VOICE_REPLY_MS` after
+  - **Each agent says whether Claude voice can work on its machine** (`claudeVoice` on its
+    `workspaces` reply: Linux with the loopback card in `/proc/asound/cards`). Elsewhere the
+    phone marks the preset "not on this machine" (`ClaudeVoiceHere` `unavailable`) and the mic
+    uses the fallback, as during a question. **An agent that omits the field counts as
+    unavailable:** an older agent either predates Claude voice (it would drop the messages
+    silently) or just needs a restart. Voice being off or in tap mode stays a refusal at
+    `voiceStart`: it changes without a reconnect, and the refusal says how to fix it.
+  - **Users sharing a machine share one loopback card, so each pins its own subdevice.** ALSA
+    pairs playback subdevice *n* with capture *n* and hands each open the lowest free one, so two
+    unpinned users dictating at once cross over (measured with `arecord`/`aplay`: a recorder
+    heard the tone another player sent; pinned subdevices kept apart). Each user's `~/.asoundrc` names `Loopback,1,<n>` and its `PERCH_VOICE_DEVICE` the
+    matching `plughw:Loopback,0,<n>` (default `plughw:Loopback,0`, right for one user only).
+  One dictation at a time per agent. The PWA gives up `VOICE_REPLY_MS` after
   the end, since an older agent's `bad_message` is silent. Set up by hand per machine
   (`docs/SETUP-MACHINE.md`, step 11): `alsa-utils`, the user in `audio`, `snd-aloop` loaded at
   boot, a `~/.asoundrc` whose default capture is `plughw:Loopback,1` (Claude records from the

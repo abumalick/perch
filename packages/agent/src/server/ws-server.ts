@@ -79,7 +79,7 @@ export interface WsServerDeps {
   repoRemote?: RepoRemotePort;
   claudeSessions?: ClaudeSessionsPort;
   scopes?: ProcessScopePort;
-  claudeVoice?: Pick<ClaudeVoice, 'start'>;
+  claudeVoice?: Pick<ClaudeVoice, 'start' | 'available'>;
   // Absent on a platform with no collector: the agent then never sends `stats` and the
   // PWA shows no load strip for this machine.
   systemStats?: SystemStatsPort;

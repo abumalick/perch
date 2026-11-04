@@ -39,12 +39,19 @@ describe('ClaudeVoice', () => {
     const written: number[] = [];
     const stream = { played: playing.promise, write: vi.fn((pcm: Uint8Array) => void written.push(...pcm)), end: vi.fn(() => playing.promise), abort: vi.fn() };
     const open = vi.fn(() => stream);
-    const voice = new ClaudeVoice({ player: { open }, settings: { read: async () => settings } });
+    const voice = new ClaudeVoice({ player: { open, available: async () => true }, settings: { read: async () => settings } });
     const presses: number[] = [];
     const press = () => void presses.push(Date.now());
     return { voice, open, stream, written, playing, presses, press };
   }
   const pcm = (...bytes: number[]) => new Uint8Array(bytes);
+
+  it('is available where its player is', async () => {
+    const settings = { read: async () => null };
+    const open = vi.fn();
+    expect(await new ClaudeVoice({ player: { open, available: async () => true }, settings }).available()).toBe(true);
+    expect(await new ClaudeVoice({ player: { open, available: async () => false }, settings }).available()).toBe(false);
+  });
 
   it('holds space at once and plays the audio LEAD_MS later, with what arrived meanwhile', async () => {
     const { voice, open, written, presses, press } = setup();

@@ -80,6 +80,14 @@ describe('parsePresets', () => {
     expect(hasUsablePreset([claude], { elevenlabs: false, openrouter: false, claude: 'not-claude' })).toBe(false);
   });
 
+  it('falls back from Claude voice on a machine that cannot do it', () => {
+    const claude: DictationPreset = { id: 'cv', name: 'Claude voice', badge: 'CV', provider: 'claude', fallbackId: 'clean' };
+    const keys = { elevenlabs: true, openrouter: true, claude: 'unavailable' } as const;
+    expect(unavailableHint(claude, keys)).toBe('not on this machine');
+    expect(currentPreset([DEFAULT_PRESETS[0]!, DEFAULT_PRESETS[1]!, claude], 'cv', keys).id).toBe('clean');
+    expect(hasUsablePreset([claude], { ...keys, elevenlabs: false, openrouter: false })).toBe(false);
+  });
+
   it('returns null when nothing valid is left', () => {
     expect(parsePresets(JSON.stringify([{ id: 'x' }]))).toBeNull();
   });

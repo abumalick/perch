@@ -331,6 +331,7 @@ describe('PerchStore', () => {
       built.store.start();
       built.sockets['wss://mac']!.open();
       built.sockets['wss://mac']!.deliver({ type: 'authResult', ok: true });
+      built.sockets['wss://mac']!.deliver({ type: 'workspaces', workspaces: [], claudeVoice: true });
       built.store.open({ machineId: 'mac', id: 'perch-a', name: 'a', projectPath: '/a', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'idle' as const });
       return built;
     }
@@ -405,6 +406,16 @@ describe('PerchStore', () => {
       expect(store.presetKeys.claude).toBe('asking');
       store.open({ machineId: 'mac', id: 'perch-b', name: 'b', projectPath: '/b', command: 'codex --no-daemon', createdAt: 0, lastActivityAt: 0, status: 'idle' as const });
       expect(store.presetKeys.claude).toBe('not-claude');
+    });
+
+    it('offers Claude voice only on a machine whose agent says it works there', () => {
+      const { store, sockets } = opened();
+      sockets['wss://mac']!.deliver({ type: 'workspaces', workspaces: [], claudeVoice: false });
+      expect(store.presetKeys.claude).toBe('unavailable');
+      sockets['wss://mac']!.deliver({ type: 'workspaces', workspaces: [] });
+      expect(store.presetKeys.claude).toBe('unavailable');
+      sockets['wss://mac']!.deliver({ type: 'workspaces', workspaces: [], claudeVoice: true });
+      expect(store.presetKeys.claude).toBe('ok');
     });
 
     it('supersedes an older dictation', async () => {

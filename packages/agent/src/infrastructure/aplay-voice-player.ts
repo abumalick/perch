@@ -6,7 +6,8 @@ import { childEnv } from './child-env';
 // The playback side of an ALSA loopback (snd-aloop): what is played here is what a recorder
 // on the default capture device hears, once ~/.asoundrc points capture at `Loopback,1`.
 export const LOOPBACK_DEVICE = 'plughw:Loopback,0';
-export const APLAY_ARGS = ['-q', '-D', LOOPBACK_DEVICE, '-t', 'raw', '-f', 'S16_LE', '-c', '1', '-r', '16000', '-'];
+export const aplayArgs = (device: string) => ['-q', '-D', device, '-t', 'raw', '-f', 'S16_LE', '-c', '1', '-r', '16000', '-'];
+export const APLAY_ARGS = aplayArgs(LOOPBACK_DEVICE);
 
 // Raw PCM goes straight to aplay's stdin. An underrun (the phone's audio arriving late) is
 // harmless: aplay reports it and plays on, and Claude still hears the speech.
@@ -14,7 +15,17 @@ export class AplayVoicePlayer implements VoicePlayerPort {
   constructor(
     private readonly command = 'aplay',
     private readonly args = APLAY_ARGS,
+    private readonly cardsPath = '/proc/asound/cards',
   ) {}
+
+  // Whether snd-aloop is loaded: without it there is no virtual mic to play into.
+  async available(): Promise<boolean> {
+    try {
+      return /\[Loopback\s*\]/.test(await readFile(this.cardsPath, 'utf8'));
+    } catch {
+      return false;
+    }
+  }
 
   open(): VoiceStream {
     const child = spawn(this.command, this.args, { env: childEnv(), stdio: ['pipe', 'ignore', 'pipe'] });

@@ -401,7 +401,23 @@ describe('ConnectionHandler control routing', () => {
           urgent: false,
         },
       ],
+      claudeVoice: false,
     });
+  });
+
+  it('tells the phone whether Claude voice works on this machine', async () => {
+    const claudeVoiceIn = async (claudeVoice?: ConnectionHandlerDeps['claudeVoice']) => {
+      const conn = fakeConn();
+      new ConnectionHandler(conn.conn, { ...baseDeps(), claudeVoice });
+      conn.emit({ type: 'auth', token: 'secret' });
+      conn.emit({ type: 'list' });
+      await new Promise((r) => setTimeout(r, 0));
+      return conn.sent.find((m) => m.type === 'workspaces');
+    };
+    const start = () => { throw new Error('unused'); };
+    expect(await claudeVoiceIn({ start, available: async () => true })).toMatchObject({ claudeVoice: true });
+    expect(await claudeVoiceIn({ start, available: async () => false })).toMatchObject({ claudeVoice: false });
+    expect(await claudeVoiceIn(undefined)).toMatchObject({ claudeVoice: false });
   });
 
   it('replies to a ping with a pong', async () => {
@@ -1104,7 +1120,7 @@ describe('ConnectionHandler voice stream', () => {
     const fp = fakePty();
     const conn = fakeConn();
     const voice = fakeVoice();
-    new ConnectionHandler(conn.conn, { ...baseDeps(), pty: fp.pty, claudeVoice: { start: voice.start }, ...deps });
+    new ConnectionHandler(conn.conn, { ...baseDeps(), pty: fp.pty, claudeVoice: { start: voice.start, available: async () => true }, ...deps });
     conn.emit({ type: 'auth', token: 'secret' });
     conn.emit({ type: 'attach', workspaceId: 'perch-aa', cols: 80, rows: 24 });
     return { fp, conn, voice };
@@ -1196,7 +1212,7 @@ describe('ConnectionHandler voice stream', () => {
     const fp = fakePty();
     const conn = fakeConn();
     const voice = fakeVoice();
-    handlers.push(new ConnectionHandler(conn.conn, { ...baseDeps(), pty: fp.pty, claudeVoice: { start: voice.start } }));
+    handlers.push(new ConnectionHandler(conn.conn, { ...baseDeps(), pty: fp.pty, claudeVoice: { start: voice.start, available: async () => true } }));
     conn.emit({ type: 'auth', token: 'secret' });
     conn.emit({ type: 'attach', workspaceId: 'perch-aa', cols: 80, rows: 24 });
     await tick();
@@ -1244,7 +1260,7 @@ describe('ConnectionHandler voice stream', () => {
   it('refuses a workspace that is not attached, and a machine without voice', async () => {
     const voice = fakeVoice();
     const conn = fakeConn();
-    new ConnectionHandler(conn.conn, { ...baseDeps(), claudeVoice: { start: voice.start } });
+    new ConnectionHandler(conn.conn, { ...baseDeps(), claudeVoice: { start: voice.start, available: async () => true } });
     conn.emit({ type: 'auth', token: 'secret' });
     conn.emit({ type: 'voiceStart', workspaceId: 'perch-aa', id: 'v1' });
     await tick();

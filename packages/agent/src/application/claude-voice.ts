@@ -153,6 +153,10 @@ export class ClaudeVoice {
 
   constructor(private readonly deps: Deps) {}
 
+  available(): Promise<boolean> {
+    return this.deps.player.available();
+  }
+
   start(pressSpace: () => void): VoiceSession {
     if (this.busy) {
       const done = Promise.resolve('Claude voice is already in use on this machine');

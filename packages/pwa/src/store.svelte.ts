@@ -1158,7 +1158,8 @@ export class PerchStore {
     // Open the keyboard while the create tap's gesture is still live (see keyboardAnchor).
     this.keyboardAnchor?.();
     this.createError = null;
-    const existingIds = new Set(this.workspaces.map((w) => w.id));
+    // Only this machine's ids: short ids (`<folder>-<n>`) repeat across machines.
+    const existingIds = new Set(this.workspaces.filter((w) => w.machineId === machineId).map((w) => w.id));
     this.pendingCreate = { machineId, projectPath, existingIds };
     this.lastMachineId = machineId;
     this.deps.settings.setLastMachine(machineId);

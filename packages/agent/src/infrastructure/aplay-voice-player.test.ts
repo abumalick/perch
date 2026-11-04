@@ -49,7 +49,16 @@ describe('AplayVoicePlayer', () => {
   it('stops the player on abort', async () => {
     const stream = new AplayVoicePlayer('sleep', ['30']).open();
     stream.abort();
-    await expect(stream.end()).rejects.toThrow(/aplay: exited with SIGTERM/);
+    await expect(stream.end()).rejects.toThrow(/aplay: exited with SIGKILL/);
+  });
+
+  // aplay's SIGTERM handler only flags the abort, then goes back to waiting on stdin, holding
+  // the device: the next dictation got "Device or resource busy".
+  it('stops a player that survives SIGTERM while its stdin is open', async () => {
+    const stream = new AplayVoicePlayer(process.execPath, ['-e', "process.on('SIGTERM', () => {}); process.stdin.resume()"]).open();
+    await new Promise((r) => setTimeout(r, 300));
+    stream.abort();
+    await expect(stream.played).rejects.toThrow(/aplay: exited with SIGKILL/);
   });
 });
 

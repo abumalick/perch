@@ -20,6 +20,7 @@ import { OpenRouterTranscriber } from './adapters/openrouter-transcriber';
 import { PresetTranscriber } from './core/preset-transcriber';
 import { ClaudeVoiceRecorder, ClaudeVoiceTranscriber } from './core/claude-voice';
 import { PresetRecorder } from './core/preset-recorder';
+import { WakeLockRecorder } from './core/wake-lock-recorder';
 import { WebAudioPcm } from './adapters/web-audio-pcm';
 import { VERSION_FILE, parseVersionJson } from './core/version-file';
 import { acceptPairingLink, outsideInstalledApp, takePairingFragment, type PairingPrompts } from './core/pairing';
@@ -129,6 +130,9 @@ const recorder = new PresetRecorder(() => store.currentPreset, {
   clip: new MediaRecorderAudio(),
   claude: new ClaudeVoiceRecorder(new WebAudioPcm(), voiceLink),
 });
+const screenAwakeRecorder = new WakeLockRecorder(recorder, () =>
+  'wakeLock' in navigator ? navigator.wakeLock.request('screen') : Promise.reject(new Error('no wake lock')),
+);
 // The preset the current dictation started with: the recorder and the transcriber must agree.
 const dictationPreset = () => recorder.startedWith ?? store.currentPreset;
 store = new PerchStore({
@@ -136,7 +140,7 @@ store = new PerchStore({
   manager,
   aggregator,
   applyUpdate: () => void updateSW(true),
-  recorder,
+  recorder: screenAwakeRecorder,
   transcriber: new PresetTranscriber(dictationPreset, {
     elevenlabs: new ElevenLabsTranscriber(
       () => settings.elevenLabsApiKey(),

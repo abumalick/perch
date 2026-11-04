@@ -152,6 +152,11 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     workspace opened, a takeover, the phone disconnecting; `cancelVoice`) all end it. A failure
     can arrive while the user still talks, and stops the recording at once (`SpeechToText.abort`);
     the phone fails its dictation itself when the machine goes offline, since no reply can come.
+  - **An aborted player is killed with SIGKILL, never SIGTERM.** aplay's SIGTERM handler only
+    flags the abort and goes back to reading its still-open stdin, so it kept the loopback open
+    and every later dictation failed "Device or resource busy" until it was killed by hand.
+  - **The phone keeps its screen on while it records** (`WakeLockRecorder`, the Screen Wake
+    Lock): a phone that sleeps stops the microphone mid-sentence. A refused lock is ignored.
   - **Every reply is matched by the dictation's `id`,** never the workspace: a superseded
     dictation's late "Superseded" reply would otherwise stop the new one on the same workspace.
   - **Refused before anything is pressed** unless voice is explicitly on in hold mode in

@@ -52,8 +52,12 @@ export class AplayVoicePlayer implements VoicePlayerPort {
         child.stdin.end();
         return played;
       },
+      // Not SIGTERM: aplay's handler only flags the abort and goes back to reading stdin,
+      // keeping the device open, so every later dictation failed "Device or resource busy".
+      // Nothing is left to flush on an abort, and the kernel frees the device on exit.
       abort: () => {
-        child.kill();
+        child.stdin.destroy();
+        child.kill('SIGKILL');
       },
     };
   }

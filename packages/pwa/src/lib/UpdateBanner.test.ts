@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import UpdateBanner from './UpdateBanner.svelte';
+import { setLanguage } from '../i18n.svelte';
 
 function fakeStore(over: Record<string, unknown> = {}) {
   return {
@@ -46,5 +47,17 @@ describe('UpdateBanner', () => {
     render(UpdateBanner, { props: { store: store as never } });
     await fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
     expect(store.dismissUpdate).toHaveBeenCalled();
+  });
+});
+
+describe('UpdateBanner in French', () => {
+  it('renders its text in French', () => {
+    setLanguage('fr');
+    try {
+      render(UpdateBanner, { props: { store: fakeStore({ updateReady: true, incomingBuildLabel: 'main' }) as never } });
+      expect(screen.getByText('Mise à jour disponible')).toBeTruthy();
+    } finally {
+      setLanguage('en');
+    }
   });
 });

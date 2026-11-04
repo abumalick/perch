@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { OpenRouterTranscriber, OPENROUTER_ENDPOINT } from './openrouter-transcriber';
+import { setLanguage } from '../i18n.svelte';
 
 const audio = new Blob(['abc'], { type: 'audio/webm;codecs=opus' });
 const config = { model: 'google/gemini-3.8-flash', prompt: 'Clean it up.' };
@@ -142,5 +143,17 @@ describe('OpenRouterTranscriber', () => {
     expect(fetchFn).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(35_000);
     await pending;
+  });
+});
+
+describe('OpenRouterTranscriber in French', () => {
+  it('words a bad key in French', async () => {
+    setLanguage('fr');
+    try {
+      const t = transcriber(vi.fn().mockResolvedValue(body(401)));
+      await expect(t.transcribe(audio)).rejects.toThrow('Clé OpenRouter invalide');
+    } finally {
+      setLanguage('en');
+    }
   });
 });

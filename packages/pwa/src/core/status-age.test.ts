@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { statusAge } from './status-age';
+import { setLanguage } from '../i18n.svelte';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -24,5 +25,16 @@ describe('statusAge', () => {
 
   it('treats a timestamp ahead of the phone clock (agent skew) as just now', () => {
     expect(statusAge(10 * MIN, 0)).toBe('<1m');
+  });
+});
+
+describe('statusAge in French', () => {
+  it('renders its text in French', () => {
+    setLanguage('fr');
+    try {
+      expect(statusAge(0, 3 * DAY)).toBe('3 j');
+    } finally {
+      setLanguage('en');
+    }
   });
 });

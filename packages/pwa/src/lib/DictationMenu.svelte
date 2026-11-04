@@ -4,6 +4,7 @@
   // A preset that cannot be used here (no key; Claude voice outside Claude Code) is shown but
   // disabled; with none usable there is no mic.
   import { unavailableHint, type DictationPreset, type PresetKeys } from '../core/dictation-presets';
+  import { msg } from '../i18n.svelte';
 
   let {
     presets,
@@ -33,9 +34,9 @@
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') onClose(); }} />
 
-<button type="button" class="backdrop" aria-label="Close dictation presets" onpointerdown={keepFocus} onclick={onClose}></button>
+<button type="button" class="backdrop" aria-label={msg().dictation.closePresets} onpointerdown={keepFocus} onclick={onClose}></button>
 <div class="menu" style="bottom: {anchor.bottom}px; right: {anchor.right}px">
-  <ul role="listbox" aria-label="Dictation presets">
+  <ul role="listbox" aria-label={msg().dictation.presets}>
     {#each presets as preset (preset.id)}
       {@const missing = unavailableHint(preset, keys)}
       <li>
@@ -54,7 +55,7 @@
       </li>
     {/each}
   </ul>
-  <button type="button" class="add" onpointerdown={keepFocus} onclick={() => { onClose(); onAdd(); }}>Add preset…</button>
+  <button type="button" class="add" onpointerdown={keepFocus} onclick={() => { onClose(); onAdd(); }}>{msg().dictation.addPreset}</button>
 </div>
 
 <style>

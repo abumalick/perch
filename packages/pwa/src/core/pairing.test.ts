@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { pairingLink, type PairingLink } from '@perch/secure-channel';
 import { deviceFingerprint } from '@perch/secure-channel';
 import { acceptPairingLink, outsideInstalledApp, pairedMachine, pairingQuestion, readPairingLink, takePairingFragment } from './pairing';
@@ -146,5 +147,15 @@ describe('outsideInstalledApp', () => {
     expect(outsideInstalledApp({ standalone: false })).toBe(true);
     expect(outsideInstalledApp({ standalone: true })).toBe(false);
     expect(outsideInstalledApp({})).toBe(false);
+  });
+});
+
+describe('readPairingLink in French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('refuses a non-link in French', () => {
+    setLanguage('fr');
+    const result = readPairingLink('hello', 'https://p');
+    expect(result.ok ? '' : result.reason).toBe('Ce n’est pas un code d’association Perch. Lancez `perch pair` sur la machine pour en obtenir un nouveau.');
   });
 });

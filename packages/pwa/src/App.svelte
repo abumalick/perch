@@ -15,6 +15,7 @@
   import ActionErrorBanner from './lib/ActionErrorBanner.svelte';
   import InstallFirst from './lib/InstallFirst.svelte';
   import { trackWide } from './lib/viewport';
+  import { msg } from './i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
   // xterm and the markdown renderer are half the bundle and neither is needed to connect, so
@@ -138,7 +139,7 @@
     </aside>
     <main class="pane" class:flush={store.view === 'terminal' || store.view === 'browserView'}>
       {#if store.view === 'list'}
-        <p class="placeholder">Select a workspace</p>
+        <p class="placeholder">{msg().app.selectWorkspace}</p>
       {:else}
         {@render activeView()}
       {/if}

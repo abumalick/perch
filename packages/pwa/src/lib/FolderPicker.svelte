@@ -2,6 +2,7 @@
   import type { PerchStore } from '../store.svelte';
   import { basename, parent } from '../core/browse-path';
   import { isValidFolderName } from '../core/folder-name';
+  import { msg } from '../i18n.svelte';
 
   let {
     store,
@@ -71,9 +72,9 @@
 
 <section class="picker">
   <header>
-    <button type="button" class="icon" aria-label="Back" onclick={back}>‹</button>
-    <span class="title">{confinedRoot && entries ? basename(entries.path) : 'Pick folder'}</span>
-    <button type="button" class="dismiss" onclick={() => oncancel()}>Cancel</button>
+    <button type="button" class="icon" aria-label={msg().files.back} onclick={back}>‹</button>
+    <span class="title">{confinedRoot && entries ? basename(entries.path) : msg().files.pickFolder}</span>
+    <button type="button" class="dismiss" onclick={() => oncancel()}>{msg().files.cancel}</button>
   </header>
 
   {#if confinedRoot === null}
@@ -88,14 +89,14 @@
     </ul>
   {:else}
     {#if store.browseError}
-      <p class="error">Couldn't open this folder.<br /><span>{store.browseError}</span></p>
+      <p class="error">{msg().files.openFolderError}<br /><span>{store.browseError}</span></p>
     {:else if !entries}
-      <p class="empty">Loading…</p>
+      <p class="empty">{msg().files.loading}</p>
     {:else}
       <ul>
         {#if !atRoot || roots.length > 1}
           <li>
-            <button type="button" aria-label="Up one level" onclick={back}>
+            <button type="button" aria-label={msg().files.upOneLevel} onclick={back}>
               <span class="glyph" aria-hidden="true">📁</span><span class="name">..</span>
             </button>
           </li>
@@ -114,25 +115,25 @@
         <div class="new-folder">
           <input
             type="text"
-            aria-label="Folder name"
-            placeholder="Folder name"
+            aria-label={msg().files.folderName}
+            placeholder={msg().files.folderName}
             bind:value={newName}
             onkeydown={(e) => e.key === 'Enter' && submitCreate()}
           />
-          <button type="button" class="confirm" disabled={!canCreate} onclick={submitCreate}>Create</button>
-          <button type="button" class="cancel" onclick={() => (creating = false)}>Cancel</button>
+          <button type="button" class="confirm" disabled={!canCreate} onclick={submitCreate}>{msg().files.create}</button>
+          <button type="button" class="cancel" onclick={() => (creating = false)}>{msg().files.cancel}</button>
         </div>
         {#if nameTaken}
-          <p class="dup">"{newName.trim()}" already exists here.</p>
+          <p class="dup">{msg().files.alreadyExists(newName.trim())}</p>
         {/if}
       {:else}
         <button type="button" class="new" onclick={startCreate}>
-          <span class="glyph" aria-hidden="true">＋</span>New folder…
+          <span class="glyph" aria-hidden="true">＋</span>{msg().files.newFolder}
         </button>
       {/if}
     {/if}
     <button type="button" class="use" disabled={!entries} onclick={() => entries && onpick(entries.path)}>
-      Use this folder
+      {msg().files.useFolder}
     </button>
   {/if}
 </section>

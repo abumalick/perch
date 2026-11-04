@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import CreateWorkspace from './CreateWorkspace.svelte';
 
@@ -411,5 +412,15 @@ describe('CreateWorkspace launchers', () => {
     render(CreateWorkspace, { props: { store: store as never } });
     await fireEvent.click(screen.getByRole('button', { name: 'Forget pi' }));
     expect(forgetLauncher).toHaveBeenCalledWith('box', 'pi');
+  });
+});
+
+describe('CreateWorkspace — French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('titles the form in French', () => {
+    setLanguage('fr');
+    render(CreateWorkspace, { props: { store: fakeStore() as never } });
+    expect(screen.getByText('Nouvel espace de travail')).toBeInTheDocument();
   });
 });

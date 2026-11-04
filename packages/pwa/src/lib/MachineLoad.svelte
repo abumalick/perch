@@ -2,6 +2,7 @@
   import type { MachineStats } from '@perch/contracts';
   import { describeLoad } from '../core/machine-load';
   import MachineLoadHelp from './MachineLoadHelp.svelte';
+  import { msg } from '../i18n.svelte';
 
   let {
     stats,
@@ -21,19 +22,19 @@
   {#if name}
     <span class="name" data-testid="machine-load-name">{name}</span>
   {/if}
-  <span>CPU <span class="num" data-testid="machine-load-cpu">{load.cpu}</span></span>
+  <span>{msg().load.cpu} <span class="num" data-testid="machine-load-cpu">{load.cpu}</span></span>
   <!-- Reclaimable cache counts as free in both figures, so they move only with memory the
        machine cannot hand back. -->
   <span class="ram" data-testid="machine-load-ram">
-    RAM <span class="num head" data-testid="machine-load-headroom">{load.slowLabel}</span> left{' '}
-    {#if load.killLabel}<span class="detail" data-testid="machine-load-kill">· {load.killLabel} before kill</span>{/if}
+    {msg().load.ram} <span class="num head" data-testid="machine-load-headroom">{load.slowLabel}</span>{msg().load.left}{' '}
+    {#if load.killLabel}<span class="detail" data-testid="machine-load-kill">{msg().load.beforeKill(load.killLabel)}</span>{/if}
   </span>
   </span>
   <button
     type="button"
     class="help"
     data-testid="machine-load-help-open"
-    aria-label="What these numbers mean"
+    aria-label={msg().load.help}
     onclick={() => (helpOpen = true)}>?</button>
 </div>
 

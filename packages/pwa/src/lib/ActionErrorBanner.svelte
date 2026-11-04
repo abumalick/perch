@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PerchStore } from '../store.svelte';
+  import { msg } from '../i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
 </script>
@@ -7,7 +8,7 @@
 {#if store.actionError}
   <div class="banner" role="alert">
     <span class="msg">⚠️ {store.actionError}</span>
-    <button type="button" class="dismiss" aria-label="Dismiss" onclick={() => store.dismissActionError()}>✕</button>
+    <button type="button" class="dismiss" aria-label={msg().app.dismiss} onclick={() => store.dismissActionError()}>✕</button>
   </div>
 {/if}
 

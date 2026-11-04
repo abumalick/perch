@@ -9,6 +9,7 @@
     presetError,
     type DictationPreset,
   } from '../core/dictation-presets';
+  import { msg } from '../i18n.svelte';
 
   let {
     store,
@@ -45,7 +46,7 @@
     return { ...base, provider: 'elevenlabs' };
   }
 
-  const PROVIDER_LABELS = { elevenlabs: 'ElevenLabs', claude: 'Claude voice (on the machine)' } as const;
+  const providerLabel = (provider: 'elevenlabs' | 'claude') => (provider === 'elevenlabs' ? 'ElevenLabs' : msg().presets.claudeVoiceLabel);
 
   function edit(index: number) {
     editing = { index, draft: toDraft(presets[index]!), touched: false };
@@ -95,16 +96,16 @@
 <ul class="presets">
   {#each presets as preset, i (preset.id)}
     <li class="preset" class:current={preset.id === inUseId} aria-current={preset.id === inUseId ? 'true' : undefined}>
-      <button type="button" class="open" aria-label="Edit {preset.name}" onclick={() => edit(i)}>
+      <button type="button" class="open" aria-label={msg().presets.edit(preset.name)} onclick={() => edit(i)}>
         <span class="badge">{preset.badge}</span>
         <span class="label">{preset.name}</span>
-        {#if preset.id === inUseId}<span class="in-use">In use</span>{/if}
-        <span class="provider">{preset.provider === 'openrouter' ? preset.model : PROVIDER_LABELS[preset.provider]}</span>
+        {#if preset.id === inUseId}<span class="in-use">{msg().presets.inUse}</span>{/if}
+        <span class="provider">{preset.provider === 'openrouter' ? preset.model : providerLabel(preset.provider)}</span>
       </button>
-      <button type="button" class="icon" aria-label="Move {preset.name} up" disabled={i === 0} onclick={() => move(i, -1)}>↑</button>
-      <button type="button" class="icon" aria-label="Move {preset.name} down" disabled={i === presets.length - 1} onclick={() => move(i, 1)}>↓</button>
+      <button type="button" class="icon" aria-label={msg().presets.moveUp(preset.name)} disabled={i === 0} onclick={() => move(i, -1)}>↑</button>
+      <button type="button" class="icon" aria-label={msg().presets.moveDown(preset.name)} disabled={i === presets.length - 1} onclick={() => move(i, 1)}>↓</button>
       {#if presets.length > 1}
-        <button type="button" class="icon danger" aria-label="Delete {preset.name}" onclick={() => remove(i)}>✕</button>
+        <button type="button" class="icon danger" aria-label={msg().presets.delete(preset.name)} onclick={() => remove(i)}>✕</button>
       {/if}
     </li>
   {/each}
@@ -113,12 +114,12 @@
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape' && editing) editing = null; }} />
 
 <div class="actions">
-  <button type="button" class="small" onclick={add}>Add preset</button>
+  <button type="button" class="small" onclick={add}>{msg().presets.add}</button>
   {#if confirmingReset}
-    <button type="button" class="small danger" onclick={reset}>Confirm reset</button>
-    <button type="button" class="small" onclick={() => (confirmingReset = false)}>Keep mine</button>
+    <button type="button" class="small danger" onclick={reset}>{msg().presets.confirmReset}</button>
+    <button type="button" class="small" onclick={() => (confirmingReset = false)}>{msg().presets.keepMine}</button>
   {:else}
-    <button type="button" class="small" onclick={() => (confirmingReset = true)}>Reset to defaults</button>
+    <button type="button" class="small" onclick={() => (confirmingReset = true)}>{msg().presets.reset}</button>
   {/if}
 </div>
 
@@ -126,40 +127,40 @@
   <div class="scrim"></div>
   <div class="editor" role="dialog" aria-modal="true" aria-labelledby="preset-editor-title">
     <form onsubmit={save} oninput={() => editing && (editing.touched = true)}>
-      <h2 id="preset-editor-title">{editing.index === null ? 'New preset' : 'Edit preset'}</h2>
-      <label for="preset-name">Name</label>
-      <input id="preset-name" bind:value={editing.draft.name} placeholder="Clean up" />
-      <label for="preset-badge">Badge</label>
+      <h2 id="preset-editor-title">{editing.index === null ? msg().presets.newPreset : msg().presets.editPreset}</h2>
+      <label for="preset-name">{msg().presets.name}</label>
+      <input id="preset-name" bind:value={editing.draft.name} placeholder={msg().presets.namePlaceholder} />
+      <label for="preset-badge">{msg().presets.badge}</label>
       <input id="preset-badge" bind:value={editing.draft.badge} placeholder="CL" />
-      <label for="preset-provider">Provider</label>
+      <label for="preset-provider">{msg().presets.provider}</label>
       <div class="select">
         <select id="preset-provider" bind:value={editing.draft.provider}>
-          <option value="elevenlabs">ElevenLabs (plain transcript)</option>
-          <option value="openrouter">OpenRouter (model + prompt)</option>
-          <option value="claude">Claude Code /voice (Linux machine, set up by hand)</option>
+          <option value="elevenlabs">{msg().presets.providerElevenLabs}</option>
+          <option value="openrouter">{msg().presets.providerOpenRouter}</option>
+          <option value="claude">{msg().presets.providerClaude}</option>
         </select>
       </div>
       {#if editing.draft.provider === 'openrouter'}
-        <label for="preset-model">Model</label>
+        <label for="preset-model">{msg().presets.model}</label>
         <input id="preset-model" bind:value={editing.draft.model} placeholder="google/gemini-3.8-flash" autocapitalize="off" spellcheck="false" />
-        <label for="preset-prompt">Prompt</label>
+        <label for="preset-prompt">{msg().presets.prompt}</label>
         <textarea id="preset-prompt" rows="8" bind:value={editing.draft.prompt}></textarea>
       {:else if editing.draft.provider === 'claude'}
-        <label for="preset-fallback">Fallback</label>
+        <label for="preset-fallback">{msg().presets.fallback}</label>
         <div class="select">
           <select id="preset-fallback" bind:value={editing.draft.fallbackId}>
-            <option value="">First available preset</option>
+            <option value="">{msg().presets.firstAvailable}</option>
             {#each presets.filter((p) => p.provider !== 'claude') as other (other.id)}
               <option value={other.id}>{other.name}</option>
             {/each}
           </select>
         </div>
-        <p class="hint">Used outside Claude Code workspaces and while Claude shows a question or menu.</p>
+        <p class="hint">{msg().presets.fallbackHint}</p>
       {/if}
       {#if draftError && editing.touched}<p class="hint error" role="alert">{draftError}</p>{/if}
       <div class="actions">
-        <button type="submit" class="small" disabled={!!draftError}>Save preset</button>
-        <button type="button" class="small" onclick={() => (editing = null)}>Cancel</button>
+        <button type="submit" class="small" disabled={!!draftError}>{msg().presets.save}</button>
+        <button type="button" class="small" onclick={() => (editing = null)}>{msg().presets.cancel}</button>
       </div>
     </form>
   </div>

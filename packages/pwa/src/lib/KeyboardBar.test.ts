@@ -4,6 +4,7 @@ import KeyboardBar, { HOLD_MS, TAP_SLOP_PX } from './KeyboardBar.svelte';
 import { DEFAULT_PRESETS } from '../core/dictation-presets';
 import { KEY_REPEAT_DELAY_MS, KEY_REPEAT_INTERVAL_MS } from '../core/key-repeat';
 import { NOTCH_PX } from '../core/cursor-pad';
+import { setLanguage } from '../i18n.svelte';
 
 const base = {
   send: vi.fn(),
@@ -504,5 +505,16 @@ describe('KeyboardBar dictation presets', () => {
     await fireEvent.click(screen.getByRole('option', { name: /Fast/ }));
     expect(onSelectPreset).toHaveBeenCalledWith('fast');
     expect(menu()).toBeNull();
+  });
+});
+
+describe('KeyboardBar in French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('labels its keys in French', () => {
+    setLanguage('fr');
+    render(KeyboardBar, { props: base });
+    expect(screen.getByRole('toolbar', { name: 'Touches du terminal' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Coller' })).toBeInTheDocument();
   });
 });

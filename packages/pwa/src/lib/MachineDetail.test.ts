@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { generateAgentKeys } from '@perch/secure-channel';
 import MachineDetail from './MachineDetail.svelte';
@@ -126,5 +127,15 @@ describe('MachineDetail', () => {
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(store.removeMachine).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('MachineDetail in French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('labels the save button in French', () => {
+    setLanguage('fr');
+    setup();
+    expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeTruthy();
   });
 });

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import type { BrowserClientMessage, BrowserEndedReason } from '@perch/contracts';
@@ -266,5 +267,18 @@ describe('BrowserView', () => {
     expect(screen.getByText('Opened on another device.')).toBeInTheDocument();
     await fireEvent.click(screen.getByRole('button', { name: /retry/i }));
     expect(h.stream.open).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('BrowserView — French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('words an ended session in French', async () => {
+    setLanguage('fr');
+    const h = setup();
+    h.handlers().endedReason?.('opened-elsewhere');
+    h.handlers().onState('ended');
+    await tick();
+    expect(screen.getByText('Ouverte sur un autre appareil.')).toBeInTheDocument();
   });
 });

@@ -1,5 +1,6 @@
 import type { AudioRecorder } from './ports/audio-recorder';
 import type { Transcriber } from './ports/transcriber';
+import { msg } from '../i18n.svelte';
 
 export type DictationState = 'idle' | 'recording' | 'transcribing' | 'error';
 
@@ -63,7 +64,7 @@ export class SpeechToText {
       this.set('recording');
     } catch (e) {
       // The browser refuses the mic with a DOMException; anything else says what went wrong.
-      this.set('error', e instanceof Error && !(e instanceof DOMException) ? e.message : 'Microphone blocked');
+      this.set('error', e instanceof Error && !(e instanceof DOMException) ? e.message : msg().dictation.microphoneBlocked);
     } finally {
       this.starting = false;
     }
@@ -77,7 +78,7 @@ export class SpeechToText {
       if (text.trim()) this.onText(text);
       this.set('idle');
     } catch (e) {
-      this.set('error', e instanceof Error ? e.message : 'Transcription failed');
+      this.set('error', e instanceof Error ? e.message : msg().dictation.transcriptionFailed);
     }
   }
 }

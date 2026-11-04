@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PerchStore } from '../store.svelte';
+  import { msg } from '../i18n.svelte';
 
   let {
     store,
@@ -20,29 +21,26 @@
 
 {#if store.installFirst}
   <section class="install" data-testid="install-first">
-    <h1>Pair {store.installFirst.name} from the Home Screen app</h1>
-    <p class="lead">
-      Perch runs from its icon on your Home Screen, and that app keeps its own data: a machine paired
-      on this page would not be there.
-    </p>
+    <h1>{msg().app.installFirst.title(store.installFirst.name)}</h1>
+    <p class="lead">{msg().app.installFirst.lead}</p>
     <ol>
       <li>
         <button type="button" class="cta" onclick={copyLink}>
-          {copied === 'yes' ? 'Copied ✓' : 'Copy pairing link'}
+          {copied === 'yes' ? msg().app.installFirst.copied : msg().app.installFirst.copyLink}
         </button>
         {#if copied === 'failed'}
           <label class="manual">
-            Copy it by hand:
+            {msg().app.installFirst.copyByHand}
             <textarea readonly rows="3" onfocus={(e) => e.currentTarget.select()}>{store.installFirst.link}</textarea>
           </label>
         {/if}
       </li>
-      <li>If this page opened inside another app, open it in Safari first (the ⋯ or Safari button).</li>
-      <li>In Safari, tap <b>Share</b> → <b>Add to Home Screen</b>. Already on your Home Screen? Skip this.</li>
-      <li>Open Perch from its icon, tap <b>Add a machine</b>, then <b>Paste pairing link</b>.</li>
+      <li>{msg().app.installFirst.openInSafari}</li>
+      <li>{msg().app.installFirst.inSafariTap}<b>{msg().app.installFirst.share}</b> → <b>{msg().app.installFirst.addToHomeScreen}</b>{msg().app.installFirst.alreadyOnHomeScreen}</li>
+      <li>{msg().app.installFirst.openPerch}<b>{msg().app.installFirst.addMachine}</b>{msg().app.installFirst.then}<b>{msg().app.installFirst.pastePairingLink}</b>.</li>
     </ol>
-    <p class="note">The code is not used yet. It works once, within 10 minutes of <code>perch pair</code>.</p>
-    <button type="button" class="link" onclick={() => store.pairInBrowser()}>Pair in this browser instead</button>
+    <p class="note">{msg().app.installFirst.notUsedYet}<code>perch pair</code>.</p>
+    <button type="button" class="link" onclick={() => store.pairInBrowser()}>{msg().app.installFirst.pairInBrowser}</button>
   </section>
 {/if}
 

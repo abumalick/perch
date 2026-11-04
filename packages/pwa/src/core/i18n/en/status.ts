@@ -1,0 +1,32 @@
+export const status = {
+  labels: {
+    'needs-feedback': 'Needs you',
+    'needs-hands': 'Needs hands',
+    idle: 'Idle',
+    finished: 'Finished',
+    review: 'Review',
+    blocked: 'Blocked',
+    parked: 'Parked',
+    working: 'Working',
+  },
+  needsOrchestrator: 'Needs orchestrator',
+  pill: (label: string) => `Status: ${label}`,
+  closeMenu: 'Close status menu',
+  setStatus: 'Set status',
+  connection: {
+    online: 'Online',
+    connecting: 'Connecting…',
+    offline: 'Offline',
+    off: 'Off',
+  },
+  secondsAgo: (n: number) => `${n}s ago`,
+  minutesAgo: (n: number) => `${n}m ago`,
+  hoursAgo: (n: number) => `${n}h ago`,
+  errorCode: (code: number) => ` (code ${code})`,
+  age: {
+    underMinute: '<1m',
+    minutes: (n: number) => `${n}m`,
+    hours: (n: number) => `${n}h`,
+    days: (n: number) => `${n}d`,
+  },
+};

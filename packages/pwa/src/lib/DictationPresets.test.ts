@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import DictationPresets from './DictationPresets.svelte';
 import { DEFAULT_CLEANUP_PROMPT, DEFAULT_PRESETS, type DictationPreset } from '../core/dictation-presets';
@@ -142,5 +143,15 @@ describe('DictationPresets', () => {
     expect(store.resetDictationPresets).not.toHaveBeenCalled();
     await fireEvent.click(screen.getByRole('button', { name: 'Confirm reset' }));
     expect(store.resetDictationPresets).toHaveBeenCalled();
+  });
+});
+
+describe('DictationPresets in French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('offers to add a preset in French', () => {
+    setLanguage('fr');
+    render(DictationPresets, { props: { store: fakeStore() as never } });
+    expect(screen.getByRole('button', { name: 'Ajouter un préréglage' })).toBeTruthy();
   });
 });

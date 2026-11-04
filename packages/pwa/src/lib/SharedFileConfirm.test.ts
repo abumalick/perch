@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import SharedFileConfirm from './SharedFileConfirm.svelte';
+import { setLanguage } from '../i18n.svelte';
 
 function fakeStore(over: Record<string, unknown> = {}) {
   return {
@@ -43,5 +44,17 @@ describe('SharedFileConfirm', () => {
   it('cannot attach while the machine is offline', () => {
     render(SharedFileConfirm, { props: { store: fakeStore({ statuses: { mac: 'offline' } }) as never } });
     expect(screen.getByRole('button', { name: 'Attach' })).toBeDisabled();
+  });
+});
+
+describe('SharedFileConfirm in French', () => {
+  it('renders its text in French', () => {
+    setLanguage('fr');
+    try {
+      render(SharedFileConfirm, { props: { store: fakeStore() as never } });
+      expect(screen.getByRole('button', { name: 'Joindre' })).toBeTruthy();
+    } finally {
+      setLanguage('en');
+    }
   });
 });

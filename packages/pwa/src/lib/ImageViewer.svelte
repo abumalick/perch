@@ -3,6 +3,7 @@
   import { basename } from '../core/browse-path';
   import { fit, baseScale, zoomAt, panBy, type Transform, type ViewContext } from '../core/zoom-pan';
   import { initialSwipe, accrue, markPinched, decideSwipe } from '../core/swipe-gesture';
+  import { msg } from '../i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
   let file = $derived(store.fileView);
@@ -115,19 +116,19 @@
 
 <section class="viewer">
   <header>
-    <button type="button" class="icon" aria-label="Back" onclick={() => store.closeViewer()}>‹</button>
+    <button type="button" class="icon" aria-label={msg().viewer.back} onclick={() => store.closeViewer()}>‹</button>
     <span class="title">{file ? basename(file.path) : ''}</span>
   </header>
 
   {#if store.viewError}
-    <p class="error">Couldn't open this file.<br /><span>{store.viewError}</span></p>
+    <p class="error">{msg().viewer.openFileError}<br /><span>{store.viewError}</span></p>
   {:else if file?.truncated}
-    <p class="empty">Image too large to preview (over 5&nbsp;MB).</p>
+    <p class="empty">{msg().viewer.imageTooLarge}</p>
   {:else if file?.blobUrl}
     <div
       class="frame"
       role="application"
-      aria-label="Zoomable image"
+      aria-label={msg().viewer.zoomableImage}
       bind:this={frame}
       onpointerdown={onPointerDown}
       onpointermove={onPointerMove}
@@ -147,7 +148,7 @@
       {/if}
     </div>
   {:else}
-    <p class="empty">Loading…</p>
+    <p class="empty">{msg().viewer.loading}</p>
   {/if}
 </section>
 

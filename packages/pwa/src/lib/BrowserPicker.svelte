@@ -1,5 +1,6 @@
 <script lang="ts">
   import { browserSessionLabel } from '../core/browser-sessions';
+  import { msg } from '../i18n.svelte';
 
   let {
     sessions,
@@ -34,7 +35,7 @@
   }
 
   const label = $derived(
-    sessions.length === 0 ? 'Start browser' : sessions.length > 1 ? `Browser (${sessions.length})` : 'Browser',
+    sessions.length === 0 ? msg().browser.start : sessions.length > 1 ? msg().browser.browserCount(sessions.length) : msg().browser.browser,
   );
 </script>
 
@@ -56,8 +57,8 @@
     </button>
 
     {#if open}
-      <button type="button" class="backdrop" aria-label="Close browser menu" onclick={() => (open = false)}></button>
-      <ul class="menu" role="menu" aria-label="Browser sessions">
+      <button type="button" class="backdrop" aria-label={msg().browser.closeMenu} onclick={() => (open = false)}></button>
+      <ul class="menu" role="menu" aria-label={msg().browser.sessions}>
         {#each sessions as name (name)}
           <li>
             <button type="button" role="menuitem" onpointerdown={keepFocus} onclick={() => choose(name)}>

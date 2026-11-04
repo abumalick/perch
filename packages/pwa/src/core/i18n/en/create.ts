@@ -1,0 +1,18 @@
+export const create = {
+  back: 'Back',
+  title: 'New workspace',
+  machine: 'Machine',
+  noMachines: 'No connected machines',
+  recent: 'Recent',
+  path: 'Path',
+  pathRelative: (root: string) => `Path (relative to ${root})`,
+  pathPlaceholder: 'project',
+  browse: 'Browse',
+  browseButton: 'Browse…',
+  command: 'Command',
+  forget: (label: string) => `Forget ${label}`,
+  custom: 'Custom…',
+  model: 'Model',
+  customCommand: 'Custom command',
+  create: 'Create',
+};

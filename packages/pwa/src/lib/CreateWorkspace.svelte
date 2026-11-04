@@ -3,6 +3,7 @@
   import { resolveProjectPath, displayProjectPath, relativeProjectPath } from '../core/resolve-path';
   import FolderPicker from './FolderPicker.svelte';
   import { buildLauncherOptions, type LauncherOption } from '../core/launchers';
+  import { msg } from '../i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
 
@@ -116,12 +117,12 @@
 {:else}
 <section>
   <header>
-    <button type="button" class="icon" aria-label="Back" onclick={() => store.cancelCreate()}>‹</button>
-    <h2>New workspace</h2>
+    <button type="button" class="icon" aria-label={msg().create.back} onclick={() => store.cancelCreate()}>‹</button>
+    <h2>{msg().create.title}</h2>
   </header>
 
   <fieldset class="radios">
-    <legend>Machine</legend>
+    <legend>{msg().create.machine}</legend>
     {#if connectedMachines.length > 0}
       <div class="radio-row">
         {#each connectedMachines as m (m.id)}
@@ -132,12 +133,12 @@
         {/each}
       </div>
     {:else}
-      <p class="empty">No connected machines</p>
+      <p class="empty">{msg().create.noMachines}</p>
     {/if}
   </fieldset>
 
   {#if recentPaths.length > 0}
-    <p class="recent-label">Recent</p>
+    <p class="recent-label">{msg().create.recent}</p>
     <div class="recent">
       {#each recentPaths as recentPath (recentPath)}
         <button type="button" class:selected={path === recentPath} onclick={() => (path = recentPath)}>{displayProjectPath(defaultPath || undefined, recentPath)}</button>
@@ -147,20 +148,20 @@
 
   <form onsubmit={create}>
     <label>
-      {#if defaultPath}Path (relative to {defaultPath}){:else}Path{/if}
+      {#if defaultPath}{msg().create.pathRelative(defaultPath)}{:else}{msg().create.path}{/if}
       <div class="path-row">
         <input
           data-testid="path"
           bind:value={path}
           oninput={() => (pathEdited = true)}
-          placeholder={defaultPath ? 'project' : '/home/u/workspace/project'}
+          placeholder={defaultPath ? msg().create.pathPlaceholder : '/home/u/workspace/project'}
         />
-        <button type="button" class="browse" aria-label="Browse" disabled={roots.length === 0} onclick={openPicker}>Browse…</button>
+        <button type="button" class="browse" aria-label={msg().create.browse} disabled={roots.length === 0} onclick={openPicker}>{msg().create.browseButton}</button>
       </div>
     </label>
     {#if defaultPath}<p class="resolved" data-testid="resolved-preview">→ {resolved}</p>{/if}
     <fieldset class="radios">
-      <legend>Command</legend>
+      <legend>{msg().create.command}</legend>
       <div class="radio-row">
         {#each launchers as c (c.id)}
           <span class="launcher">
@@ -169,19 +170,19 @@
               {c.label}
             </label>
             {#if c.removable}
-              <button type="button" class="forget" aria-label="Forget {c.label}" onclick={() => forget(c)}>✕</button>
+              <button type="button" class="forget" aria-label={msg().create.forget(c.label)} onclick={() => forget(c)}>✕</button>
             {/if}
           </span>
         {/each}
         <label class="radio" class:selected={commandId === 'custom'}>
           <input type="radio" name="command" value="custom" checked={commandId === 'custom'} onchange={() => selectCommand('custom')} />
-          Custom…
+          {msg().create.custom}
         </label>
       </div>
     </fieldset>
     {#if models.length > 0}
       <fieldset class="radios">
-        <legend>Model</legend>
+        <legend>{msg().create.model}</legend>
         <div class="radio-row">
           {#each models as m (m.value)}
             <label class="radio" class:selected={model === m.value}>
@@ -193,12 +194,12 @@
       </fieldset>
     {/if}
     {#if commandId === 'custom'}
-      <label>Custom command
+      <label>{msg().create.customCommand}
         <input data-testid="custom-command" bind:value={customCommand} placeholder="claude --resume" />
       </label>
     {/if}
     {#if store.createError}<p class="error" role="alert">⚠ {store.createError}</p>{/if}
-    <button type="submit" class="create" disabled={connectedMachines.length === 0}>Create</button>
+    <button type="submit" class="create" disabled={connectedMachines.length === 0}>{msg().create.create}</button>
   </form>
 </section>
 {/if}

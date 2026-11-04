@@ -14,6 +14,8 @@
   import ConfirmRemove from './ConfirmRemove.svelte';
   import { STATUS_LABEL, describeConnectionError } from './machine-status';
   import { isAndroid } from './android-input';
+  import { msg } from '../i18n.svelte';
+  import { LANGUAGES, type LanguageChoice } from '../core/i18n/language';
 
   let { store }: { store: PerchStore } = $props();
 
@@ -86,20 +88,20 @@
 {:else}
   <section>
     <header>
-      <button type="button" class="icon" aria-label="Back" onclick={() => store.back()}>‹</button>
-      <h2>Settings</h2>
+      <button type="button" class="icon" aria-label={msg().settings.back} onclick={() => store.back()}>‹</button>
+      <h2>{msg().settings.title}</h2>
     </header>
 
     {#if store.deviceKeyError}
       <div class="card notice">
-        <p data-testid="device-key">Device key unavailable: {store.deviceKeyError}</p>
+        <p data-testid="device-key">{msg().settings.deviceKeyUnavailable(store.deviceKeyError)}</p>
         {#if store.deviceKeyUnreadable}
-          <button type="button" class="wide" onclick={() => store.replaceDeviceKey()}>Make a new device key</button>
+          <button type="button" class="wide" onclick={() => store.replaceDeviceKey()}>{msg().settings.newDeviceKey}</button>
         {/if}
       </div>
     {/if}
 
-    <p class="group">Machines</p>
+    <p class="group">{msg().settings.machines}</p>
     <ul class="card list">
       {#each store.machines as machine (machine.id)}
         <li>
@@ -108,9 +110,9 @@
               <StatusDot status="off" />
               <span class="text">
                 <span class="name">{machine.name}</span>
-                <span class="sub" data-testid="legacy-entry">Old direct entry — no longer supported; pair this machine again</span>
+                <span class="sub" data-testid="legacy-entry">{msg().settings.legacyEntry}</span>
               </span>
-              <button type="button" class="small danger" onclick={() => (removing = machine)}>Delete</button>
+              <button type="button" class="small danger" onclick={() => (removing = machine)}>{msg().settings.delete}</button>
             </div>
           {:else}
             {@const { shown, err } = statusOf(machine)}
@@ -135,7 +137,7 @@
                 role="switch"
                 class="switch"
                 aria-checked={enabled(machine)}
-                aria-label={`Connect ${machine.name}`}
+                aria-label={msg().settings.connectMachine(machine.name)}
                 onclick={() => store.toggleMachine(machine.id)}
               >
                 <span class="knob"></span>
@@ -152,7 +154,7 @@
           onclick={() => (addOpen = !showAdd)}
         >
           <span class="plus" aria-hidden="true">＋</span>
-          <span>Add machine</span>
+          <span>{msg().settings.addMachine}</span>
         </button>
       </li>
     </ul>
@@ -160,89 +162,100 @@
     {#if showAdd}
       <div class="card add-panel">
         <PairMachine {store} />
-        <button type="button" class="link" onclick={() => store.goNewMachine()}>Enter details by hand</button>
+        <button type="button" class="link" onclick={() => store.goNewMachine()}>{msg().settings.enterByHand}</button>
       </div>
     {/if}
 
-    <p class="group">Dictation</p>
+    <p class="group">{msg().settings.dictation}</p>
     <form class="card" onsubmit={saveApiKey}>
-      <label for="elevenlabs-key">ElevenLabs API key</label>
+      <label for="elevenlabs-key">{msg().settings.elevenLabsKey}</label>
       <div class="inline">
         <input id="elevenlabs-key" bind:value={apiKey} oninput={() => (apiKeySaved = false)} type="password" placeholder="sk_…" />
-        <button type="submit" class="small">Save key</button>
+        <button type="submit" class="small">{msg().settings.saveKey}</button>
       </div>
       {#if apiKeySaved}
-        <p class="hint ok" role="status">Saved ✓</p>
+        <p class="hint ok" role="status">{msg().settings.saved}</p>
       {:else}
-        <p class="hint">Stored on this device only. Used for speech-to-text in the terminal.</p>
+        <p class="hint">{msg().settings.elevenLabsHint}</p>
       {/if}
     </form>
     <form class="card" onsubmit={saveOpenRouterKey}>
-      <label for="openrouter-key">OpenRouter API key</label>
+      <label for="openrouter-key">{msg().settings.openRouterKey}</label>
       <div class="inline">
         <input id="openrouter-key" bind:value={openRouterKey} oninput={() => (openRouterKeySaved = false)} type="password" placeholder="sk-or-…" />
-        <button type="submit" class="small">Save key</button>
+        <button type="submit" class="small">{msg().settings.saveKey}</button>
       </div>
       {#if openRouterKeySaved}
-        <p class="hint ok" role="status">Saved ✓</p>
+        <p class="hint ok" role="status">{msg().settings.saved}</p>
       {:else}
-        <p class="hint">Stored on this device only. Recordings sent with an OpenRouter preset go to OpenRouter and the model's provider.</p>
+        <p class="hint">{msg().settings.openRouterHint}</p>
       {/if}
     </form>
     <div class="card">
-      <span class="name">Presets</span>
-      <p class="hint">Hold the 🎤 in the terminal to switch between them.</p>
+      <span class="name">{msg().settings.presets}</span>
+      <p class="hint">{msg().settings.presetsHint}</p>
       <DictationPresets {store} />
     </div>
 
     {#if canShareLinks}
-      <p class="group">Terminal links</p>
+      <p class="group">{msg().settings.terminalLinks}</p>
       <div class="card">
         <div class="row">
-          <span class="text"><span class="name">Open links with the share sheet</span></span>
+          <span class="text"><span class="name">{msg().settings.shareLinks}</span></span>
           <button
             type="button"
             role="switch"
             class="switch"
             aria-checked={store.shareLinks}
-            aria-label="Open links with the share sheet"
+            aria-label={msg().settings.shareLinks}
             onclick={() => store.setShareLinks(!store.shareLinks)}
           >
             <span class="knob"></span>
           </button>
         </div>
-        <p class="hint">For a link picker such as LinkSheet: an installed web app keeps links in its own browser view.</p>
+        <p class="hint">{msg().settings.shareLinksHint}</p>
       </div>
     {/if}
 
+    <p class="group">{msg().settings.language}</p>
+    <div class="card">
+      <label for="language">{msg().settings.language}</label>
+      <select id="language" value={store.languageChoice} onchange={(e) => store.setLanguageChoice(e.currentTarget.value as LanguageChoice)}>
+        <option value="auto">{msg().settings.languageAuto}</option>
+        {#each LANGUAGES as code (code)}
+          <option value={code}>{msg().settings.languageNames[code]}</option>
+        {/each}
+      </select>
+    </div>
+
     <details class="card diagnostics">
-      <summary>Diagnostics</summary>
+      <summary>{msg().settings.diagnostics}</summary>
       {#if store.deviceKey}
         {@const { storage, fallback } = store.deviceKey}
         {@const where = (k: string, why?: string) =>
-          k === 'webcrypto' ? 'in WebCrypto (non-extractable)' : why ? `stored key (${why})` : 'stored key'}
+          k === 'webcrypto' ? msg().settings.keyInWebCrypto : why ? msg().settings.keyStoredBecause(why) : msg().settings.keyStored}
         <p class="hint" data-testid="device-key">
-          Device key {store.deviceKey.fingerprint} · X25519 {where(storage.x25519, fallback?.x25519)} · Ed25519 {where(storage.ed25519, fallback?.ed25519)}
+          {msg().settings.deviceKeyLine(store.deviceKey.fingerprint, where(storage.x25519, fallback?.x25519), where(storage.ed25519, fallback?.ed25519))}
         </p>
       {/if}
       <p class="hint" data-testid="viewport">
-        Viewport: {dims.width} × {dims.height} · DPR {Math.round(dims.dpr * 100) / 100}
+        {msg().settings.viewport} {dims.width} × {dims.height} · DPR {Math.round(dims.dpr * 100) / 100}
       </p>
 
       <div class="diag-input" data-testid="input-log">
         <div class="log-head">
-          <p class="hint">Terminal input log ({inputRecords.length})</p>
+          <p class="hint">{msg().settings.inputLog(inputRecords.length)}</p>
           <div class="actions">
-            <button type="button" class="small" onclick={refreshInputLog}>Refresh</button>
-            <button type="button" class="small" onclick={copyInputLog} disabled={inputRecords.length === 0}>Copy</button>
-            <button type="button" class="small" onclick={clearInputLog} disabled={inputRecords.length === 0}>Clear</button>
+            <button type="button" class="small" onclick={refreshInputLog}>{msg().settings.refresh}</button>
+            <button type="button" class="small" onclick={copyInputLog} disabled={inputRecords.length === 0}>{msg().settings.copy}</button>
+            <button type="button" class="small" onclick={clearInputLog} disabled={inputRecords.length === 0}>{msg().settings.clear}</button>
           </div>
         </div>
         {#if inputRecords.length > 0}
           <pre class="log">{#each inputRecords as r}{r.kind}  {r.detail}  →{r.out}
 {/each}</pre>
         {:else}
-          <p class="hint">Type in a terminal, then Refresh. Captures Android IME events only.</p>
+          <p class="hint">{msg().settings.inputLogEmpty}</p>
         {/if}
       </div>
     </details>
@@ -332,6 +345,7 @@
     font-size: 0.9rem;
   }
   label { display: block; font-size: 0.85rem; color: var(--text-dim); }
+  #language { display: block; width: 100%; min-height: 44px; margin-top: 0.4rem; box-sizing: border-box; }
   .inline { display: flex; gap: 0.5rem; margin-top: 0.3rem; }
   .inline input { flex: 1; min-width: 0; min-height: 44px; box-sizing: border-box; }
   .hint { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--text-dim); }

@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import FolderPicker from './FolderPicker.svelte';
 
@@ -213,5 +214,15 @@ describe('FolderPicker (multiple roots)', () => {
     });
     await fireEvent.click(screen.getByRole('button', { name: /back/i }));
     expect(oncancel).toHaveBeenCalled();
+  });
+});
+
+describe('FolderPicker — French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('offers to use the folder in French', () => {
+    setLanguage('fr');
+    render(FolderPicker, { props: props(fakeStore()) });
+    expect(screen.getByRole('button', { name: 'Utiliser ce dossier' })).toBeInTheDocument();
   });
 });

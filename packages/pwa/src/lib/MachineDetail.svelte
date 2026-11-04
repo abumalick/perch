@@ -6,6 +6,7 @@
   import StatusDot from './StatusDot.svelte';
   import ConfirmRemove from './ConfirmRemove.svelte';
   import { STATUS_LABEL, describeConnectionError } from './machine-status';
+  import { msg } from '../i18n.svelte';
 
   let {
     store,
@@ -38,7 +39,7 @@
     const key = agentKey.trim();
     // An entry without a valid key could never connect again, so the key cannot be cleared.
     if (!parseAgentKey(key)) {
-      keyError = 'Enter the agent key printed by `perch relay-key` on the machine.';
+      keyError = msg().settings.agentKeyRequired;
       advancedOpen = true;
       return;
     }
@@ -61,7 +62,7 @@
 
 <section>
   <header>
-    <button type="button" class="icon" aria-label="Back" onclick={onClose}>‹</button>
+    <button type="button" class="icon" aria-label={msg().settings.back} onclick={onClose}>‹</button>
     <h2>{machine.name}</h2>
   </header>
 
@@ -75,34 +76,34 @@
     {/if}
     {#if enabled && status !== 'online'}
       <button type="button" class="secondary" data-testid="reconnect" onclick={() => store.reconnectMachine(machine.id)}>
-        Reconnect
+        {msg().settings.reconnect}
       </button>
     {/if}
   </div>
 
   <form onsubmit={save}>
-    <p class="group">Workspaces</p>
+    <p class="group">{msg().settings.workspaces}</p>
     <div class="card">
       <label>
-        Default path
+        {msg().settings.defaultPath}
         <input data-testid="edit-default-path" bind:value={defaultPath} placeholder="/home/u/workspace" autocapitalize="off" spellcheck="false" />
       </label>
-      <p class="hint">Where the folder picker starts when you create a workspace.</p>
+      <p class="hint">{msg().settings.defaultPathHint}</p>
     </div>
 
     <details class="card advanced" bind:open={advancedOpen}>
-      <summary>Advanced connection settings</summary>
-      <label>Relay URL <input data-testid="edit-url" bind:value={url} autocapitalize="off" spellcheck="false" /></label>
+      <summary>{msg().settings.advanced}</summary>
+      <label>{msg().settings.relayUrl} <input data-testid="edit-url" bind:value={url} autocapitalize="off" spellcheck="false" /></label>
       <label>
-        Token
-        <input data-testid="edit-token" bind:value={token} type="password" placeholder="leave blank to keep current" />
+        {msg().settings.token}
+        <input data-testid="edit-token" bind:value={token} type="password" placeholder={msg().settings.tokenKeep} />
       </label>
       <label>
-        Agent key
+        {msg().settings.agentKey}
         <input
           data-testid="edit-agent-key"
           bind:value={agentKey}
-          placeholder="from `perch relay-key` on the machine"
+          placeholder={msg().settings.agentKeyPlaceholder}
           autocapitalize="off"
           autocomplete="off"
           spellcheck="false"
@@ -111,12 +112,12 @@
       {#if keyError}<p class="diag" role="alert">{keyError}</p>{/if}
     </details>
 
-    <button type="submit" class="primary">Save</button>
+    <button type="submit" class="primary">{msg().settings.save}</button>
   </form>
 
   <div class="danger-zone">
-    <button type="button" class="danger" onclick={() => (confirming = true)}>Remove machine</button>
-    <p class="hint">This phone forgets the machine. Pairing it again needs <code>perch pair</code> on the machine.</p>
+    <button type="button" class="danger" onclick={() => (confirming = true)}>{msg().settings.removeMachine}</button>
+    <p class="hint">{msg().settings.removeHintBefore}<code>perch pair</code>{msg().settings.removeHintAfter}</p>
   </div>
 </section>
 

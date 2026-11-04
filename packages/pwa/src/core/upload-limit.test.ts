@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { MAX_UPLOAD_BYTES, checkUploadSize } from './upload-limit';
+import { setLanguage } from '../i18n.svelte';
 
 describe('checkUploadSize', () => {
   it('accepts a file under the limit', () => {
@@ -16,5 +17,16 @@ describe('checkUploadSize', () => {
 
   it('accepts an empty file', () => {
     expect(checkUploadSize(0)).toBeNull();
+  });
+});
+
+describe('checkUploadSize in French', () => {
+  it('words the refusal in French', () => {
+    setLanguage('fr');
+    try {
+      expect(checkUploadSize(MAX_UPLOAD_BYTES + 1)).toBe('Fichier trop volumineux pour être joint (20 Mo max)');
+    } finally {
+      setLanguage('en');
+    }
   });
 });

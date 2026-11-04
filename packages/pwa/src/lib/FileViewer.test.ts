@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import FileViewer from './FileViewer.svelte';
 
@@ -126,5 +127,17 @@ describe('FileViewer', () => {
     render(FileViewer, { props: { store: store as never } });
     await fireEvent.click(screen.getByRole('button', { name: /back/i }));
     expect(store.closeViewer).toHaveBeenCalled();
+  });
+});
+
+describe('FileViewer — French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('says a binary file is not shown, in French', () => {
+    setLanguage('fr');
+    render(FileViewer, {
+      props: { store: fakeStore({ fileView: { path: '/p/a.bin', text: '', truncated: false, binary: true } }) as never },
+    });
+    expect(screen.getByText('Fichier binaire — non affiché.')).toBeInTheDocument();
   });
 });

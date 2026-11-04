@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import App from '../App.svelte';
+import { setLanguage } from '../i18n.svelte';
 
 // Force the wide (≥980px) layout by faking a matching media query. Absent this stub
 // trackWide falls back to false (jsdom has no matchMedia), so tests render narrow.
@@ -145,5 +146,18 @@ describe('App', () => {
     window.dispatchEvent(new Event('online'));
     document.dispatchEvent(new Event('visibilitychange'));
     expect(store.reconnectAll).not.toHaveBeenCalled();
+  });
+});
+
+describe('App in French', () => {
+  it('renders its text in French', () => {
+    setLanguage('fr');
+    try {
+      stubWide();
+      render(App, { props: { store: fakeStore('list') as never } });
+      expect(screen.getByText('Choisissez un espace de travail')).toBeInTheDocument();
+    } finally {
+      setLanguage('en');
+    }
   });
 });

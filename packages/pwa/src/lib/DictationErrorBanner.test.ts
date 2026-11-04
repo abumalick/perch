@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import DictationErrorBanner from './DictationErrorBanner.svelte';
+import { setLanguage } from '../i18n.svelte';
 
 function fakeStore(over: Record<string, unknown> = {}) {
   return {
@@ -42,5 +43,16 @@ describe('DictationErrorBanner', () => {
     render(DictationErrorBanner, { props: { store: store as never } });
     await fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
     expect(store.dismissDictationError).toHaveBeenCalled();
+  });
+});
+
+describe('DictationErrorBanner in French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('falls back to a French message and Retry', () => {
+    setLanguage('fr');
+    render(DictationErrorBanner, { props: { store: fakeStore({ dictationState: 'error', dictationError: null }) as never } });
+    expect(screen.getByText(/La dictée a échoué/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument();
   });
 });

@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import AudioViewer from './AudioViewer.svelte';
 
@@ -103,5 +104,17 @@ describe('AudioViewer', () => {
     const audio = container.querySelector('audio') as HTMLAudioElement;
     await fireEvent.ended(audio);
     expect(store.showAudioNeighbor).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('AudioViewer — French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('labels the track buttons in French', () => {
+    setLanguage('fr');
+    render(AudioViewer, {
+      props: { store: fakeStore({ fileView: audioView(), audioPosition: { index: 1, count: 2 } }) as never },
+    });
+    expect(screen.getByRole('button', { name: 'Piste suivante' })).toBeInTheDocument();
   });
 });

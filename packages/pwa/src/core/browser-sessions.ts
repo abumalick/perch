@@ -1,4 +1,5 @@
 import type { BrowserSession, Workspace } from '@perch/contracts';
+import { msg } from '../i18n.svelte';
 
 // Delimiter between a workspace id and a session's free slug: `<wsid>__<slug>`. Double
 // underscore is absent from `perch-…` workspace/tmux ids, so it never splits an id.
@@ -45,7 +46,7 @@ export function joinBrowserSessions(
 // The label shown for an attached session: the slug after `<wsid>__`, or "main" for a
 // bare-name session (name === workspace id, e.g. Perch's own Start-browser session).
 export function browserSessionLabel(sessionName: string, workspaceId: string): string {
-  if (sessionName === workspaceId) return 'main';
+  if (sessionName === workspaceId) return msg().browser.mainSession;
   const prefix = workspaceId + BROWSER_SESSION_DELIMITER;
   return sessionName.startsWith(prefix) ? sessionName.slice(prefix.length) : sessionName;
 }

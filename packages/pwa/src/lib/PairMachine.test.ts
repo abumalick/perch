@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import PairMachine from './PairMachine.svelte';
@@ -78,5 +79,15 @@ describe('PairMachine', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Paste pairing link' }));
     await tick();
     expect(screen.getByRole('alert').textContent).toMatch(/clipboard.*paste it in the field below/i);
+  });
+});
+
+describe('PairMachine in French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('offers the scan in French', () => {
+    setLanguage('fr');
+    render(PairMachine, { props: { store: fakeStore(), scan: vi.fn() } });
+    expect(screen.getByRole('button', { name: 'Scanner le QR code' })).toBeTruthy();
   });
 });

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import ProjectFilterSelect from './ProjectFilterSelect.svelte';
 import type { ProjectFolder } from '../core/project-folders';
+import { setLanguage } from '../i18n.svelte';
 
 const folders: ProjectFolder[] = [
   { key: 'perch', label: 'perch', count: 3, depth: 0 },
@@ -136,5 +137,17 @@ describe('ProjectFilterSelect', () => {
   it('hides itself with a single folder and no selection', () => {
     render(ProjectFilterSelect, { props: props({ folders: [folders[0]] }) });
     expect(screen.queryByLabelText(/filter by project/i)).toBeNull();
+  });
+});
+
+describe('ProjectFilterSelect in French', () => {
+  it('renders its text in French', () => {
+    setLanguage('fr');
+    try {
+      render(ProjectFilterSelect, { props: props() });
+      expect(screen.getByText('Tous les projets')).toBeTruthy();
+    } finally {
+      setLanguage('en');
+    }
   });
 });

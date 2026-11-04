@@ -27,6 +27,7 @@
   import { startKeyRepeat } from '../core/key-repeat';
   import { startGesture, moveGesture, type PadState, type PadDirection } from '../core/cursor-pad';
   import DictationMenu from './DictationMenu.svelte';
+  import { msg } from '../i18n.svelte';
   import { currentPreset, hasUsablePreset, type DictationPreset, type PresetKeys } from '../core/dictation-presets';
 
   let {
@@ -282,13 +283,13 @@
   }
 </script>
 
-<div class="bar" role="toolbar" aria-label="Terminal keys">
+<div class="bar" role="toolbar" aria-label={msg().keyboard.toolbar}>
   <button
     type="button"
     class="mod"
     class:active={isModifierActive(ctrl)}
     class:locked={ctrl === 'locked'}
-    aria-label="Control"
+    aria-label={msg().keyboard.control}
     aria-pressed={isModifierActive(ctrl)}
     use:press
     onclick={() => (ctrl = cycleModifier(ctrl))}>⌃</button>
@@ -297,7 +298,7 @@
     class="mod"
     class:active={isModifierActive(alt)}
     class:locked={alt === 'locked'}
-    aria-label="Option"
+    aria-label={msg().keyboard.option}
     aria-pressed={isModifierActive(alt)}
     use:press
     onclick={() => (alt = cycleModifier(alt))}>⌥</button>
@@ -306,7 +307,7 @@
     class="mod"
     class:active={isModifierActive(meta)}
     class:locked={meta === 'locked'}
-    aria-label="Command"
+    aria-label={msg().keyboard.command}
     aria-pressed={isModifierActive(meta)}
     use:press
     onclick={() => (meta = cycleModifier(meta))}>⌘</button>
@@ -318,7 +319,7 @@
     class:recording={dictation === 'recording'}
     class:error={dictation === 'error'}
     bind:this={mic}
-    aria-label="Dictate ({preset.name})"
+    aria-label={msg().keyboard.dictate(preset.name)}
     aria-pressed={dictation === 'recording'}
     disabled={dictation === 'transcribing'}
     use:press={{ fire: onDictate, hold: dictation === 'idle' || dictation === 'error' ? openPresets : undefined }}
@@ -357,7 +358,7 @@
       {key.label}
     </button>
   {/snippet}
-  <button type="button" class="pad" aria-label="Cursor pad" use:padDrag>✥</button>
+  <button type="button" class="pad" aria-label={msg().keyboard.cursorPad} use:padDrag>✥</button>
   {@render navKey(enterKey)}
   {@render navKey(escKey)}
   {#each keys as key (key.label)}
@@ -367,13 +368,13 @@
     type="button"
     class="toggle"
     class:active={selectMode}
-    aria-label="Select text"
+    aria-label={msg().keyboard.selectText}
     aria-pressed={selectMode}
     use:press
     onclick={() => onToggleSelect()}>⌶</button>
-  <button type="button" aria-label="Paste" use:press onclick={() => paste()}>📋</button>
+  <button type="button" aria-label={msg().keyboard.paste} use:press onclick={() => paste()}>📋</button>
   {#if onPickFile}
-    <button type="button" aria-label="Attach file" use:press onclick={() => fileInput?.click()}>📎</button>
+    <button type="button" aria-label={msg().keyboard.attachFile} use:press onclick={() => fileInput?.click()}>📎</button>
     <input
       bind:this={fileInput}
       type="file"

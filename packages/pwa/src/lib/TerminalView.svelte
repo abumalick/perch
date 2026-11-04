@@ -31,6 +31,7 @@
   import { attachAndroidInput, isAndroid, type AndroidInput } from './android-input';
   import { dedentCopied, snapshotBuffer, type TerminalSnapshot } from '../core/terminal-snapshot';
   import { inputLog } from '../core/terminal-input-log';
+  import { msg } from '../i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
   const activeMachine = $derived(store.machines.find((m) => m.id === store.active?.machineId));
@@ -358,7 +359,7 @@
 
 <div class="terminal-screen">
   <header>
-    <button type="button" class="icon" aria-label="Back" onclick={() => store.back()}>‹</button>
+    <button type="button" class="icon" aria-label={msg().terminal.back} onclick={() => store.back()}>‹</button>
     <span class="title">
       <span class="project-line">
         <span class="project" data-testid="header-project">{projectLabel}</span>
@@ -369,7 +370,7 @@
       <span class="name" data-testid="header-name">{store.active?.name ?? ''}</span>
     </span>
     {#if wide}
-      <button type="button" class="icon" aria-label="Files" onclick={() => store.openBrowser()}>📁</button>
+      <button type="button" class="icon" aria-label={msg().terminal.files} onclick={() => store.openBrowser()}>📁</button>
       {#if store.active}
         <BrowserPicker
           sessions={browserSessions}
@@ -382,12 +383,12 @@
     {/if}
     {#if statusInline && store.active}
       <StatusPicker status={store.active.status} label={statusLabel(store.active)} onSelect={(s) => store.setWorkspaceStatus(s)} />
-      <button type="button" class="icon" aria-label="Next workspace" title={store.nextWorkspace ? `Next: ${store.nextWorkspace.name}` : 'Nothing else needs you'} disabled={!store.nextWorkspace} onclick={() => store.openNext()}>⏭</button>
+      <button type="button" class="icon" aria-label={msg().terminal.nextWorkspace} title={store.nextWorkspace ? msg().terminal.nextTitle(store.nextWorkspace.name) : msg().terminal.nothingNeedsYou} disabled={!store.nextWorkspace} onclick={() => store.openNext()}>⏭</button>
     {/if}
     {#if wide}
-      <button type="button" class="icon" aria-label="Close" onclick={() => store.closeActive()}>✕</button>
+      <button type="button" class="icon" aria-label={msg().terminal.close} onclick={() => store.closeActive()}>✕</button>
     {/if}
-    <button type="button" class="icon" aria-label="Menu" aria-haspopup="dialog" aria-expanded={menuOpen} onpointerdown={keepFocus} onclick={() => (menuOpen = !menuOpen)}>☰</button>
+    <button type="button" class="icon" aria-label={msg().terminal.menu} aria-haspopup="dialog" aria-expanded={menuOpen} onpointerdown={keepFocus} onclick={() => (menuOpen = !menuOpen)}>☰</button>
   </header>
   <SharedFileConfirm {store} />
   {#if copyOffer !== null}
@@ -406,7 +407,7 @@
         {#each snapshot.lines as line}<div class="line" style:--hang="{line.hang}ch">{line.text}</div>{/each}
       </div>
     {/if}
-    {#if copied}<div class="copied-toast" role="status">Copied</div>{/if}
+    {#if copied}<div class="copied-toast" role="status">{msg().terminal.copied}</div>{/if}
   </div>
   <WorkspaceMenu
     bind:open={menuOpen}
@@ -461,10 +462,10 @@
   />
   {#if store.terminalState === 'moved'}
     <div class="overlay">
-      <p>Opened on another device.</p>
+      <p>{msg().terminal.openedElsewhere}</p>
       <div class="overlay-actions">
-        <button type="button" class="primary" onclick={takeOver}>Take over</button>
-        <button type="button" onclick={() => store.back()}>Back to list</button>
+        <button type="button" class="primary" onclick={takeOver}>{msg().terminal.takeOver}</button>
+        <button type="button" onclick={() => store.back()}>{msg().terminal.backToList}</button>
       </div>
     </div>
   {/if}

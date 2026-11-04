@@ -10,6 +10,7 @@ import {
   presetError,
   type DictationPreset,
 } from './dictation-presets';
+import { setLanguage } from '../i18n.svelte';
 
 const clean = DEFAULT_PRESETS.find((p) => p.id === 'clean')!;
 const custom: DictationPreset = {
@@ -152,5 +153,27 @@ describe('needsKey', () => {
     expect(needsKey(clean, { elevenlabs: true, openrouter: false })).toBe(true);
     expect(needsKey(clean, { elevenlabs: false, openrouter: true })).toBe(false);
     expect(needsKey(DEFAULT_PRESETS[0]!, { elevenlabs: false, openrouter: true })).toBe(true);
+  });
+});
+
+describe('unavailableHint in French', () => {
+  it('words the reason in French', () => {
+    setLanguage('fr');
+    try {
+      expect(unavailableHint(clean, { elevenlabs: true, openrouter: false })).toBe('clé requise');
+    } finally {
+      setLanguage('en');
+    }
+  });
+});
+
+describe('presetError in French', () => {
+  it('asks for a name in French', () => {
+    setLanguage('fr');
+    try {
+      expect(presetError({ ...clean, name: ' ' })).toBe('Donnez un nom au préréglage');
+    } finally {
+      setLanguage('en');
+    }
   });
 });

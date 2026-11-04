@@ -1,4 +1,6 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
+import { tick } from 'svelte';
+import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent, within } from '@testing-library/svelte';
 import { generateAgentKeys } from '@perch/secure-channel';
 import Settings from './Settings.svelte';
@@ -31,6 +33,8 @@ function fakeStore(overrides: Record<string, unknown> = {}) {
     resetDictationPresets: vi.fn(),
     shareLinks: false,
     setShareLinks: vi.fn(),
+    languageChoice: 'auto',
+    setLanguageChoice: vi.fn(),
     ...overrides,
   };
 }
@@ -259,5 +263,36 @@ describe('Settings — terminal links', () => {
     vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', share: vi.fn() });
     render(Settings, { props: { store: fakeStore() as never } });
     expect(screen.queryByRole('switch', { name: /share sheet/i })).toBeNull();
+  });
+});
+
+describe('Settings — language', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('offers Auto, English and French, and saves the pick', async () => {
+    const store = fakeStore();
+    render(Settings, { props: { store: store as never } });
+    const select = screen.getByLabelText('Language') as HTMLSelectElement;
+    expect([...select.options].map((o) => o.value)).toEqual(['auto', 'en', 'fr']);
+    await fireEvent.change(select, { target: { value: 'fr' } });
+    expect(store.setLanguageChoice).toHaveBeenCalledWith('fr');
+  });
+
+  it('redraws in French at once when the language changes', async () => {
+    render(Settings, { props: { store: fakeStore() as never } });
+    expect(screen.getByLabelText('Language')).toBeTruthy();
+    setLanguage('fr');
+    await tick();
+    expect(screen.getByLabelText('Langue')).toBeTruthy();
+  });
+});
+
+describe('Settings in French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('titles the page in French', () => {
+    setLanguage('fr');
+    render(Settings, { props: { store: fakeStore() as never } });
+    expect(screen.getByRole('heading', { name: 'Réglages' })).toBeTruthy();
   });
 });

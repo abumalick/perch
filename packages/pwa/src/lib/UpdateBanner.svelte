@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PerchStore } from '../store.svelte';
   import { isTestBuild } from '../core/build-label';
+  import { msg } from '../i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
 
@@ -8,16 +9,16 @@
   // (a plain `main` production update doesn't need a slug).
   let message = $derived(
     store.incomingBuildLabel && isTestBuild(store.incomingBuildLabel)
-      ? `New build from ${store.incomingBuildLabel}`
-      : 'New version available',
+      ? msg().app.update.testBuild(store.incomingBuildLabel)
+      : msg().app.update.available,
   );
 </script>
 
 {#if store.updateReady}
   <div class="banner" role="status">
     <span class="msg">{message}</span>
-    <button type="button" class="reload" onclick={() => store.applyUpdate()}>Reload</button>
-    <button type="button" class="dismiss" aria-label="Dismiss" onclick={() => store.dismissUpdate()}>✕</button>
+    <button type="button" class="reload" onclick={() => store.applyUpdate()}>{msg().app.update.reload}</button>
+    <button type="button" class="dismiss" aria-label={msg().app.dismiss} onclick={() => store.dismissUpdate()}>✕</button>
   </div>
 {/if}
 

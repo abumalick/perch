@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PerchStore } from '../store.svelte';
   import { basename, parent } from '../core/browse-path';
+  import { msg } from '../i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
 
@@ -19,20 +20,20 @@
 
 <section class="browser">
   <header>
-    <button type="button" class="icon" aria-label="Back" onclick={back}>‹</button>
+    <button type="button" class="icon" aria-label={msg().files.back} onclick={back}>‹</button>
     <span class="title">{entries ? basename(entries.path) : ''}</span>
-    <button type="button" class="dismiss" onclick={() => store.closeBrowser()}>Close</button>
+    <button type="button" class="dismiss" onclick={() => store.closeBrowser()}>{msg().files.close}</button>
   </header>
 
   {#if store.browseError}
-    <p class="error">Couldn't open this folder.<br /><span>{store.browseError}</span></p>
+    <p class="error">{msg().files.openFolderError}<br /><span>{store.browseError}</span></p>
   {:else if !entries}
-    <p class="empty">Loading…</p>
+    <p class="empty">{msg().files.loading}</p>
   {:else}
     <ul>
       {#if !atRoot}
         <li>
-          <button type="button" aria-label="Up one level" onclick={back}>
+          <button type="button" aria-label={msg().files.upOneLevel} onclick={back}>
             <span class="glyph" aria-hidden="true">📁</span><span class="name">..</span>
           </button>
         </li>

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { REFUSAL } from '@perch/secure-channel';
 import { describeRefusal, type RefusalContext } from './refusal';
 
@@ -59,5 +60,14 @@ describe('describeRefusal', () => {
     expect(describeRefusal(4000, 'superseded', paired)).toBeNull();
     expect(describeRefusal(4002, 'secure channel failed', paired)).toBeNull();
     expect(describeRefusal(undefined, REFUSAL.codeExpired, paired)).toBeNull();
+  });
+});
+
+describe('describeRefusal in French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('words a revoked phone in French', () => {
+    setLanguage('fr');
+    expect(describeRefusal(4403, REFUSAL.revoked, enrolled)?.message).toBe('Ce téléphone a été révoqué sur dev box');
   });
 });

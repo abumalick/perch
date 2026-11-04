@@ -2,6 +2,7 @@
   import type { PerchStore } from '../store.svelte';
   import { basename } from '../core/browse-path';
   import { isMarkdownPath, renderMarkdown } from '../core/markdown';
+  import { msg } from '../i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
 
@@ -23,29 +24,29 @@
 
 <section class="viewer">
   <header>
-    <button type="button" class="icon" aria-label="Back" onclick={() => store.closeViewer()}>‹</button>
+    <button type="button" class="icon" aria-label={msg().viewer.back} onclick={() => store.closeViewer()}>‹</button>
     <span class="title">{file ? basename(file.path) : ''}</span>
     {#if markdown}
-      <button type="button" class="wrap-toggle" aria-label="Toggle raw source" aria-pressed={!rendered} onclick={() => (rawPath = rendered ? (file?.path ?? null) : null)}>
-        Raw
+      <button type="button" class="wrap-toggle" aria-label={msg().viewer.toggleRaw} aria-pressed={!rendered} onclick={() => (rawPath = rendered ? (file?.path ?? null) : null)}>
+        {msg().viewer.raw}
       </button>
     {/if}
     {#if file && !file.binary && !rendered}
-      <button type="button" class="wrap-toggle" aria-label="Toggle word wrap" aria-pressed={wrap} onclick={() => store.setFileWrap(!wrap)}>
-        Wrap
+      <button type="button" class="wrap-toggle" aria-label={msg().viewer.toggleWrap} aria-pressed={wrap} onclick={() => store.setFileWrap(!wrap)}>
+        {msg().viewer.wrap}
       </button>
     {/if}
   </header>
 
   {#if store.viewError}
-    <p class="error">Couldn't open this file.<br /><span>{store.viewError}</span></p>
+    <p class="error">{msg().viewer.openFileError}<br /><span>{store.viewError}</span></p>
   {:else if !file}
-    <p class="empty">Loading…</p>
+    <p class="empty">{msg().viewer.loading}</p>
   {:else if file.binary}
-    <p class="empty">Binary file — not shown.</p>
+    <p class="empty">{msg().viewer.binary}</p>
   {:else}
     {#if file.truncated}
-      <p class="banner">Truncated to 512 KB.</p>
+      <p class="banner">{msg().viewer.truncated}</p>
     {/if}
     {#if rendered}
       <div class="prose">{@html renderMarkdown(file.text)}</div>

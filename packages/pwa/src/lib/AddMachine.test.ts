@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { generateAgentKeys } from '@perch/secure-channel';
 import AddMachine from './AddMachine.svelte';
@@ -80,5 +81,15 @@ describe('AddMachine', () => {
     await fireEvent.click(screen.getByRole('button', { name: /back/i }));
     expect(store.goSettings).toHaveBeenCalled();
     expect(store.addMachine).not.toHaveBeenCalled();
+  });
+});
+
+describe('AddMachine in French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('labels the form in French', () => {
+    setLanguage('fr');
+    render(AddMachine, { props: { store: fakeStore() as never } });
+    expect(screen.getByRole('heading', { name: 'Ajouter une machine' })).toBeTruthy();
   });
 });

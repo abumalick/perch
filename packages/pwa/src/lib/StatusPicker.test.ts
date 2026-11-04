@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import StatusPicker from './StatusPicker.svelte';
+import { setLanguage } from '../i18n.svelte';
 
 describe('StatusPicker', () => {
   it('shows the current status label and no menu until tapped', () => {
@@ -40,5 +41,17 @@ describe('StatusPicker', () => {
     expect(pill.textContent).toBe('Needs orchestrator');
     await fireEvent.click(pill);
     expect(screen.getByRole('option', { name: /working/i })).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+describe('StatusPicker in French', () => {
+  it('renders its text in French', () => {
+    setLanguage('fr');
+    try {
+      render(StatusPicker, { props: { status: 'parked', onSelect: vi.fn() } });
+      expect(screen.getByRole('button', { name: 'Statut : En veille' })).toBeTruthy();
+    } finally {
+      setLanguage('en');
+    }
   });
 });

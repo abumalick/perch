@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import PdfViewer from './PdfViewer.svelte';
 
@@ -66,5 +67,15 @@ describe('PdfViewer', () => {
     render(PdfViewer, { props: { store: store as never } });
     await fireEvent.click(screen.getByRole('button', { name: /back/i }));
     expect(store.closeViewer).toHaveBeenCalled();
+  });
+});
+
+describe('PdfViewer — French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('labels the open button in French', () => {
+    setLanguage('fr');
+    render(PdfViewer, { props: { store: fakeStore({ fileView: pdfView() }) as never } });
+    expect(screen.getByRole('button', { name: 'Ouvrir' })).toBeInTheDocument();
   });
 });

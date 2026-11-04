@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import FileBrowser from './FileBrowser.svelte';
 
@@ -87,5 +88,15 @@ describe('FileBrowser', () => {
     await fireEvent.click(screen.getByRole('button', { name: /^close$/i }));
     expect(store.closeBrowser).toHaveBeenCalled();
     expect(store.browseInto).not.toHaveBeenCalled();
+  });
+});
+
+describe('FileBrowser — French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('shows the loading state in French', () => {
+    setLanguage('fr');
+    render(FileBrowser, { props: { store: fakeStore({ dirEntries: null }) as never } });
+    expect(screen.getByText('Chargement…')).toBeInTheDocument();
   });
 });

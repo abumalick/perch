@@ -3,6 +3,7 @@
   import StatusPicker from './StatusPicker.svelte';
   import BrowserPicker from './BrowserPicker.svelte';
   import { githubLinks } from '../core/github-links';
+  import { msg } from '../i18n.svelte';
 
   let {
     open = $bindable(),
@@ -78,16 +79,16 @@
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') open = false; }} />
 
 {#if open}
-  <button type="button" class="scrim" aria-label="Dismiss menu" onclick={() => (open = false)}></button>
-  <div class="panel" role="dialog" aria-modal="true" aria-label="Workspace actions">
+  <button type="button" class="scrim" aria-label={msg().app.workspaceMenu.dismiss} onclick={() => (open = false)}></button>
+  <div class="panel" role="dialog" aria-modal="true" aria-label={msg().app.workspaceMenu.label}>
     {#if showNext}
       <button type="button" class="row" disabled={!hasNext} onclick={() => navigate(onNext)}>
-        <span class="icon" aria-hidden="true">⏭</span> Next workspace
+        <span class="icon" aria-hidden="true">⏭</span> {msg().app.workspaceMenu.next}
       </button>
     {/if}
 
     <button type="button" class="row" onpointerdown={keepFocus} onclick={onRefresh}>
-      <span class="icon" aria-hidden="true">🔄</span> Refresh
+      <span class="icon" aria-hidden="true">🔄</span> {msg().app.workspaceMenu.refresh}
     </button>
 
     <button
@@ -99,36 +100,36 @@
       onclick={() => onSetUrgent(!urgent)}
     >
       <span class="icon star" aria-hidden="true">{urgent ? '★' : '☆'}</span>
-      {urgent ? 'Urgent — pinned to top' : 'Mark urgent'}
+      {urgent ? msg().app.workspaceMenu.urgentOn : msg().app.workspaceMenu.markUrgent}
     </button>
 
     <div class="row font">
       <span class="icon" aria-hidden="true">🔠</span>
-      <span class="font-label">Font</span>
+      <span class="font-label">{msg().app.workspaceMenu.font}</span>
       <span class="font-controls">
-        <button type="button" aria-label="Zoom out" onpointerdown={keepFocus} onclick={onZoomOut} disabled={!canZoomOut}>A−</button>
+        <button type="button" aria-label={msg().app.workspaceMenu.zoomOut} onpointerdown={keepFocus} onclick={onZoomOut} disabled={!canZoomOut}>A−</button>
         <span class="font-size">{fontSize}</span>
-        <button type="button" aria-label="Zoom in" onpointerdown={keepFocus} onclick={onZoomIn} disabled={!canZoomIn}>A+</button>
+        <button type="button" aria-label={msg().app.workspaceMenu.zoomIn} onpointerdown={keepFocus} onclick={onZoomIn} disabled={!canZoomIn}>A+</button>
       </span>
     </div>
 
     {#if links}
       <a class="row" href={links.issues} target="_blank" rel="noopener" onclick={() => (open = false)}>
-        <span class="icon" aria-hidden="true">🐛</span> Issues
+        <span class="icon" aria-hidden="true">🐛</span> {msg().app.workspaceMenu.issues}
       </a>
       <a class="row" href={links.projects} target="_blank" rel="noopener" onclick={() => (open = false)}>
-        <span class="icon" aria-hidden="true">📋</span> Projects
+        <span class="icon" aria-hidden="true">📋</span> {msg().app.workspaceMenu.projects}
       </a>
     {/if}
 
     {#if !wide}
       <button type="button" class="row" onclick={() => navigate(onFiles)}>
-        <span class="icon" aria-hidden="true">📁</span> Files
+        <span class="icon" aria-hidden="true">📁</span> {msg().app.workspaceMenu.files}
       </button>
 
       <!-- Wide layout omits this: its persistent sidebar already carries a ＋ button. -->
       <button type="button" class="row" onclick={() => navigate(onNewWorkspace)}>
-        <span class="icon" aria-hidden="true">＋</span> New workspace
+        <span class="icon" aria-hidden="true">＋</span> {msg().app.workspaceMenu.newWorkspace}
       </button>
 
       <div class="picker-wrap">
@@ -148,7 +149,7 @@
       {/if}
 
       <button type="button" class="row danger" onclick={() => navigate(onClose)}>
-        <span class="icon" aria-hidden="true">✕</span> Close
+        <span class="icon" aria-hidden="true">✕</span> {msg().app.workspaceMenu.close}
       </button>
     {/if}
   </div>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PerchStore } from '../store.svelte';
   import { basename } from '../core/browse-path';
+  import { msg } from '../i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
   let file = $derived(store.fileView);
@@ -12,17 +13,17 @@
 
 <section class="viewer">
   <header>
-    <button type="button" class="icon" aria-label="Back" onclick={() => store.closeViewer()}>‹</button>
+    <button type="button" class="icon" aria-label={msg().viewer.back} onclick={() => store.closeViewer()}>‹</button>
     <span class="title">{file ? basename(file.path) : ''}</span>
     {#if file?.blobUrl}
-      <button type="button" class="open" onclick={openExternally}>Open</button>
+      <button type="button" class="open" onclick={openExternally}>{msg().viewer.open}</button>
     {/if}
   </header>
 
   {#if store.viewError}
-    <p class="error">Couldn't open this file.<br /><span>{store.viewError}</span></p>
+    <p class="error">{msg().viewer.openFileError}<br /><span>{store.viewError}</span></p>
   {:else if file?.truncated}
-    <p class="empty">PDF too large to preview (over 20&nbsp;MB).</p>
+    <p class="empty">{msg().viewer.pdfTooLarge}</p>
   {:else if file?.blobUrl}
     <!-- WebKit renders PDFs natively in an iframe. On iOS the inline frame can be flaky
          (first-page-only/blank), so the header "Open" button is the reliable fallback.
@@ -31,7 +32,7 @@
          blob document inherits, runs no inline script. -->
     <iframe class="frame" src={file.blobUrl} title={basename(file.path)}></iframe>
   {:else}
-    <p class="empty">Loading…</p>
+    <p class="empty">{msg().viewer.loading}</p>
   {/if}
 </section>
 

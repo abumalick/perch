@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import DictationMenu from './DictationMenu.svelte';
 import { DEFAULT_PRESETS } from '../core/dictation-presets';
+import { setLanguage } from '../i18n.svelte';
 
 const props = {
   presets: [...DEFAULT_PRESETS],
@@ -58,5 +59,16 @@ describe('DictationMenu', () => {
     await fireEvent.keyDown(window, { key: 'Escape' });
     await fireEvent.click(screen.getByRole('button', { name: 'Close dictation presets' }));
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('DictationMenu in French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('says why a preset is disabled, in French', () => {
+    setLanguage('fr');
+    render(DictationMenu, { props });
+    expect(screen.getByRole('option', { name: /Clean up/ })).toHaveTextContent('clé requise');
+    expect(screen.getByRole('button', { name: 'Ajouter un préréglage…' })).toBeInTheDocument();
   });
 });

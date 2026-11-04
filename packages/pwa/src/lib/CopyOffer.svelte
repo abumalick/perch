@@ -1,16 +1,18 @@
 <script lang="ts">
+  import { msg } from '../i18n.svelte';
+
   let { text, onCopy, onDismiss }: { text: string; onCopy: () => void; onDismiss: () => void } = $props();
 
   const keepFocus = (e: Event) => e.preventDefault();
 </script>
 
-<div class="offer" role="region" aria-label="Copy from terminal" data-testid="copy-offer">
+<div class="offer" role="region" aria-label={msg().app.copyOffer.label} data-testid="copy-offer">
   <span class="msg">
-    <span class="label">Copy from terminal</span>
+    <span class="label">{msg().app.copyOffer.label}</span>
     <span class="preview">{text}</span>
   </span>
-  <button type="button" class="copy" onpointerdown={keepFocus} onclick={onCopy}>Copy</button>
-  <button type="button" class="dismiss" aria-label="Dismiss" onpointerdown={keepFocus} onclick={onDismiss}>✕</button>
+  <button type="button" class="copy" onpointerdown={keepFocus} onclick={onCopy}>{msg().app.copyOffer.copy}</button>
+  <button type="button" class="dismiss" aria-label={msg().app.dismiss} onpointerdown={keepFocus} onclick={onDismiss}>✕</button>
 </div>
 
 <style>

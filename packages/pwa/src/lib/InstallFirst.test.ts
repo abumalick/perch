@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import InstallFirst from './InstallFirst.svelte';
+import { setLanguage } from '../i18n.svelte';
 
 const LINK = 'https://p/#pair?x';
 
@@ -41,5 +42,17 @@ describe('InstallFirst', () => {
     expect(store.pairInBrowser).not.toHaveBeenCalled();
     await fireEvent.click(screen.getByRole('button', { name: /pair in this browser instead/i }));
     expect(store.pairInBrowser).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('InstallFirst in French', () => {
+  it('renders its text in French', () => {
+    setLanguage('fr');
+    try {
+      render(InstallFirst, { props: { store: fakeStore(), copy: vi.fn() } });
+      expect(screen.getByRole('button', { name: 'Copier le lien d’association' })).toBeTruthy();
+    } finally {
+      setLanguage('en');
+    }
   });
 });

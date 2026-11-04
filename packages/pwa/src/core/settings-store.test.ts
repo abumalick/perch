@@ -48,6 +48,13 @@ describe('SettingsStore', () => {
     expect(new SettingsStore(storage).shareLinks()).toBe(false);
   });
 
+  it('follows the phone language until one is picked, and persists the pick', () => {
+    const storage = memStorage();
+    expect(new SettingsStore(storage).languageChoice()).toBe('auto');
+    new SettingsStore(storage).setLanguageChoice('fr');
+    expect(new SettingsStore(storage).languageChoice()).toBe('fr');
+  });
+
   it('defaults the terminal font size to 13', () => {
     expect(new SettingsStore(memStorage()).terminalFontSize()).toBe(13);
   });

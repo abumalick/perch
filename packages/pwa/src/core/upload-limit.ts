@@ -4,10 +4,12 @@
 // archive stalls the terminal for as long as the transfer takes. While the picker was
 // image-only the file sizes bounded themselves; accepting every extension removes that.
 
+import { msg } from '../i18n.svelte';
+
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 // Null when the size is acceptable, otherwise the message to show the user.
 export function checkUploadSize(bytes: number): string | null {
   if (bytes <= MAX_UPLOAD_BYTES) return null;
-  return `File is too large to attach (${MAX_UPLOAD_BYTES / 1024 / 1024} MB max)`;
+  return msg().errors.fileTooLarge(MAX_UPLOAD_BYTES / 1024 / 1024);
 }

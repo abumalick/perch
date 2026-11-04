@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/svelte';
 import MachineLoadHelp from './MachineLoadHelp.svelte';
 import { describeLoad } from '../core/machine-load';
 import type { MachineStats } from '@perch/contracts';
+import { setLanguage } from '../i18n.svelte';
 
 const stats: MachineStats = {
   cpuPercent: 12,
@@ -63,5 +64,17 @@ describe('MachineLoadHelp', () => {
     expect(panel.getAttribute('role')).toBe('dialog');
     expect(panel.getAttribute('aria-modal')).toBe('true');
     expect(panel.getAttribute('aria-hidden')).toBeNull();
+  });
+});
+
+describe('MachineLoadHelp in French', () => {
+  it('renders its text in French', () => {
+    setLanguage('fr');
+    try {
+      show();
+      expect(screen.getByRole('heading').textContent).toBe('Que signifient ces chiffres ?');
+    } finally {
+      setLanguage('en');
+    }
   });
 });

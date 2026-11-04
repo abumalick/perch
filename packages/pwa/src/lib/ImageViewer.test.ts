@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import ImageViewer from './ImageViewer.svelte';
 
@@ -49,5 +50,15 @@ describe('ImageViewer', () => {
     render(ImageViewer, { props: { store: store as never } });
     await fireEvent.click(screen.getByRole('button', { name: /back/i }));
     expect(store.closeViewer).toHaveBeenCalled();
+  });
+});
+
+describe('ImageViewer — French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('says an image is too large, in French', () => {
+    setLanguage('fr');
+    render(ImageViewer, { props: { store: fakeStore({ fileView: imageView({ blobUrl: '', truncated: true }) }) as never } });
+    expect(screen.getByText(/Image trop lourde pour l’aperçu/)).toBeInTheDocument();
   });
 });

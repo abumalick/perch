@@ -1,6 +1,7 @@
 import type { StoragePort } from './ports/storage';
 import type { FilterMode } from './project-folders';
 import { parseAgentKey } from './relay-key';
+import { parseLanguageChoice, type LanguageChoice } from './i18n/language';
 import { DEFAULT_PRESETS, parsePresets, type DictationPreset } from './dictation-presets';
 
 export interface MachineConfig {
@@ -39,6 +40,7 @@ const LAST_COMMAND_KEY = 'perch.lastCommand';
 const FILE_WRAP_KEY = 'perch.fileWrap';
 const TERMINAL_FONT_SIZE_KEY = 'perch.terminalFontSize';
 const SHARE_LINKS_KEY = 'perch.shareLinks';
+const LANGUAGE_KEY = 'perch.language';
 const ELEVENLABS_API_KEY = 'perch.elevenLabsApiKey';
 const OPENROUTER_API_KEY = 'perch.openRouterApiKey';
 const DICTATION_PRESETS_KEY = 'perch.dictationPresets';
@@ -193,6 +195,15 @@ export class SettingsStore {
 
   setShareLinks(on: boolean): void {
     this.storage.write(SHARE_LINKS_KEY, on ? '1' : '0');
+  }
+
+  // The app's language; unset (or unknown) follows the phone.
+  languageChoice(): LanguageChoice {
+    return parseLanguageChoice(this.storage.read(LANGUAGE_KEY));
+  }
+
+  setLanguageChoice(choice: LanguageChoice): void {
+    this.storage.write(LANGUAGE_KEY, choice);
   }
 
   // Global terminal font size (zoom). Unset, non-numeric, or out-of-range values fall back

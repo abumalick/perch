@@ -1,3 +1,5 @@
+import { msg } from '../i18n.svelte';
+
 // A dictation preset is one way of turning a recording into text: ElevenLabs Scribe as is, or
 // an OpenRouter model that hears the audio and follows a prompt. Presets are the user's own
 // (Settings); the app ships only the neutral defaults below.
@@ -49,12 +51,12 @@ export const DEFAULT_PRESETS: readonly DictationPreset[] = [
 export const MAX_BADGE_CHARS = 3;
 
 export function presetError(p: DictationPreset): string | null {
-  if (!p.name.trim()) return 'Give the preset a name';
+  if (!p.name.trim()) return msg().presets.errors.name;
   const badge = [...p.badge.trim()].length;
-  if (badge < 1 || badge > MAX_BADGE_CHARS) return `The badge must be 1 to ${MAX_BADGE_CHARS} characters`;
+  if (badge < 1 || badge > MAX_BADGE_CHARS) return msg().presets.errors.badge(MAX_BADGE_CHARS);
   if (p.provider === 'openrouter') {
-    if (!p.model.trim()) return 'Enter an OpenRouter model id';
-    if (!p.prompt.trim()) return 'Enter a prompt';
+    if (!p.model.trim()) return msg().presets.errors.model;
+    if (!p.prompt.trim()) return msg().presets.errors.prompt;
   }
   return null;
 }
@@ -112,9 +114,10 @@ export function needsKey(p: DictationPreset, keys: PresetKeys): boolean {
 // Why the mic menu cannot offer a preset here, or null.
 export function unavailableHint(p: DictationPreset, keys: PresetKeys): string | null {
   if (!needsKey(p, keys)) return null;
-  if (p.provider !== 'claude') return 'needs key';
-  if (keys.claude === 'unavailable') return 'not on this machine';
-  return keys.claude === 'asking' ? 'question open' : 'Claude Code only';
+  const hint = msg().dictation.unavailable;
+  if (p.provider !== 'claude') return hint.needsKey;
+  if (keys.claude === 'unavailable') return hint.notOnMachine;
+  return keys.claude === 'asking' ? hint.questionOpen : hint.claudeCodeOnly;
 }
 
 export function hasUsablePreset(presets: readonly DictationPreset[], keys: PresetKeys): boolean {

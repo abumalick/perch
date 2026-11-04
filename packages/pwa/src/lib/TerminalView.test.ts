@@ -80,6 +80,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { isIOSWebKit, openTerminalLink } from './terminal-link';
 import { isAndroid } from './android-input';
 import TerminalView from './TerminalView.svelte';
+import { setLanguage } from '../i18n.svelte';
 
 const AGENT_KEY = 'A'.repeat(42) + 'Q';
 
@@ -570,5 +571,18 @@ describe('TerminalView', () => {
   it('omits the .android class on non-Android', () => {
     const { container } = render(TerminalView, { props: { store: fakeStore() as never } });
     expect(container.querySelector('.term')!.classList.contains('android')).toBe(false);
+  });
+});
+
+describe('TerminalView in French', () => {
+  it('words the moved overlay in French', () => {
+    setLanguage('fr');
+    try {
+      render(TerminalView, { props: { store: { ...fakeStore(), terminalState: 'moved' } as never } });
+      expect(screen.getByText('Ouvert sur un autre appareil.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Retour' })).toBeInTheDocument();
+    } finally {
+      setLanguage('en');
+    }
   });
 });

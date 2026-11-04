@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PerchStore } from '../store.svelte';
+  import { msg } from '../i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
 
@@ -16,12 +17,12 @@
 </script>
 
 {#if shared && store.active}
-  <div class="confirm" role="region" aria-label="Shared file" data-testid="shared-file-confirm">
+  <div class="confirm" role="region" aria-label={msg().app.sharedFile.region} data-testid="shared-file-confirm">
     <span class="msg">
-      Attach <strong>{shared.name}</strong> ({size(shared.bytes.length)}) to <strong>{store.active.name}</strong>?
+      {msg().app.sharedFile.attachPrefix}<strong>{shared.name}</strong>{msg().app.sharedFile.attachMiddle(size(shared.bytes.length))}<strong>{store.active.name}</strong>{msg().app.sharedFile.attachSuffix}
     </span>
-    <button type="button" class="attach" disabled={!online} onclick={() => store.attachSharedFile()}>Attach</button>
-    <button type="button" class="discard" onclick={() => store.discardSharedFile()}>Discard</button>
+    <button type="button" class="attach" disabled={!online} onclick={() => store.attachSharedFile()}>{msg().app.sharedFile.attach}</button>
+    <button type="button" class="discard" onclick={() => store.discardSharedFile()}>{msg().app.sharedFile.discard}</button>
   </div>
 {/if}
 

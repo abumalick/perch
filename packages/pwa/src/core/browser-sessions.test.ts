@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import type { BrowserSession, Workspace } from '@perch/contracts';
 import { joinBrowserSessions, browserSessionLabel } from './browser-sessions';
 
@@ -101,5 +102,14 @@ describe('browserSessionLabel', () => {
 
   it('keeps the remaining slug intact when it contains the delimiter', () => {
     expect(browserSessionLabel('ws1__a__b', 'ws1')).toBe('a__b');
+  });
+});
+
+describe('browserSessionLabel — French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('names the bare-name session in French', () => {
+    setLanguage('fr');
+    expect(browserSessionLabel('ws1', 'ws1')).toBe('principale');
   });
 });

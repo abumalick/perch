@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { FilterMode, ProjectFolder } from '../core/project-folders';
+  import { msg } from '../i18n.svelte';
 
   let {
     folders,
@@ -21,15 +22,12 @@
   // shows its full path (a nested entry's short label alone would be ambiguous); several
   // collapse to a count so the control stays compact. The verb carries the mode, so the summary
   // alone says whether the list is narrowed or trimmed.
-  const subject = $derived(selected.size === 1 ? [...selected][0] : `${selected.size} projects`);
+  const subject = $derived(selected.size === 1 ? [...selected][0]! : msg().home.filter.projects(selected.size));
   const summary = $derived(
-    selected.size === 0 ? 'All projects' : mode === 'only' ? `Only ${subject}` : `Hiding ${subject}`,
+    selected.size === 0 ? msg().home.filter.all : mode === 'only' ? msg().home.filter.only(subject) : msg().home.filter.hiding(subject),
   );
 
-  const MODES = [
-    { value: 'only', label: 'Show only' },
-    { value: 'hide', label: 'Hide' },
-  ] as const;
+  const MODES = ['only', 'hide'] as const;
 
   let open = $state(false);
 </script>
@@ -47,7 +45,7 @@
        fight with the browser's own toggle). -->
   <details open={open}>
     <summary
-      aria-label="Filter by project"
+      aria-label={msg().home.filter.label}
       class:clearable={selected.size > 0}
       onclick={(e) => {
         e.preventDefault();
@@ -61,20 +59,20 @@
       <button
         type="button"
         class="backdrop"
-        aria-label="Close project filter"
+        aria-label={msg().home.filter.close}
         onclick={() => (open = false)}
       ></button>
-      <div class="menu" role="group" aria-label="Projects">
-        <div class="modes" role="radiogroup" aria-label="Filter mode">
-          {#each MODES as option (option.value)}
+      <div class="menu" role="group" aria-label={msg().home.filter.group}>
+        <div class="modes" role="radiogroup" aria-label={msg().home.filter.mode}>
+          {#each MODES as option (option)}
             <button
               type="button"
               class="mode"
               role="radio"
-              aria-checked={mode === option.value}
-              onclick={() => onmode(option.value)}
+              aria-checked={mode === option}
+              onclick={() => onmode(option)}
             >
-              {option.label}
+              {msg().home.filter.modes[option]}
             </button>
           {/each}
         </div>
@@ -95,7 +93,7 @@
   <!-- Outside <details>, which hides everything but its <summary> while closed, and outside
        <summary>, whose click toggles the menu. Laid over the summary's right edge. -->
   {#if selected.size > 0}
-    <button type="button" class="clear" aria-label="Clear project filter" onclick={onclear}>✕</button>
+    <button type="button" class="clear" aria-label={msg().home.filter.clear} onclick={onclear}>✕</button>
   {/if}
 </div>
 {/if}

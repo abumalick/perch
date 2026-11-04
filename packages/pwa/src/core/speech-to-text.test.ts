@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { SpeechToText } from './speech-to-text';
+import { setLanguage } from '../i18n.svelte';
 import type { AudioRecorder } from './ports/audio-recorder';
 import type { Transcriber } from './ports/transcriber';
 
@@ -160,5 +161,18 @@ describe('SpeechToText', () => {
     await stt.toggle();
     await stt.toggle();
     expect(onChange).toHaveBeenCalled();
+  });
+});
+
+describe('SpeechToText in French', () => {
+  it('words a refused microphone in French', async () => {
+    setLanguage('fr');
+    try {
+      const { stt } = setup({ recorder: fakeRecorder({ start: vi.fn().mockRejectedValue(new DOMException('no', 'NotAllowedError')) }) });
+      await stt.toggle();
+      expect(stt.error).toBe('Micro bloqué');
+    } finally {
+      setLanguage('en');
+    }
   });
 });

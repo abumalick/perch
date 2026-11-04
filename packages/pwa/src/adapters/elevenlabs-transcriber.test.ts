@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ElevenLabsTranscriber, SCRIBE_ENDPOINT, SCRIBE_MODEL_ID } from './elevenlabs-transcriber';
+import { setLanguage } from '../i18n.svelte';
 
 const audio = new Blob(['x'], { type: 'audio/webm' });
 
@@ -119,5 +120,17 @@ describe('ElevenLabsTranscriber', () => {
     const fetchFn = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
     const t = new ElevenLabsTranscriber(() => 'sk_live', () => [], fetchFn);
     expect(await t.transcribe(audio)).toBe('');
+  });
+});
+
+describe('ElevenLabsTranscriber in French', () => {
+  it('asks for the key in French', async () => {
+    setLanguage('fr');
+    try {
+      const t = new ElevenLabsTranscriber(() => null, () => [], vi.fn());
+      await expect(t.transcribe(audio)).rejects.toThrow('Saisissez la clé ElevenLabs dans les Réglages');
+    } finally {
+      setLanguage('en');
+    }
   });
 });

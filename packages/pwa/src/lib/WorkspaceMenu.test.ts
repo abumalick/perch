@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import WorkspaceMenu from './WorkspaceMenu.svelte';
 import type { WorkspaceStatus } from '@perch/contracts';
+import { setLanguage } from '../i18n.svelte';
 
 function props(overrides: Record<string, unknown> = {}) {
   return {
@@ -210,5 +211,17 @@ describe('WorkspaceMenu', () => {
     expect(screen.getByRole('dialog')).toBeTruthy();
     await fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('WorkspaceMenu in French', () => {
+  it('renders its text in French', () => {
+    setLanguage('fr');
+    try {
+      render(WorkspaceMenu, { props: props() });
+      expect(screen.getByRole('button', { name: /Espace de travail suivant/ })).toBeTruthy();
+    } finally {
+      setLanguage('en');
+    }
   });
 });

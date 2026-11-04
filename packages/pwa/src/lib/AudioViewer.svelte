@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PerchStore } from '../store.svelte';
   import { basename } from '../core/browse-path';
+  import { msg } from '../i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
   let file = $derived(store.fileView);
@@ -33,14 +34,14 @@
 
 <section class="viewer">
   <header>
-    <button type="button" class="icon" aria-label="Back" onclick={() => store.closeViewer()}>‹</button>
+    <button type="button" class="icon" aria-label={msg().viewer.back} onclick={() => store.closeViewer()}>‹</button>
     <span class="title">{file ? basename(file.path) : ''}</span>
   </header>
 
   {#if store.viewError}
-    <p class="error">Couldn't open this file.<br /><span>{store.viewError}</span></p>
+    <p class="error">{msg().viewer.openFileError}<br /><span>{store.viewError}</span></p>
   {:else if file?.truncated}
-    <p class="empty">Audio too large to preview (over 30&nbsp;MB).</p>
+    <p class="empty">{msg().viewer.audioTooLarge}</p>
   {:else if file}
     <!-- Kept mounted across tracks; src swaps reactively. While the bytes load blobUrl is '',
          and we omit the attribute rather than set src="" — an empty src makes WebKit try to
@@ -48,16 +49,16 @@
     <audio class="player" bind:this={audioEl} controls src={file.blobUrl || undefined} onended={() => go(1)}></audio>
     <!-- Always present (fixed height) so the loading text doesn't shift the nav controls
          when it appears/disappears between tracks. -->
-    <p class="status" aria-live="polite">{file.blobUrl ? '' : 'Loading…'}</p>
+    <p class="status" aria-live="polite">{file.blobUrl ? '' : msg().viewer.loading}</p>
     {#if pos && pos.count > 1}
       <div class="nav">
-        <button type="button" aria-label="Previous track" disabled={pos.index <= 1} onclick={() => go(-1)}>‹ Prev</button>
+        <button type="button" aria-label={msg().viewer.previousTrack} disabled={pos.index <= 1} onclick={() => go(-1)}>{msg().viewer.prev}</button>
         <span class="counter">{pos.index} / {pos.count}</span>
-        <button type="button" aria-label="Next track" disabled={pos.index >= pos.count} onclick={() => go(1)}>Next ›</button>
+        <button type="button" aria-label={msg().viewer.nextTrack} disabled={pos.index >= pos.count} onclick={() => go(1)}>{msg().viewer.next}</button>
       </div>
     {/if}
   {:else}
-    <p class="empty">Loading…</p>
+    <p class="empty">{msg().viewer.loading}</p>
   {/if}
 </section>
 

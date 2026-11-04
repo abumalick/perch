@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import MachineLoad from './MachineLoad.svelte';
 import type { MachineStats } from '@perch/contracts';
+import { setLanguage } from '../i18n.svelte';
 
 const stats: MachineStats = {
   cpuPercent: 12,
@@ -130,5 +131,17 @@ describe('MachineLoad', () => {
     expect(screen.getByTestId('machine-load-help')).toBeInTheDocument();
     unmount();
     expect(screen.queryByTestId('machine-load-help')).toBeNull();
+  });
+});
+
+describe('MachineLoad in French', () => {
+  it('renders its text in French', () => {
+    setLanguage('fr');
+    try {
+      render(MachineLoad, { props: { stats } });
+      expect(screen.getByTestId('machine-load-kill').textContent).toMatch(/avant arrêt forcé$/);
+    } finally {
+      setLanguage('en');
+    }
   });
 });

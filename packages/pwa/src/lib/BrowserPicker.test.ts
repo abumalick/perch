@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import BrowserPicker from './BrowserPicker.svelte';
 
@@ -44,5 +45,17 @@ describe('BrowserPicker', () => {
     await fireEvent.click(screen.getByRole('menuitem', { name: /login/i }));
     expect(onOpen).toHaveBeenCalledWith('ws1__login');
     expect(screen.queryByRole('menu')).toBeNull();
+  });
+});
+
+describe('BrowserPicker — French', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('offers to start the browser in French', () => {
+    setLanguage('fr');
+    render(BrowserPicker, {
+      props: { sessions: [], workspaceId: 'ws1', canStart: true, onOpen: noop, onStart: noop },
+    });
+    expect(screen.getByRole('button', { name: 'Lancer le navigateur' })).toBeInTheDocument();
   });
 });

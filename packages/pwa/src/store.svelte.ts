@@ -34,6 +34,12 @@ import { DEFAULT_PRESETS, currentPreset, type DictationPreset, type PresetKeys }
 import type { AudioRecorder } from './core/ports/audio-recorder';
 import type { Transcriber } from './core/ports/transcriber';
 import type { VoiceLink } from './core/claude-voice';
+import { resolveLanguage, type LanguageChoice } from './core/i18n/language';
+import { msg, setLanguage } from './i18n.svelte';
+
+function phoneLanguages(): readonly string[] {
+  return globalThis.navigator?.languages ?? [];
+}
 
 type View = 'list' | 'terminal' | 'settings' | 'create' | 'newMachine' | 'browser' | 'viewer' | 'browserView';
 
@@ -72,13 +78,6 @@ const RECONNECT_GRACE_MS = 25_000;
 // How long after the end of a Claude voice dictation the agent may take to answer before it
 // is taken not to support it: the last second of playback, the release and Claude's transcription.
 export const VOICE_REPLY_MS = 20_000;
-
-// Why a media preview could not be shown (a file over the cap is shown as truncated instead).
-const MEDIA_ERRORS: Record<Exclude<MediaResult, 'ok' | 'too-large'>, string> = {
-  forbidden: "Couldn't load this file: the agent may not read it.",
-  'not-found': "Couldn't load this file: it was not found.",
-  error: "Couldn't load this file: the agent could not read it.",
-};
 
 export class PerchStore {
   view = $state<View>('list');
@@ -206,6 +205,8 @@ export class PerchStore {
   // Word-wrap preference for the file viewer, persisted via settings (loaded in start()).
   fileWrap = $state(true);
   shareLinks = $state(false);
+  // The language picked in Settings; 'auto' follows the phone.
+  languageChoice = $state<LanguageChoice>('auto');
   // Global terminal font size (zoom), persisted via settings (loaded in start()).
   terminalFontSize = $state(TERMINAL_FONT_DEFAULT);
   // ElevenLabs API key for client-side dictation, persisted on-device (loaded in start()).
@@ -359,6 +360,8 @@ export class PerchStore {
     this.lastCommand = this.deps.settings.lastCommand();
     this.fileWrap = this.deps.settings.fileWrap();
     this.shareLinks = this.deps.settings.shareLinks();
+    this.languageChoice = this.deps.settings.languageChoice();
+    setLanguage(resolveLanguage(this.languageChoice, phoneLanguages()));
     this.terminalFontSize = this.deps.settings.terminalFontSize();
     this.elevenLabsApiKey = this.deps.settings.elevenLabsApiKey() ?? '';
     this.openRouterApiKey = this.deps.settings.openRouterApiKey() ?? '';
@@ -391,7 +394,7 @@ export class PerchStore {
     if (status === 'offline') {
       this.sessionChannels.get(machineId)?.offline();
       // The agent ends a dictation whose session dropped, but can no longer say so.
-      if (this.voice?.machineId === machineId) this.failVoice(this.voice, 'Dictation stopped: the connection dropped');
+      if (this.voice?.machineId === machineId) this.failVoice(this.voice, msg().dictation.connectionDropped);
       this.disconnected.add(machineId);
       const { [machineId]: _dropped, ...rest } = this.machineStats;
       this.machineStats = rest;
@@ -524,7 +527,7 @@ export class PerchStore {
       case 'voiceDone': {
         const voice = this.voice;
         if (voice?.id !== message.id || voice.settled) return;
-        if (!message.ok) return this.failVoice(voice, message.error ?? 'Claude voice failed');
+        if (!message.ok) return this.failVoice(voice, message.error ?? msg().dictation.claudeVoiceFailed);
         // Claude writes the transcript into the line behind the input field's back.
         this.onInjectedInput?.();
         return voice.settle(null);
@@ -707,8 +710,8 @@ export class PerchStore {
   readonly voiceLink: VoiceLink = {
     begin: () => {
       const active = this.active;
-      if (!active) throw new Error('Open a workspace first');
-      this.voice?.settle(new Error('Superseded by a newer dictation'));
+      if (!active) throw new Error(msg().dictation.openWorkspaceFirst);
+      this.voice?.settle(new Error(msg().dictation.superseded));
       const id = `voice-${Date.now().toString(36)}-${++this.voiceSeq}`;
       let settleOutcome!: (e: Error | null) => void;
       const outcome = new Promise<void>((resolve, reject) => (settleOutcome = (e) => (e ? reject(e) : resolve())));
@@ -733,12 +736,12 @@ export class PerchStore {
     },
     finish: async () => {
       const voice = this.voice;
-      if (!voice) throw new Error('No dictation in progress');
+      if (!voice) throw new Error(msg().dictation.noneInProgress);
       if (!voice.settled) this.send(voice.machineId, { type: 'voiceEnd', id: voice.id });
       const timer = setTimeout(() => {
         // The agent may still be dictating, so the line is no longer the field's.
         this.onInjectedInput?.();
-        voice.settle(new Error('This machine’s agent does not support Claude voice'));
+        voice.settle(new Error(msg().dictation.agentLacksVoice));
       }, VOICE_REPLY_MS);
       try {
         await voice.outcome;
@@ -1010,7 +1013,7 @@ export class PerchStore {
         return;
       }
       if (read.result !== 'ok') {
-        this.viewError = MEDIA_ERRORS[read.result];
+        this.viewError = msg().errors.media[read.result];
         return;
       }
       const objectUrl = URL.createObjectURL(read.blob);
@@ -1021,7 +1024,7 @@ export class PerchStore {
       this.currentBlobUrl = objectUrl;
       this.fileView = { path, text: '', mediaType, blobUrl: objectUrl, truncated: false, binary: false };
     } catch {
-      if (current()) this.viewError = "Couldn't load this file.";
+      if (current()) this.viewError = msg().errors.mediaFailed;
     }
   }
 
@@ -1075,6 +1078,12 @@ export class PerchStore {
   setShareLinks(on: boolean): void {
     this.shareLinks = on;
     this.deps.settings.setShareLinks(on);
+  }
+
+  setLanguageChoice(choice: LanguageChoice): void {
+    this.languageChoice = choice;
+    this.deps.settings.setLanguageChoice(choice);
+    setLanguage(resolveLanguage(choice, phoneLanguages()));
   }
 
   setTerminalFontSize(size: number): void {

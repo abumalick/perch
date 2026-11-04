@@ -1,4 +1,5 @@
 import type { Transcriber } from '../core/ports/transcriber';
+import { msg } from '../i18n.svelte';
 
 export const SCRIBE_ENDPOINT = 'https://api.elevenlabs.io/v1/speech-to-text';
 export const SCRIBE_MODEL_ID = 'scribe_v2';
@@ -19,7 +20,7 @@ export class ElevenLabsTranscriber implements Transcriber {
 
   async transcribe(audio: Blob): Promise<string> {
     const key = this.getKey();
-    if (!key) throw new Error('Set ElevenLabs key in Settings');
+    if (!key) throw new Error(msg().dictation.setKey('ElevenLabs'));
 
     const form = new FormData();
     form.append('file', audio, audioFileName(audio.type));
@@ -43,7 +44,7 @@ export class ElevenLabsTranscriber implements Transcriber {
         signal: controller.signal,
       });
     } catch (e) {
-      if (controller.signal.aborted) throw new Error('Dictation timed out — try again');
+      if (controller.signal.aborted) throw new Error(msg().dictation.timedOut);
       throw e;
     } finally {
       clearTimeout(timer);
@@ -72,9 +73,9 @@ function audioFileName(mimeType: string): string {
 // back to the plain 401 "invalid key" reading.
 async function errorMessage(res: Response): Promise<string> {
   const status = await quotaOrKeyStatus(res);
-  if (res.status === 402 || /quota|credit|exceed/i.test(status)) return 'ElevenLabs quota exceeded';
-  if (res.status === 401) return 'Invalid ElevenLabs key';
-  return `Transcription failed (HTTP ${res.status})`;
+  if (res.status === 402 || /quota|credit|exceed/i.test(status)) return msg().dictation.elevenLabsQuota;
+  if (res.status === 401) return msg().dictation.invalidKey('ElevenLabs');
+  return msg().dictation.transcriptionFailedHttp(res.status);
 }
 
 async function quotaOrKeyStatus(res: Response): Promise<string> {

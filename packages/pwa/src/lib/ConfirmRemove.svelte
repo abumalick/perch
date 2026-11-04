@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { msg } from '../i18n.svelte';
+
   let { name, onConfirm, onCancel }: { name: string; onConfirm: () => void; onCancel: () => void } = $props();
 
   let cancel = $state<HTMLButtonElement>();
@@ -7,14 +9,14 @@
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') onCancel(); }} />
 
-<button type="button" class="scrim" aria-label="Dismiss" tabindex="-1" onclick={onCancel}></button>
+<button type="button" class="scrim" aria-label={msg().app.dismiss} tabindex="-1" onclick={onCancel}></button>
 <div class="panel" role="dialog" aria-modal="true" aria-labelledby="confirm-remove-title">
-  <h2 id="confirm-remove-title">Remove {name}?</h2>
-  <p>This phone forgets <b>{name}</b> and stops connecting to it.</p>
-  <p>To get it back, run <code>perch pair</code> on the machine and pair this phone again.</p>
+  <h2 id="confirm-remove-title">{msg().app.confirmRemove.title(name)}</h2>
+  <p>{msg().app.confirmRemove.forgetsPrefix}<b>{name}</b>{msg().app.confirmRemove.forgetsSuffix}</p>
+  <p>{msg().app.confirmRemove.getBackPrefix}<code>perch pair</code>{msg().app.confirmRemove.getBackSuffix}</p>
   <div class="buttons">
-    <button type="button" class="cancel" bind:this={cancel} onclick={onCancel}>Cancel</button>
-    <button type="button" class="remove" aria-label={`Remove ${name}`} onclick={onConfirm}>Remove</button>
+    <button type="button" class="cancel" bind:this={cancel} onclick={onCancel}>{msg().app.confirmRemove.cancel}</button>
+    <button type="button" class="remove" aria-label={msg().app.confirmRemove.removeLabel(name)} onclick={onConfirm}>{msg().app.confirmRemove.remove}</button>
   </div>
 </div>
 

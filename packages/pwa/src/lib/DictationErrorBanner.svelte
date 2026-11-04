@@ -1,16 +1,17 @@
 <script lang="ts">
   import type { PerchStore } from '../store.svelte';
+  import { msg } from '../i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
 
-  let message = $derived(store.dictationError ?? 'Dictation failed');
+  let message = $derived(store.dictationError ?? msg().dictation.failed);
 </script>
 
 {#if store.dictationState === 'error'}
   <div class="banner" role="alert">
     <span class="msg">⚠️ {message}</span>
-    <button type="button" class="retry" onclick={() => store.toggleDictation()}>Retry</button>
-    <button type="button" class="dismiss" aria-label="Dismiss" onclick={() => store.dismissDictationError()}>✕</button>
+    <button type="button" class="retry" onclick={() => store.toggleDictation()}>{msg().dictation.retry}</button>
+    <button type="button" class="dismiss" aria-label={msg().dictation.dismiss} onclick={() => store.dismissDictationError()}>✕</button>
   </div>
 {/if}
 

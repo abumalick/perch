@@ -3,6 +3,7 @@
   import type { PerchStore } from '../store.svelte';
   import { scanQrCodes, type QrScan } from '../adapters/qr-camera';
   import { describeError } from '../core/describe-error';
+  import { msg } from '../i18n.svelte';
 
   let {
     store,
@@ -45,8 +46,8 @@
       const name = (err as { name?: string } | null)?.name;
       error =
         name === 'NotAllowedError'
-          ? 'Camera access was refused. Allow it for this app, or paste the pairing link below.'
-          : `Cannot open the camera (${describeError(err)}). Paste the pairing link below instead.`;
+          ? msg().pairing.cameraRefused
+          : msg().pairing.cameraFailed(describeError(err));
     }
   }
 
@@ -57,7 +58,7 @@
     try {
       text = await readClipboard();
     } catch {
-      error = 'Cannot read the clipboard. Paste it in the field below instead.';
+      error = msg().pairing.clipboardFailed;
       return;
     }
     pair(text);
@@ -77,20 +78,20 @@
       <!-- svelte-ignore a11y_media_has_caption -->
       <video bind:this={video} playsinline muted autoplay></video>
     </div>
-    <button type="button" class="wide" onclick={stopScan}>Cancel</button>
+    <button type="button" class="wide" onclick={stopScan}>{msg().pairing.cancel}</button>
   {:else}
-    <button type="button" class="wide primary" onclick={startScan}>Scan QR code</button>
-    <button type="button" class="wide" onclick={pasteLink}>Paste pairing link</button>
+    <button type="button" class="wide primary" onclick={startScan}>{msg().pairing.scan}</button>
+    <button type="button" class="wide" onclick={pasteLink}>{msg().pairing.pasteLink}</button>
   {/if}
   <form onsubmit={submitLink}>
     <label>
-      Or paste a pairing link
+      {msg().pairing.orPaste}
       <input bind:value={link} placeholder="https://…/#pair?…" autocapitalize="off" autocomplete="off" spellcheck="false" />
     </label>
-    <button type="submit" class="wide" disabled={!link.trim()}>Pair</button>
+    <button type="submit" class="wide" disabled={!link.trim()}>{msg().pairing.pair}</button>
   </form>
   {#if error}<p class="diag" role="alert">{error}</p>{/if}
-  <p class="hint">Run <code>perch pair</code> on the machine to get a code. It works once, for 10 minutes.</p>
+  <p class="hint">{msg().pairing.hintBefore}<code>perch pair</code>{msg().pairing.hintAfter}</p>
 </div>
 
 <style>

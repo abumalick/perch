@@ -16,6 +16,7 @@
   import KeyboardBar from './KeyboardBar.svelte';
   import { trackViewport } from './viewport';
   import { attachBrowserTyping, type BrowserTyping } from './browser-typing';
+  import { msg } from '../i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
 
@@ -193,9 +194,9 @@
   }
 
   function endMessage(reason: BrowserEndedReason | null): string {
-    if (reason === 'not-found') return 'Browser session not found.';
-    if (reason === 'opened-elsewhere') return 'Opened on another device.';
-    return 'Browser session ended.';
+    if (reason === 'not-found') return msg().browser.notFound;
+    if (reason === 'opened-elsewhere') return msg().browser.openedElsewhere;
+    return msg().browser.ended;
   }
 
   onMount(() => {
@@ -241,25 +242,25 @@
 
 <section class="browser-view">
   <header>
-    <button type="button" class="icon" aria-label="Back" onclick={() => store.closeBrowserView()}>‹</button>
-    <button type="button" class="icon" aria-label="Browser back" onclick={() => stream?.send({ type: 'back' })}>◀</button>
-    <button type="button" class="icon" aria-label="Browser forward" onclick={() => stream?.send({ type: 'forward' })}>▶</button>
+    <button type="button" class="icon" aria-label={msg().browser.back} onclick={() => store.closeBrowserView()}>‹</button>
+    <button type="button" class="icon" aria-label={msg().browser.browserBack} onclick={() => stream?.send({ type: 'back' })}>◀</button>
+    <button type="button" class="icon" aria-label={msg().browser.browserForward} onclick={() => stream?.send({ type: 'forward' })}>▶</button>
     <span class="title">{store.browserTarget?.session ?? ''}</span>
-    <button type="button" class="icon" aria-label="Keyboard" onclick={() => typeEl?.focus()}>⌨</button>
-    <button type="button" class="icon" aria-label="Close session" onclick={closeSession}>✕</button>
+    <button type="button" class="icon" aria-label={msg().browser.keyboard} onclick={() => typeEl?.focus()}>⌨</button>
+    <button type="button" class="icon" aria-label={msg().browser.closeSession} onclick={closeSession}>✕</button>
   </header>
   <form class="url-bar" onsubmit={submitUrl}>
     <input
       bind:this={urlEl}
       bind:value={urlText}
       type="text"
-      aria-label="URL"
+      aria-label={msg().browser.url}
       placeholder="https://…"
       autocomplete="off"
       autocapitalize="off"
       spellcheck="false"
     />
-    <button type="submit">Go</button>
+    <button type="submit">{msg().browser.go}</button>
   </form>
   <div class="frame">
     <canvas
@@ -271,11 +272,11 @@
       onwheel={onWheel}
     ></canvas>
     {#if streamState === 'connecting'}
-      <div class="overlay"><p>Connecting…</p></div>
+      <div class="overlay"><p>{msg().browser.connecting}</p></div>
     {:else if streamState === 'ended'}
       <div class="overlay">
         <p>{endMessage(endReason)}</p>
-        <button type="button" class="primary" onclick={retry}>Retry</button>
+        <button type="button" class="primary" onclick={retry}>{msg().browser.retry}</button>
       </div>
     {/if}
   </div>

@@ -2,6 +2,7 @@ import { generateAgentKeys, pairingLink } from '@perch/secure-channel';
 import { audioMediaType, imageMediaType, pdfMediaType } from '@perch/contracts';
 import { describe, it, expect, vi } from 'vitest';
 import { PerchStore, VOICE_REPLY_MS } from './store.svelte';
+import { setLanguage } from './i18n.svelte';
 import { ConnectionManager } from './core/connection-manager';
 import { WorkspaceAggregator } from './core/workspace-aggregator';
 import { SettingsStore, type MachineConfig } from './core/settings-store';
@@ -1355,6 +1356,18 @@ describe('PerchStore file viewer', () => {
     store.openFile('/home/u/proj/a.png');
     answerMedia(sockets, 'error');
     await vi.waitFor(() => expect(store.viewError).toBe("Couldn't load this file: the agent could not read it."));
+  });
+
+  it('words a failed read in French', async () => {
+    const { store, sockets } = openWorkspace();
+    setLanguage('fr');
+    try {
+      store.openFile('/home/u/proj/a.png');
+      answerMedia(sockets, 'not-found');
+      await vi.waitFor(() => expect(store.viewError).toBe('Impossible de charger ce fichier\u202f: il est introuvable.'));
+    } finally {
+      setLanguage('en');
+    }
   });
 
   it('sets viewError when the machine drops mid-read', async () => {

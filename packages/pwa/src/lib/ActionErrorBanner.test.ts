@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import ActionErrorBanner from './ActionErrorBanner.svelte';
+import { setLanguage } from '../i18n.svelte';
 
 function fakeStore(over: Record<string, unknown> = {}) {
   return {
@@ -28,5 +29,17 @@ describe('ActionErrorBanner', () => {
     render(ActionErrorBanner, { props: { store: store as never } });
     await fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
     expect(store.dismissActionError).toHaveBeenCalled();
+  });
+});
+
+describe('ActionErrorBanner in French', () => {
+  it('renders its text in French', () => {
+    setLanguage('fr');
+    try {
+      render(ActionErrorBanner, { props: { store: fakeStore({ actionError: 'boom' }) as never } });
+      expect(screen.getByRole('button', { name: 'Fermer' })).toBeTruthy();
+    } finally {
+      setLanguage('en');
+    }
   });
 });

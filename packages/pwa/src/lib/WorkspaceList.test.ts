@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import WorkspaceList from './WorkspaceList.svelte';
 import { deriveHomeView, type HomeView } from '../core/home-view';
+import { setLanguage } from '../i18n.svelte';
 
 const AGENT_KEY = 'A'.repeat(42) + 'Q';
 
@@ -648,5 +649,17 @@ describe('WorkspaceList status age', () => {
     store.parkedExpanded = true;
     render(WorkspaceList, { props: { store: store as never } });
     expect(screen.getByTestId('status-age')).toHaveTextContent('for 2h');
+  });
+});
+
+describe('WorkspaceList in French', () => {
+  it('renders its text in French', () => {
+    setLanguage('fr');
+    try {
+      render(WorkspaceList, { props: { store: fakeStore([], [{ id: 'mac' }], null, 'reconnecting') as never } });
+      expect(screen.getByText('Reconnexion…')).toBeTruthy();
+    } finally {
+      setLanguage('en');
+    }
   });
 });

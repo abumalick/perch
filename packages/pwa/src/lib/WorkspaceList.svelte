@@ -13,6 +13,7 @@
   import { statusLabel } from './workspace-status-display';
   import { nestWorkspaces } from '../core/nest-workspaces';
   import { statusAge } from '../core/status-age';
+  import { msg } from '../i18n.svelte';
 
   const AGE_TICK_MS = 30_000;
 
@@ -102,7 +103,6 @@
     });
   const rowKey = (ws: Workspace) => ws.machineId + ':' + ws.id;
   const expanded = (ws: Workspace) => store.expandedParents.has(rowKey(ws));
-  const childCount = (n: number) => `${n} child workspace${n === 1 ? '' : 's'}`;
 
   const toggleFolder = (key: string) => {
     const next = new Set(selected);
@@ -143,17 +143,17 @@
           <span class="machine">{machineFor(ws.machineId)?.name}</span>
         {/if}
         {#if ws.agentAddress}
-          <span class="agent-address" data-testid="agent-address" title="Address other Claude sessions message this one by">{ws.agentAddress}</span>
+          <span class="agent-address" data-testid="agent-address" title={msg().home.agentAddress}>{ws.agentAddress}</span>
         {/if}
         <span class="badge" data-status={ws.status}>{statusLabel(ws)}</span>
         <span class="chev" aria-hidden="true">›</span>
       </span>
       <span class="name-line">
         {#if ws.urgent}
-          <span class="urgent-star" aria-label="Urgent" title="Urgent">★</span>
+          <span class="urgent-star" aria-label={msg().home.urgent} title={msg().home.urgent}>★</span>
         {/if}
         <span class="name">{ws.name}</span>
-        <span class="age" data-testid="status-age" title="Time in this status">for {statusAge(ws.lastActivityAt, now)}</span>
+        <span class="age" data-testid="status-age" title={msg().home.timeInStatus}>{msg().home.forAge(statusAge(ws.lastActivityAt, now))}</span>
       </span>
     </span>
   </button>
@@ -163,12 +163,12 @@
   <h1>
     Perch
     {#if isTestBuild(buildLabel)}
-      <span class="build-badge" title="Serving a test build">{buildLabel}</span>
+      <span class="build-badge" title={msg().home.testBuild}>{buildLabel}</span>
     {/if}
   </h1>
   <div class="actions">
-    <button type="button" class="icon" aria-label="New" onclick={() => store.goCreate()}>＋</button>
-    <button type="button" class="icon" aria-label="Settings" onclick={() => store.goSettings()}>⚙</button>
+    <button type="button" class="icon" aria-label={msg().home.new} onclick={() => store.goCreate()}>＋</button>
+    <button type="button" class="icon" aria-label={msg().home.settings} onclick={() => store.goSettings()}>⚙</button>
   </div>
 </header>
 
@@ -185,48 +185,48 @@
 {#if store.pendingSharedFile}
   <div class="shared-banner" data-testid="shared-file-banner">
     {#if sharedThumb}
-      <img class="shared-thumb" src={sharedThumb} alt="Shared preview" />
+      <img class="shared-thumb" src={sharedThumb} alt={msg().home.sharedPreview} />
     {/if}
-    <span class="shared-text">1 file ready — open a session to attach it</span>
+    <span class="shared-text">{msg().home.sharedReady}</span>
   </div>
 {/if}
 
 {#if store.homeView === 'add-machine'}
   <div class="empty" data-testid="home-add-machine">
-    <p class="empty-title">No machines yet</p>
-    <p class="empty-sub">Connect a machine running the Perch agent to get started.</p>
-    <button type="button" class="cta" onclick={() => store.goSettings()}>⚙ Add a machine</button>
+    <p class="empty-title">{msg().home.noMachines}</p>
+    <p class="empty-sub">{msg().home.noMachinesSub}</p>
+    <button type="button" class="cta" onclick={() => store.goSettings()}>{msg().home.addMachine}</button>
   </div>
 {:else if store.homeView === 'connecting'}
   <div class="empty" data-testid="home-connecting">
     <div class="spinner" aria-hidden="true"></div>
-    <p class="empty-sub">Connecting to your machines…</p>
+    <p class="empty-sub">{msg().home.connecting}</p>
   </div>
 {:else if store.homeView === 'reconnecting'}
   <!-- A machine that has connected before is auto-retrying — a calm state, no scary message
        and no prompt to tap: reconnection happens on its own. -->
   <div class="empty" data-testid="home-reconnecting">
     <div class="spinner" aria-hidden="true"></div>
-    <p class="empty-sub">Reconnecting…</p>
+    <p class="empty-sub">{msg().home.reconnecting}</p>
   </div>
 {:else if store.homeView === 'unreachable'}
   <div class="empty" data-testid="home-unreachable">
     {#if store.refusals.length}
-      <p class="empty-title">Can't connect</p>
+      <p class="empty-title">{msg().home.cantConnect}</p>
       {#each store.refusals as refusal (refusal.id)}
         <p class="empty-sub" data-testid="home-refusal">{refusal.message}</p>
       {/each}
     {:else}
-      <p class="empty-title">Can't reach your machines</p>
-      <p class="empty-sub">Check that this phone is online and each machine's agent is running and connected to its relay, then reconnect.</p>
+      <p class="empty-title">{msg().home.cantReach}</p>
+      <p class="empty-sub">{msg().home.cantReachSub}</p>
     {/if}
-    <button type="button" class="cta" data-testid="reconnect-home" onclick={() => store.reconnectAll(true)}>Reconnect</button>
+    <button type="button" class="cta" data-testid="reconnect-home" onclick={() => store.reconnectAll(true)}>{msg().home.reconnect}</button>
   </div>
 {:else if store.homeView === 'create'}
   <div class="empty" data-testid="home-create">
-    <p class="empty-title">No workspaces yet</p>
-    <p class="empty-sub">Spin up a Claude session on one of your machines.</p>
-    <button type="button" class="cta" onclick={() => store.goCreate()}>＋ Create your first workspace</button>
+    <p class="empty-title">{msg().home.noWorkspaces}</p>
+    <p class="empty-sub">{msg().home.noWorkspacesSub}</p>
+    <button type="button" class="cta" onclick={() => store.goCreate()}>{msg().home.createFirst}</button>
   </div>
 {:else}
   <ProjectFilterSelect
@@ -243,9 +243,9 @@
          doesn't fire here — sessions exist, the filter is just swallowing them all. -->
     <div class="empty" data-testid="home-all-filtered">
       <p class="empty-sub">
-        {store.workspaces.length} session{store.workspaces.length === 1 ? '' : 's'} hidden by your filter.
+        {msg().home.hiddenByFilter(store.workspaces.length)}
       </p>
-      <button type="button" class="cta" onclick={() => setSelected([])}>Show all</button>
+      <button type="button" class="cta" onclick={() => setSelected([])}>{msg().home.showAll}</button>
     </div>
   {/if}
   <ul>
@@ -264,7 +264,7 @@
               type="button"
               class="fold-toggle"
               aria-expanded={expanded(ws)}
-              aria-label="{expanded(ws) ? 'Hide' : 'Show'} {childCount(children.length)}"
+              aria-label={msg().home.toggleChildren(expanded(ws), children.length)}
               onclick={() => store.toggleChildren(rowKey(ws))}
             >
               <span class="fold-dot" data-status={children[0]!.status} aria-hidden="true">●</span>
@@ -295,7 +295,7 @@
       aria-expanded={store.parkedExpanded}
       onclick={() => store.toggleParked()}
     >
-      <span>Parked · {parkedWorkspaces.length}</span>
+      <span>{msg().home.parked(parkedWorkspaces.length)}</span>
       <span class="chev" aria-hidden="true">›</span>
     </button>
     {#if store.parkedExpanded}
@@ -318,7 +318,7 @@
   {/if}
   {#if browserSessions.length > 0}
     <section class="browser-sessions">
-      <h2>Browser sessions</h2>
+      <h2>{msg().home.browserSessions}</h2>
       <ul>
         {#each browserSessions as s (s.connectionId + ':' + s.name)}
           <li>

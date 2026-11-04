@@ -5,6 +5,7 @@
     HEADROOM_ALERT_BYTES,
     type LoadDescription,
   } from '../core/machine-load';
+  import { msg } from '../i18n.svelte';
 
   let { load, onClose }: { load: LoadDescription; onClose: () => void } = $props();
 
@@ -14,37 +15,31 @@
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') onClose(); }} />
 
-<button type="button" class="scrim" aria-label="Dismiss" onclick={onClose}></button>
-<div class="panel" role="dialog" aria-modal="true" aria-label="What these numbers mean" data-testid="machine-load-help">
-  <h2>What these numbers mean</h2>
+<button type="button" class="scrim" aria-label={msg().load.dismiss} onclick={onClose}></button>
+<div class="panel" role="dialog" aria-modal="true" aria-label={msg().load.help} data-testid="machine-load-help">
+  <h2>{msg().load.help}</h2>
 
   <p class="row">
-    <b>{load.slowLabel} left</b> — what a new task can take before this machine slows down.
-    Past that it has to push memory out to disk. Green above {warn}, amber below it, red under
-    {alert}.
+    <b>{msg().load.slowTitle(load.slowLabel)}</b>{msg().load.slowBody(warn, alert)}
   </p>
 
   {#if load.killLabel}
     <p class="row" data-testid="help-row-kill">
-      <b>{load.killLabel} before kill</b> — what can be taken before the kernel kills a process
-      to make room. The machine is already slow well before that.
+      <b>{msg().load.killTitle(load.killLabel)}</b>{msg().load.killBody}
     </p>
   {/if}
 
   <p class="row">
-    Files the kernel keeps cached count as free in both figures: it drops them whenever the
-    memory is needed.
+    {msg().load.cache}
   </p>
 
   {#if load.killsSinceConnect > 0}
     <p class="row kills" data-testid="help-row-kills">
-      <b>{load.killsSinceConnect} killed</b> — processes the kernel stopped since this app
-      connected. It picks by OOM score, which is often a helper rather than your session, so
-      this can look like tooling breaking rather than a workspace disappearing.
+      <b>{msg().load.killsTitle(load.killsSinceConnect)}</b>{msg().load.killsBody}
     </p>
   {/if}
 
-  <button type="button" class="done" onclick={onClose}>Done</button>
+  <button type="button" class="done" onclick={onClose}>{msg().load.done}</button>
 </div>
 
 <style>

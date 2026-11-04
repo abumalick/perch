@@ -1,6 +1,7 @@
 import { toPcm16 } from '../core/pcm';
 import type { PcmSource } from '../core/ports/pcm-source';
 import { AUDIO_CONSTRAINTS } from './media-recorder-audio';
+import { msg } from '../i18n.svelte';
 
 // Microphone PCM from Web Audio, the same on WebKit and Blink (MediaRecorder's containers are
 // not: Safari's MP4 cannot be decoded until it is finished). The context is created before
@@ -26,7 +27,7 @@ export class WebAudioPcm implements PcmSource {
     if (generation !== this.generation) {
       stream.getTracks().forEach((track) => track.stop());
       void ctx.close();
-      throw new Error('Dictation was stopped');
+      throw new Error(msg().dictation.stopped);
     }
     const source = ctx.createMediaStreamSource(stream);
     const processor = ctx.createScriptProcessor(4096, 1, 1);

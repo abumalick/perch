@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PerchStore } from '../store.svelte';
   import { parseAgentKey } from '../core/relay-key';
+  import { msg } from '../i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
 
@@ -19,7 +20,7 @@
     event.preventDefault();
     if (!name || !url || !token) return;
     if (!parseAgentKey(agentKey)) {
-      keyError = 'Enter the agent key printed by `perch relay-key` on the machine.';
+      keyError = msg().settings.agentKeyRequired;
       return;
     }
     store.addMachine({
@@ -36,21 +37,21 @@
 
 <section>
   <header>
-    <button type="button" class="icon" aria-label="Back" onclick={() => store.goSettings()}>‹</button>
-    <h2>Add machine</h2>
+    <button type="button" class="icon" aria-label={msg().settings.back} onclick={() => store.goSettings()}>‹</button>
+    <h2>{msg().settings.addMachine}</h2>
   </header>
 
   <form onsubmit={add}>
-    <label>Name <input bind:value={name} /></label>
-    <label>URL <input bind:value={url} placeholder="wss://relay.example.com/account" /></label>
-    <label>Token <input bind:value={token} type="password" /></label>
-    <label>Default path <input bind:value={defaultPath} placeholder="/home/u/workspace" /></label>
+    <label>{msg().settings.name} <input bind:value={name} /></label>
+    <label>{msg().settings.url} <input bind:value={url} placeholder="wss://relay.example.com/account" /></label>
+    <label>{msg().settings.token} <input bind:value={token} type="password" /></label>
+    <label>{msg().settings.defaultPath} <input bind:value={defaultPath} placeholder="/home/u/workspace" /></label>
     <label>
-      Agent key
-      <input bind:value={agentKey} placeholder="from `perch relay-key` on the machine" autocapitalize="off" autocomplete="off" spellcheck="false" />
+      {msg().settings.agentKey}
+      <input bind:value={agentKey} placeholder={msg().settings.agentKeyPlaceholder} autocapitalize="off" autocomplete="off" spellcheck="false" />
     </label>
     {#if keyError}<p class="error" role="alert">{keyError}</p>{/if}
-    <button type="submit" class="add" aria-label="Add machine">＋ Add machine</button>
+    <button type="submit" class="add" aria-label={msg().settings.addMachine}>＋ {msg().settings.addMachine}</button>
   </form>
 </section>
 

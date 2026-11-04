@@ -1,4 +1,5 @@
 import type { Transcriber } from '../core/ports/transcriber';
+import { msg } from '../i18n.svelte';
 
 export const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -23,7 +24,7 @@ export class OpenRouterTranscriber implements Transcriber {
 
   async transcribe(audio: Blob): Promise<string> {
     const key = this.getKey();
-    if (!key) throw new Error('Set OpenRouter key in Settings');
+    if (!key) throw new Error(msg().dictation.setKey('OpenRouter'));
 
     const body = JSON.stringify(this.request(await base64(audio), audioFormat(audio.type)));
     const timeoutMs = this.baseTimeoutMs + TIMEOUT_PER_MB_MS * (audio.size / 1_000_000);
@@ -70,19 +71,19 @@ export class OpenRouterTranscriber implements Transcriber {
           signal: controller.signal,
         });
       } catch (e) {
-        if (controller.signal.aborted) return { retry: true, message: 'Dictation timed out — try again' };
-        return { retry: true, message: e instanceof Error ? e.message : 'Transcription failed' };
+        if (controller.signal.aborted) return { retry: true, message: msg().dictation.timedOut };
+        return { retry: true, message: e instanceof Error ? e.message : msg().dictation.transcriptionFailed };
       }
-      if (res.status === 401) return { retry: false, message: 'Invalid OpenRouter key' };
-      if (res.status === 402) return { retry: false, message: 'OpenRouter credit exhausted' };
+      if (res.status === 401) return { retry: false, message: msg().dictation.invalidKey('OpenRouter') };
+      if (res.status === 402) return { retry: false, message: msg().dictation.openRouterCredit };
       if (!res.ok) {
-        return { retry: res.status === 429 || res.status >= 500, message: `Transcription failed (HTTP ${res.status})` };
+        return { retry: res.status === 429 || res.status >= 500, message: msg().dictation.transcriptionFailedHttp(res.status) };
       }
       const data = (await res.json().catch(() => null)) as Completion | null;
       const content = data?.choices?.[0]?.message?.content;
       if (typeof content !== 'string') {
-        const reason = typeof data?.error?.message === 'string' ? data.error.message : 'no reply';
-        return { retry: true, message: `Transcription failed (${reason})` };
+        const reason = typeof data?.error?.message === 'string' ? data.error.message : msg().dictation.noReply;
+        return { retry: true, message: msg().dictation.transcriptionFailedReason(reason) };
       }
       // One line: a newline reaching the pty would submit what the user meant to check first.
       return content.replace(/\s*\n+\s*/g, ' ').trim();
@@ -108,7 +109,7 @@ function base64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).slice(String(reader.result).indexOf(',') + 1));
-    reader.onerror = () => reject(reader.error ?? new Error('Could not read the recording'));
+    reader.onerror = () => reject(reader.error ?? new Error(msg().dictation.unreadableRecording));
     reader.readAsDataURL(blob);
   });
 }

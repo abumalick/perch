@@ -1,5 +1,6 @@
 import { deviceFingerprint, parsePairingLink, type PairingLink } from '@perch/secure-channel';
 import type { MachineConfig } from './settings-store';
+import { msg } from '../i18n.svelte';
 
 export type Paired = { ok: true; machine: MachineConfig } | { ok: false; reason: string };
 
@@ -12,7 +13,7 @@ export type Paired = { ok: true; machine: MachineConfig } | { ok: false; reason:
 export function pairedMachine(machines: MachineConfig[], link: PairingLink, newId: () => string): Paired {
   const existing = machines.find((m) => m.url === link.url);
   if (existing && existing.agentKey?.trim() !== link.agentKey) {
-    return { ok: false, reason: `This code names another key for ${existing.name} than the one this phone trusts. If the machine's identity changed, remove that entry first.` };
+    return { ok: false, reason: msg().pairing.otherKey(existing.name) };
   }
   const defaultPath = existing?.defaultPath || link.defaultPath;
   const path = defaultPath ? { defaultPath } : {};
@@ -23,11 +24,7 @@ export function pairedMachine(machines: MachineConfig[], link: PairingLink, newI
 // What the owner is asked before a pairing link adds anything: any page can open such a link. The
 // machine key's fingerprint is the one `perch pair` prints beside the code, to compare by eye.
 export function pairingQuestion(link: PairingLink): string {
-  return (
-    `Pair with ${link.name} through ${new URL(link.url).host}?\n\n` +
-    `Machine key ${deviceFingerprint(link.agentKey)}: check it matches what perch pair printed.\n\n` +
-    'Continue only if you just ran perch pair or perch connect on that machine.'
-  );
+  return msg().pairing.question(link.name, new URL(link.url).host, deviceFingerprint(link.agentKey));
 }
 
 export interface PairingPrompts {
@@ -47,22 +44,20 @@ export function acceptPairingLink(machines: MachineConfig[], link: PairingLink, 
   return prompts.confirm(pairingQuestion(link)) ? paired.machine : null;
 }
 
-const NOT_A_LINK = 'That is not a Perch pairing code. Run `perch pair` on the machine for a fresh one.';
-
 // A pairing link pasted, scanned or tapped. A full link must name this app's own origin: one
 // made for another Perch is not this app's to take. A bare fragment names none.
 export function readPairingLink(text: string, ownOrigin: string): { ok: true; link: PairingLink } | { ok: false; reason: string } {
   const link = parsePairingLink(text);
-  if (!link) return { ok: false, reason: NOT_A_LINK };
+  if (!link) return { ok: false, reason: msg().pairing.notALink };
   const trimmed = text.trim();
   if (!trimmed.startsWith('#')) {
     let origin: string;
     try {
       origin = new URL(trimmed).origin;
     } catch {
-      return { ok: false, reason: NOT_A_LINK };
+      return { ok: false, reason: msg().pairing.notALink };
     }
-    if (origin !== ownOrigin) return { ok: false, reason: `This pairing code is for the Perch at ${origin}, not this one (${ownOrigin}).` };
+    if (origin !== ownOrigin) return { ok: false, reason: msg().pairing.otherOrigin(origin, ownOrigin) };
   }
   return { ok: true, link };
 }

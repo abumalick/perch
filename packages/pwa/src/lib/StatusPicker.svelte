@@ -1,13 +1,15 @@
 <script lang="ts">
   import type { WorkspaceStatus } from '@perch/contracts';
   import { STATUS_LABELS, STATUS_ORDER } from './workspace-status-display';
+  import { msg } from '../i18n.svelte';
 
   let {
     status,
-    label = STATUS_LABELS[status],
+    label,
     onSelect,
   }: { status: WorkspaceStatus; label?: string; onSelect: (s: WorkspaceStatus) => void } = $props();
 
+  const shown = $derived(label ?? STATUS_LABELS[status]);
   let open = $state(false);
 
   // Buttons must not steal focus from the terminal, or the soft keyboard closes.
@@ -28,14 +30,14 @@
     data-status={status}
     aria-haspopup="listbox"
     aria-expanded={open}
-    aria-label="Status: {label}"
+    aria-label={msg().status.pill(shown)}
     onpointerdown={keepFocus}
     onclick={() => (open = !open)}
-  >{label}</button>
+  >{shown}</button>
 
   {#if open}
-    <button type="button" class="backdrop" aria-label="Close status menu" onclick={() => (open = false)}></button>
-    <ul class="menu" role="listbox" aria-label="Set status">
+    <button type="button" class="backdrop" aria-label={msg().status.closeMenu} onclick={() => (open = false)}></button>
+    <ul class="menu" role="listbox" aria-label={msg().status.setStatus}>
       {#each STATUS_ORDER as option (option)}
         <li>
           <button

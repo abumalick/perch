@@ -1,6 +1,6 @@
 # Connection-event logging (client → agent JSONL)
 
-**Status:** approved, then changed: the HTTP `POST /clientlog` transport below is retired; the flush now travels inside the relay session (`clientLog` → `clientLogAck`, see `relay-cf-runbook.md`) · **Date:** 2026-07-17
+**Status:** approved, then changed: the HTTP `POST /clientlog` transport below is retired; the flush now travels inside the Noise session (`clientLog` → `clientLogAck`, `session-channels.ts` in contracts) · **Date:** 2026-07-17
 
 ## Problem
 

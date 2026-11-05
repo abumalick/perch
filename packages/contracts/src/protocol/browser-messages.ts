@@ -54,9 +54,9 @@ export type BrowserClientMessage = z.infer<typeof browserClientMessageSchema>;
 export const browserEndedReasonSchema = z.enum(['closed', 'not-found', 'error', 'opened-elsewhere']);
 export type BrowserEndedReason = z.infer<typeof browserEndedReasonSchema>;
 
-// `frame`/`tabs`/`url`/`status` are relayed from the upstream agent-browser stream, which
+// `frame`/`tabs`/`url`/`status` are forwarded from the upstream agent-browser stream, which
 // may add fields at any time — validate only what the PWA consumes and pass the rest
-// through so the relay stays forward-compatible.
+// through so the agent stays forward-compatible.
 export const browserAgentMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('authResult'), ok: z.boolean() }),
   z.object({ type: z.literal('pong') }),

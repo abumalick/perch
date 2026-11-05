@@ -376,7 +376,7 @@ describe('perch setup (fake service and Tailscale)', () => {
 
   it('answers an unknown flag with the usage and exit code 2', async () => {
     const m = await machine();
-    await expect(run(['setup', ...FLAGS, '--relay', 'x'], m.env, m.home, m.io)).rejects.toMatchObject({ exitCode: 2, message: expect.stringContaining('usage: perch setup') });
+    await expect(run(['setup', ...FLAGS, '--bogus', 'x'], m.env, m.home, m.io)).rejects.toMatchObject({ exitCode: 2, message: expect.stringContaining('usage: perch setup') });
   });
 });
 

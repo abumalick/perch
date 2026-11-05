@@ -128,7 +128,7 @@ describe('browserAgentMessageSchema', () => {
     ).toThrow();
   });
 
-  it('parses relayed tabs/url/status messages and keeps upstream extras', () => {
+  it('parses forwarded tabs/url/status messages and keeps upstream extras', () => {
     const tabs = { type: 'tabs', tabs: [{ id: 't1', active: true }] };
     expect(parseBrowserAgentMessage(tabs)).toEqual(tabs);
 

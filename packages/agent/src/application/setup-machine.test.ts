@@ -399,7 +399,7 @@ describe('parseSetupFlags', () => {
     ['no machine id', ['--project-roots', '/a']],
     ['no project roots', ['--machine-id', 'dev']],
     ['a relative root', ['--machine-id', 'dev', '--project-roots', 'a']],
-    ['an unknown flag', [...base, '--relay', 'x']],
+    ['an unknown flag', [...base, '--bogus', 'x']],
     ['a stray argument', [...base, 'extra']],
     ['a bad slug', [...base, '--slug', 'a/b']],
     ['a slug too long', [...base, '--slug', 'a'.repeat(65)]],

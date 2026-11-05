@@ -6,8 +6,7 @@ the PWA is branded Tarfa and served from tarfa.app; the code, CLI and config are
 Perch until the rename's second phase. An **agent** runs on each machine (e.g. a Mac and a Linux
 box) with a loopback phone port, which its operator publishes (`tailscale serve`, Funnel, a
 proxy); the **PWA** connects to that address directly, in an end-to-end Noise session keyed by
-the phone's device key, and streams its terminals. Agents of machines not yet moved off them
-also dial out to **relays** (relay section); no agent listens off loopback.
+the phone's device key, and streams its terminals. No agent listens off loopback.
 
 ## Golden rules
 - **All code, docs, comments, and commits in English.**
@@ -25,15 +24,15 @@ also dial out to **relays** (relay section); no agent listens off loopback.
   `ClientMessage` / `AgentMessage` discriminated unions. Terminal `data` is base64.
   **Change the protocol here first**, then the agent and PWA.
 - `packages/agent` (`@perch/agent`) — per-machine agent. tmux via `node:child_process`,
-  terminal streaming via `node-pty`, a `RelayLink` per relay that dials a socket back for
-  each phone and a loopback phone port phones connect to directly (both served through
-  `NoiseClientConnection`), and a `node:http` server on
+  terminal streaming via `node-pty`, a loopback phone port phones connect to directly (served
+  through `NoiseClientConnection`), and a `node:http` server on
   `127.0.0.1` with three bearer-token-guarded routes: `POST /hooks` (Claude Code hooks report
   attention here), `POST /unpark` (`perch unpark`) and `POST /message` (`perch send`).
   Domain/application in `application/` + `ports/`, adapters in `infrastructure/`, wiring in
   `server/`.
-- `packages/relay` (`@perch/relay`), `packages/relay-cf`, `packages/secure-channel` — the
-  relay core and its two hosts, and the Noise session both ends run (see the relay section).
+- `packages/secure-channel` (`@perch/secure-channel`) — the Noise IK session both ends run, its
+  framing, the device hello, pairing links and refusals (see "Device keys, enrolment and
+  pairing").
 - `packages/pwa` (`@perch/pwa`) — Svelte 5 (runes) PWA, launched as Tarfa. xterm.js terminal, vite-plugin-pwa
   (auto-update), Playwright e2e. Core logic (connection manager, aggregator, store) is in
   `src/core` + `src/adapters` and unit-tested with a fake socket; `src/lib` is the UI.
@@ -76,9 +75,9 @@ Build each feature in its own git worktree; full runbook in `docs/WORKTREES.md`.
   protocol, so testing a protocol change on-device requires running the worktree's agent or
   the deployed (main) agent silently drops the new/changed messages. `pnpm serve:agent
   .worktrees/<feature>` runs that worktree's agent live (flips `deploy/agent-live`, restarts
-  the service — safe via `KillMode=process`); it dials the same relays with the same identity,
-  so the phone's entries reach it unchanged. `pnpm serve:agent-restore` flips back. Secrets
-  and relays come from main's `deploy/agent.env`. Make additive protocol fields backward-compatible
+  the service — safe via `KillMode=process`); it takes the same phone port with the same
+  identity, so the phone's entries reach it unchanged. `pnpm serve:agent-restore` flips back.
+  Secrets and settings come from main's `deploy/agent.env`. Make additive protocol fields backward-compatible
   (e.g. `z.array(...).default([])`) so a version-skewed rollout degrades gracefully instead
   of the strict client parser dropping the whole message.
 
@@ -86,16 +85,16 @@ Build each feature in its own git worktree; full runbook in `docs/WORKTREES.md`.
 See `docs/DEPLOY.md` for the full runbook. In short:
 - Each agent reads `deploy/agent.env` (`PERCH_TOKEN`, `PERCH_MACHINE_ID`,
   `PERCH_PROJECT_ROOTS`, `PERCH_PORT` for the loopback hooks listener, `PERCH_PHONE_PORT` for the
-  phone port, `PERCH_RELAY_URLS`) and
+  phone port, `PERCH_PHONE_ADDRESSES` for where phones reach it) and
   runs as a service: **launchd** on macOS
   (`deploy/com.perch.agent.plist`), **systemd user unit + linger** on Ubuntu. Both invoke
   `deploy/run-agent.sh`, which self-locates `mise` (services don't inherit an interactive
   PATH). Run `mise trust` once per machine or the unit crash-loops.
-- **An agent is reached through its relays, or on its phone port once that is published.** It
-  binds `127.0.0.1` whatever `PERCH_HOST` says (a non-loopback value is ignored with a warning).
-  The hooks port (`PERCH_PORT`) serves only `POST /hooks`, `POST /unpark` and `POST /message`, and
-  is never published with `tailscale serve`. `pnpm perch connect` joins a machine to a relay;
-  `perch pair` pairs a phone (relay section).
+- **An agent is reached on its phone port once that is published.** It binds `127.0.0.1`
+  whatever `PERCH_HOST` says (a non-loopback value is ignored with a warning). The hooks port
+  (`PERCH_PORT`) serves only `POST /hooks`, `POST /unpark` and `POST /message`, and is never
+  published with `tailscale serve`. `perch setup` sets a machine up; `perch pair` pairs a phone
+  ("Device keys, enrolment and pairing").
 - **`perch setup` sets a machine up without prompting** (`application/setup-machine.ts` plans
   from flags plus what the machine holds, `run-setup.ts` applies; `docs/DEPLOY.md`, "In one
   command"): agent.env, agent key, roster, service, hooks, a `tailscale serve`/`funnel` handler,
@@ -117,19 +116,18 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   agent on it; `--tailscale serve` on a Funnel port runs `tailscale funnel` for the same reason); and **a `systemctl --user` that cannot reach the manager stops setup** (without
   `XDG_RUNTIME_DIR` it would read as "not installed" and reinstall a working unit). `perch pair` mints a
   link with every `PERCH_PHONE_ADDRESSES` address in order (`PERCH_PWA_ORIGIN` defaults to
-  `https://tarfa.app`); `--relay` still pairs through a relay.
+  `https://tarfa.app`).
 - **The phone port: phones connect to the agent directly** (`PERCH_PHONE_PORT`, default 8797,
   `infrastructure/phone-listener.ts`). It upgrades on **any** path (`tailscale serve --set-path`
   strips its prefix) and answers anything else 404, and each socket runs the unchanged Noise
-  session through `WsServer.acceptPhoneSocket`, the same entry a relay dial-back takes. **One
-  device gate serves both** (`startDeviceGate`): one roster, push budget, refusal log and roster
-  monitor, so a revocation closes direct sessions too. It runs whether or not relays are set, and
-  the agent key is loaded or created at every start. Things not to "simplify":
-  - **The bounds the relay enforced now live in the agent** (`application/phone-admission.ts`):
+  session through `WsServer.acceptPhoneSocket`. **One device gate serves every socket**
+  (`startDeviceGate`): one roster, push budget, refusal log and roster monitor, so a revocation
+  closes live sessions. The agent key is loaded or created at every start. Things not to "simplify":
+  - **The agent bounds what strangers can make it hold** (`application/phone-admission.ts`):
     8 unauthenticated sockets per client address, 32 in all, and when full the **oldest** is
     closed, never the newcomer, so strangers holding slots cannot lock the owner out; 20 new
     sockets a minute per address. A session leaves every count once authenticated (a pushed
-    session only at its first frame, as on the relay path). Refusals are in band, `4429`.
+    session only at its first frame). Refusals are in band, `4429`.
   - **The client address is `x-forwarded-for`'s last hop, believed only from a loopback peer**;
     a loopback peer naming nobody counts against the total only. IPv6 counts by its /64.
   - **Roster and pairing-file reads a stranger can cause are limited** (`DiskReadLimiter`, 4 at
@@ -137,12 +135,11 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     the phone retries), never as a verdict on its code: an unread pairing code may still be live,
     and must not fall through to the token check. An enrolled key is answered
     from the roster the monitor last read, so the owner's phones never wait on it.
-  - **A taken phone port does not stop the agent:** it logs `no phone port` and keeps its relays,
-    since a second Linux user's agent left on the default would otherwise crash-loop.
+  - **A taken phone port does not stop the agent:** it logs `no phone port` and keeps serving its
+    hooks, since a second Linux user's agent left on the default would otherwise crash-loop.
   - Every accepted `authResult` names `agent: { protocol: PROTOCOL_VERSION }` (contracts), so a
     PWA can tell an agent too old for it.
-- **The PWA connects to each agent directly, trying its addresses in order.** No gate, no
-  challenge, no device parameters: the phone opens the address and starts the IK handshake
+- **The PWA connects to each agent directly, trying its addresses in order.** The phone opens the address and starts the IK handshake
   (`adapters/noise-socket.ts`). Things not to "simplify":
   - **One entry per machine, known by its agent key** (`core/settings-store.ts`: `addresses`,
     1–4, stored normalized by `core/machine-addresses.ts`, so `wss://host` and `wss://host/` are
@@ -160,14 +157,13 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     what is left of the 10 s connect deadline, so a lone address waits as long as before.
     Measured on a Galaxy Tab: ws-open 70–130 ms over the tailnet, 0.75–0.95 s over Funnel.
   - **Each connection-log phase names its address** (the connection manager appends it), and a
-    hand-over is its own `address` phase. The relay phases (`challenge`, `admitted`,
-    `challenge-fallback`) are gone.
+    hand-over is its own `address` phase.
   - **Android Chrome asks once before a page may open a tailnet address** (Local Network
     Access). While the prompt is up the socket hangs, and a "Block" makes the address fail like
     an unreachable one, with nothing on the socket to tell them apart, so the unreachable view
     adds an Android-only hint (Site settings → Local network access).
   - **The phone port's refusals are busy, never final**: `4429` with "too many pending" or "too
-    many connections" redials on the backoff. Relay-only refusals are no longer worded.
+    many connections" redials on the backoff.
 - **The PWA is served from tarfa.app**, a static-assets Worker (`packages/pwa/wrangler.jsonc`)
   deployed only by `deploy/pwa-deploy.sh` from a clean main that matches its upstream, after a
   frozen install. It is done only once `https://tarfa.app/version.json` names the build just
@@ -562,142 +558,67 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   came from on-device logs: the old 4s-grace flip to "Can't reach" made the user tap Reconnect,
   and each tap aborted an about-to-succeed connect, making recovery *slower*.
 
-- **The relay — for machines still on relays, until the relay code is deleted.** The Tarfa
-  PWA no longer speaks to relays (direct section above); what follows is the agent's and the
-  relays' side, and the older PWAs that machines on relays still use. Runbook and
-  threat model: `docs/relay-cf-runbook.md`. **Exactly two supported hosts over one core:** the
-  Cloudflare Worker (`packages/relay-cf`, the default to start with) and the self-hosted Node
-  relay (`packages/relay`, the `perch-relay` service). How a self-hosted relay is reached is
-  its operator's business: Tailscale is one way, never a requirement, and VPS or tunnel setups
-  are possible but not supported (no Cloudflare Tunnel support; it was tried and dropped).
-  An agent holds a control socket to each relay in `PERCH_RELAY_URLS` (the old single `PERCH_RELAY_URL` is ignored, with a warning) and dials back one socket per client; every byte
-  between phone and agent is a Noise IK session (`packages/secure-channel`) pinned to the agent's key and
-  carrying the phone's own device key, so the relay forwards ciphertext only. Things not to "simplify":
+- **Device keys, enrolment and pairing: the agent is the gate.** Every byte between phone and
+  agent is a Noise IK session (`packages/secure-channel`) pinned to the agent's key and carrying
+  the phone's own device key. Relays once stood in front of it; they were removed, and what
+  follows are the agent's and the PWA's own rules. Things not to "simplify":
   - **A machine entry is connectable only with a valid 32-byte agent key, and never connects in
     plaintext.** Without one it gets no socket at all, and Settings refuses to save an entry
     with its key cleared.
-  - **The chunk flag is the AEAD's associated data.** Outside it, the relay could merge or
-    cut messages undetected. Any change to framing or the handshake is a wire-format change:
-    bump the prologue, and ship the agent and PWA together (`serve:agent` + `serve:build`).
-  - **Deploy the Worker only with `deploy/relay-cf-deploy.sh`, from a clean main.** It reads
-    main's gitignored `deploy/relay-cf.env` and uploads `JOIN_KEY` (required) and `ADMIN_KEY` as secrets. Nothing host- or
-    account-specific goes in the repo. "Clean" is enforced: no uncommitted or untracked files,
-    and `HEAD` equal to its upstream (else `origin/main`) after a fetch. `--dev` deploys any checkout to a throwaway dev Worker
-    (wrangler `env.dev`) with **its own keys** (`RELAY_DEV_JOIN_KEY`, optional
-    `RELAY_DEV_ADMIN_KEY`; it refuses without the first and never uploads production's keys),
-    **on demand only**: for a change to Durable Object bindings or
-    migrations or to the deploy itself, deleted afterwards (`wrangler delete --env dev`). There
-    is no permanent dev Worker. **Production is wrangler's `env.production`** (or
-    `env.production-workers-dev`, the same Worker, for a relay with no custom domain), which
-    only the script targets; `wrangler.jsonc`'s top level is a local Worker of its own
-    (`perch-relay-local`, no host, no keys), so a bare `wrangler deploy` never replaces
-    production. Don't move production back to the top level. A test keeps the top level's,
-    `env.dev`'s and both production environments' Durable Objects and migrations equal,
-    production's name to those two, and `env.production`'s `workers_dev` and `preview_urls` off. **Wrangler never holds a key in its environment**: the script
-    reads each value in a subshell, exports only `CLOUDFLARE_ACCOUNT_ID`, passes the keys in the
-    secrets file only, and a `--dry-run` reads none. A production deploy runs
-    `pnpm install --frozen-lockfile` first (the Worker bundles `@noble/*` from `node_modules`).
-    `--env-file <path>` reads another env file (one per Cloudflare account, outside the repo) under
-    the same guards; that account's PWA goes on a static-assets Worker beside its relay (runbook,
-    "A relay and PWA in your own Cloudflare account"; `docs/SETUP-MACHINE.md` for the whole machine).
-  - **`packages/relay` stays host-agnostic** (no Cloudflare types): the Node server
-    (`perch-relay`, config in `~/.perch/relay/config.json`) is the self-hosted host beside
-    `packages/relay-cf`, over the same core. **Both run one conformance suite**
-    (`packages/relay/src/conformance.ts`, the test API injected because the two packages run
-    different vitest versions); a relay change passes it on both hosts, and a behaviour only
-    one host has is a bug in the other.
-  - **Dev flow: the local relay for everything.** The dev machine runs the self-hosted relay as
-    the `perch-relay` user service on localhost (`serve:relay` / `serve:relay-restore`, like
-    the agent), published to the tailnet with `tailscale serve --https=8451`; `wrangler dev`
-    (local workerd) when iterating on the Cloudflare adapter; production deploys only from main.
-    `wrangler dev` listens on **:8788** (`dev.port` in `wrangler.jsonc`; its default 8787 is the
-    agent's `PERCH_PORT`) and needs `JOIN_KEY` in `packages/relay-cf/.dev.vars` (template
-    `.dev.vars.example`), or joining answers 501.
-    **The `serve:*` scripts and `worktree:remove` act on main's `deploy/*-live` symlinks from any
-    checkout** (they resolve main with `git rev-parse --git-common-dir`, like
-    `relay-cf-deploy.sh`), so `pnpm serve:relay .` inside a worktree flips the live relay.
-    One agent key is one account on every relay, so the phone keeps an entry per relay and
-    toggles. **The agent's own control socket stays on `ws://127.0.0.1:8450`.**
-  - **The self-hosted relay caps connections per host and per client address itself**, and
-    **believes no client-IP header unless `clientIpHeader` is set** in
-    `~/.perch/relay/config.json` — and then only from a loopback peer (a proxy on the same
-    machine; keep the relay bound to `127.0.0.1`). Trusting `CF-Connecting-IP` from any
-    loopback peer let every tailnet device forge its address through `tailscale serve`.
-    **A loopback peer that names no client counts against the host cap only**: keyed on its one
-    address, six connections through a local proxy would lock out every other client, the owner
-    included. The agent's roles count against the host cap only too.
-  - **A superseded agent backs off, it does not redial.** The relay closes an older control
-    socket for the same account with 4000; `RelayLink` then waits 1 → 15 minutes instead of
-    resetting its backoff on the next open, which is what made two agents sharing
-    `~/.perch/relay-key.json` knock each other off every second. Never run a second agent
-    against the production relay; give a hand-run one only `ws://127.0.0.1:8450`.
+  - **The chunk flag is the AEAD's associated data.** Outside it, anything on the path (a proxy,
+    Funnel) could merge or cut messages undetected. Any change to framing or the handshake is a
+    wire-format change: bump the prologue, and ship the agent and PWA together
+    (`serve:agent` + `serve:build`). The prologue is still `perch-relay-noise-v3` and stays so
+    until a real wire change.
+  - **NK is retired; IK is the only handshake** (flag `0x03`). The old NK flag `0x02` fails as
+    any non-handshake frame does (4002).
   - **Media previews, the browser view and the connection-log flush ride the session**
-    (`session-channels.ts` in contracts; runbook "Side channels inside the session"); the
-    agent no longer has the HTTP `/file`, `/clientlog` or `/browser` endpoints they once used.
-    Every agent that can still connect serves them, so the PWA always uses them. The browser stream opens with the browser
-    protocol's `auth` but its token is empty and never checked: the session is already
-    authenticated, and a paired phone holds no token (checking it refused every paired phone).
-    **The phone's acknowledgements are the backpressure** (`mediaAck`, `browserAck`): the
-    agent's socket drains into the relay at once, so its `bufferedAmount` cannot see a slow
-    phone. Keep a media chunk inside one Noise frame and the windows small (4 chunks, one
-    browser message), since `seal` sends a message's frames back to back and whatever is in
-    flight is what terminal output waits behind. A held browser frame is flushed on the ack
-    (`onDrain`), not on the next upstream message.
-  - **Device keys: the agent is the gate, the relay only the first one.** Each PWA keeps an
-    X25519 + Ed25519 identity in IndexedDB (non-extractable WebCrypto keys, noble per curve
-    where the browser lacks it). **If IndexedDB will not store the `CryptoKey`s (or returns them
-    broken), both keys fall back to noble raw bytes.** That falls under storage, not generation.
-    Playwright's WebKit takes `CryptoKey`s without an error but reads them back broken, so every
-    e2e exercises the read-back fallback; only `e2e/device-key.spec.ts`'s patched IndexedDB
-    covers the `DataCloneError` path.
-    A store that cannot be *read* fails the load: never make a key for the launch alone (each
-    one would enrol as a new device), and never replace a stored identity. The failure reaches
-    Settings → Diagnostics and the connection error with its DOMException name. The agent checks the IK key against `~/.perch/devices.json`
-    itself and never takes the relay's word: an unknown key may send `auth` and nothing else,
-    and it is enrolled only when the handler's `authResult ok` goes out. **A new key must prove
-    the Ed25519 relay key its hello names** (`hello.proof`: a signature over its X25519 key and
-    the IK handshake hash the hello is sealed under, `IkResponder.payloadHash()`), or one phone
-    could have the agent publish another's; an enrolled key needs none. **The roster knows a key
-    by its bytes, so the responder refuses a non-canonical X25519 encoding** (top bit set, or
-    ≥ p): X25519 ignores the top bit, and a revoked key re-spelled would come back as unknown.
-    Enrolment likewise refuses a new key naming a revoked Ed25519 relay key. **Nothing the phone
-    sends behind an accepted `auth` reaches the handler until the roster write settles** (it is
-    held with the outgoing `authResult`, and dropped if the roster declines). Hello names are
-    sanitised (control characters, bidi overrides) before the journal and `perch devices`. The
-    relay admits the Ed25519 keys the agent publishes over the control socket (a zod-parsed
-    `policy`), after a signature over its own challenge. **Challenges are stateless** (expiry +
-    random + HMAC under a per-account key kept once in the store, `relay-challenge.ts`): handing
-    one out writes nothing; used nonces are remembered in memory for their 30 s only. **Enrolment
-    dials are capped per account** (10 a minute, 4429), since each costs the agent file reads and
-    a key derivation; the window lives in the store, so a Durable Object woken from hibernation
-    does not get a fresh one. Until `auth` is accepted the agent reads 8 KiB messages at most and three
-    `auth`s per socket, both counted as messages arrive, and holds at most 16 messages while a
-    credential is being checked (an honest phone sends nothing behind `auth` until `authResult`). **The agent bounds what a hostile relay can make it hold, without
-    trusting the relay's own caps:** `RelayLink` keeps at most 32 dial-backs unauthenticated
-    (a dial holds its slot until its `authResult` goes out or its socket closes, so don't free it
-    on open), checks at most 4 enrolments at once and 10 a minute per link (refusing past either
-    without touching disk), a closed relay socket is terminated 1 s after its close frame, and no
-    relay socket offers compression. Dial ids are token characters only (`relay-control.ts`), since
-    the agent logs them. Runbook: "Device keys".
-  - **The agent keeps one spare dial-back per relay, and the relay pairs a phone with it at once.**
-    A fresh dial-back put the agent's TCP + TLS + upgrade to the relay on every phone connect's
-    critical path (on a long path to Cloudflare, its own TLS handshake stalling was what ended a
-    connect in 4504). A spare is `role=spare`, signed for that role and an id the agent picks;
-    the relay sends `paired` on it before the phone's frames (runbook, "Spare dial-backs"). Two
-    things not to "simplify": **an enrolment dial never takes a spare** (the agent checks the
-    proof before it dials), and **a paired spare takes a dial-back slot like a dial**, so a relay
-    that pairs spares as fast as they open is held to the same 32 as one that floods dials.
+    (`session-channels.ts` in contracts); the agent has no HTTP `/file`, `/clientlog` or
+    `/browser` endpoints. The browser stream opens with the browser protocol's `auth` but its
+    token is empty and never checked: the session is already authenticated, and a paired phone
+    holds no token. **The phone's acknowledgements are the backpressure** (`mediaAck`,
+    `browserAck`): the agent's socket drains into whatever publishes the phone port at once, so
+    its `bufferedAmount` cannot see a slow phone. Keep a media chunk inside one Noise frame and
+    the windows small (4 chunks, one browser message), since `seal` sends a message's frames
+    back to back and whatever is in flight is what terminal output waits behind. A held browser
+    frame is flushed on the ack (`onDrain`), not on the next upstream message.
+  - **Each PWA keeps an X25519 + Ed25519 identity in IndexedDB** (non-extractable WebCrypto
+    keys, noble per curve where the browser lacks it). **If IndexedDB will not store the
+    `CryptoKey`s (or returns them broken), both keys fall back to noble raw bytes.** That falls
+    under storage, not generation. Playwright's WebKit takes `CryptoKey`s without an error but
+    reads them back broken, so every e2e exercises the read-back fallback; only
+    `e2e/device-key.spec.ts`'s patched IndexedDB covers the `DataCloneError` path. A store that
+    cannot be *read* fails the load: never make a key for the launch alone (each one would enrol
+    as a new device), and never replace a stored identity. The failure reaches Settings →
+    Diagnostics and the connection error with its DOMException name. **A new device key is read
+    back before it is trusted:** the PWA then replaces its own just-created record with noble
+    keys, and an existing record that reads back malformed fails with a way out, never a
+    `TypeError` and never a silent new key.
+  - **Only the X25519 key identifies a phone.** The agent checks the IK key against
+    `~/.perch/devices.json` itself: an unknown key may send `auth` and nothing else, and it is
+    enrolled only when the handler's `authResult ok` goes out. The hello's Ed25519 key (`sig`)
+    is stored in the roster for its file format and checked by nothing; its `proof`, which
+    relays admitted a phone by, is optional in the schema so an older PWA's hello still parses,
+    and is never read (the PWA no longer sends one). **The roster knows a key by its bytes, so
+    the responder refuses a non-canonical X25519 encoding** (top bit set, or ≥ p): X25519
+    ignores the top bit, and a revoked key re-spelled would come back as unknown. **Nothing the
+    phone sends behind an accepted `auth` reaches the handler until the roster write settles**
+    (it is held with the outgoing `authResult`, and dropped if the roster declines). Hello names
+    are sanitised (control characters, bidi overrides) before the journal and `perch devices`.
+    Until `auth` is accepted the agent reads 8 KiB messages at most and three `auth`s per
+    socket, both counted as messages arrive, and holds at most 16 messages while a credential is
+    being checked (an honest phone sends nothing behind `auth` until `authResult`).
   - **A phone is refused in band, never with an HTTP status.** A browser's WebSocket reports
-    1006 for any refused upgrade, which reads as a network failure. The relay completes a
-    phone's upgrade and closes it at once with `4000 + status` and a `REFUSAL` reason
-    (`secure-channel/src/refusal.ts`); the agent's `refuse` carries its reason, and its own 4003
-    closes use the same words; the PWA words each one (`core/refusal.ts`) and stops redialing
-    on a final one. The agent keeps spent and expired pairing codes for a day so it can say
-    which. A reason is told only to whoever passed the check that produced it. Runbook: "How a
-    refusal reaches the phone".
-  - **The relay holds nothing derived from the token.** An unknown key's enrolment proof is a
-    MAC under a token-derived key; the relay forwards it in the `dial` and the agent answers
-    `refuse` or dials back. Don't move that check into the relay.
+    1006 for any refused upgrade, which reads as a network failure. The phone port completes the
+    upgrade and closes it with `4000 + status` (`4429` busy) or the agent's `4003`, and a
+    `REFUSAL` reason (`secure-channel/src/refusal.ts`, the reasons an agent sends); the PWA words
+    each one (`core/refusal.ts`) and stops redialing on a final one. The agent keeps spent and
+    expired pairing codes for a day so it can say which. A reason is told only to whoever passed
+    the check that produced it.
+  - **A phone that pinned another agent key is told so, finally.** The responder tells a first
+    message sealed for another static key (`WrongStaticKeyError`) from any other failure; the
+    agent closes it with 4003 "wrong agent key", and the PWA words it as final. "Agent key
+    mismatch" is for an answer the pinned key did not make, which the real agent never sends.
   - **Revocation is a deny list, not a deletion.** A lost phone may still hold the token (an
     entry added by hand that has not connected since phones began forgetting it), and a deleted
     key would re-enrol itself on it; `forget` is the explicit way back. Revoke also cannot stop
@@ -705,35 +626,37 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   - **A phone forgets its token once its key is enrolled, and the `authResult` waits for the
     roster.** `authResult` carries `credential` (device, pairing, token) and `enrolled`; on
     `enrolled` the PWA drops the entry's token and pairing secret (`onCredentialsSpent`), so a
-    stolen `relay-key.json` no longer collects the token from every phone. For a new device
+    stolen agent key no longer collects the token from every phone. For a new device
     `NoiseClientConnection` holds the `authResult` (and anything sent after it, in order) until
     the roster write resolves: `enrolled` must mean written, or a phone whose enrolment failed
     would be left with no credential. A key enrolled at the handshake that still sends the token
     is refused with 4003 "token not needed", which the PWA answers by redialing without it;
-    don't make that refusal final. **That close travels outside the session, so the relay can
-    forge it:** the PWA only holds the token back, forgets it when the next session's `authResult`
-    says `enrolled`, and sends it again if that attempt is refused as not enrolled. A pairing
-    secret is likewise dropped on `enrolled` only (or on any accepted auth from an agent that
-    predates the field), never just because the machine came online. An unknown key that offers no credential is told
-    it is not enrolled, whatever the mode.
+    don't make that refusal final. **That close travels outside the session, so anything on the
+    path can forge it:** the PWA only holds the token back, forgets it when the next session's
+    `authResult` says `enrolled`, and sends it again if that attempt is refused as not enrolled.
+    A pairing secret is likewise dropped on `enrolled` only, never just because the machine came
+    online. An unknown key that offers no credential is told it is not enrolled, whatever the
+    mode.
+  - **An enrolled IK key authenticates its session on its own** (`keyCredential`: `device` for a
+    key enrolled at the handshake, `pairing` for one that just spent a code): a paired phone has
+    no token. That makes the device key the phone's whole credential, which is why the
+    extractable fallback above matters.
   - **Enrolment has three modes, and `off` means token enrolment only.** `on`: the token or a
     pairing code enrols a phone; `off`: only a pairing code (minted on the machine by its
     operator, so an explicit authorisation); `closed`: nothing. `devices.json` keeps `enrolment`
     as "any enrolment at all" (false = closed, its old meaning) and adds `tokenEnrolment`, so an
     agent from before the modes still parses the file instead of failing closed. The agent
-    refuses a token at four places: the dial (`admitsEnrolment`), the handshake (closed only),
-    an unknown device's `auth` **before the handler sees the token** (`refusesToken`, including a
-    pairing-shaped secret it does not know), and `enrol(device, via)` after `authResult`, which
-    closes the session with the refusal when the roster declines (a mode changed since the
-    handshake); only a failed write serves it unenrolled. The
-    relay's `tokenEnrol` policy field refuses only a proof the phone *says* is a token's
-    (`cred=token`); one that names no credential goes to the agent, which can tell.
-  - **The published policy outlives the control socket**, so an agent dropping does not reopen
-    the relay's gate; only a relay that never received one admits a client without a device key
-    (the agent, IK only, then closes it).
-    **The agent republishes on each heartbeat until the relay answers `applied`:** a Worker
-    deploy keeps the hibernated control socket open, so the new code starts with no policy
-    and would otherwise stay open until the roster next changed.
+    refuses a token at three places: the handshake (closed only), an unknown device's `auth`
+    **before the handler sees the token** (`refusesToken`, including a pairing-shaped secret it
+    does not know), and `enrol(device, via)` after `authResult`, which closes the session with
+    the refusal when the roster declines (a mode changed since the handshake); only a failed
+    write serves it unenrolled.
+  - **A pairing secret is spent atomically at `auth`** (`redeemPairing`, under the pairing file's
+    lock). Enrolment `off` still takes it; only `closed` refuses it. **It is spent by the first
+    `auth` that presents it, enrolled device or not**, and bound to that device's key (`usedBy`):
+    an already-enrolled device needs no code, but one it left live would admit whoever else holds
+    the link for ten minutes. The binding device presenting it again is not a second use; any
+    other is refused.
   - **Device ids are 48 bits, so a key is the real name.** Enrolment refuses a key whose id is
     already in the roster (enrolled or revoked), and `perch devices revoke/forget` take the full
     X25519 key as well as an id, which `perch devices` prints.
@@ -743,12 +666,11 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     answered without taking `pairing.json`'s lock, so made-up ones cannot keep `perch pair` out.
   - **The hooks have their own secret, kept off every command line.** `POST /hooks` takes a
     random secret the agent writes to `~/.perch/token` at each start (the path installed hooks
-    already read), never `PERCH_TOKEN`, which enrols phones. `POST /unpark` takes the same
-    secret, which `perch unpark` reads from that file into a header in-process. `perch-hook.sh` gives curl the header
-    through a file (process substitution) and the body on stdin, built with the `printf` builtin:
-    any local user can read a process's argv. `perch-hook.test.sh` asserts neither reaches it.
-  - **An agent refuses a `ws://` relay off loopback** (`isCleartextRemote`): `perch connect`
-    throws, and `PERCH_RELAY_URLS` drops it with a warning, as the phone's pairing link does.
+    already read), never `PERCH_TOKEN`, which enrols phones. `POST /unpark` and `POST /message`
+    take the same secret, which `perch unpark` reads from that file into a header in-process.
+    `perch-hook.sh` gives curl the header through a file (process substitution) and the body on
+    stdin, built with the `printf` builtin: any local user can read a process's argv.
+    `perch-hook.test.sh` asserts neither reaches it.
   - **The PWA runs no script but its own bundle.** A media preview's Blob takes the type its
     path implies, never the agent's (`SessionMedia` refuses a reply naming another): a blob: URL
     has the PWA's origin, so an agent answering a `.pdf` as `text/html` once ran script beside
@@ -759,97 +681,35 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     `sandbox`: WebKit draws PDFs with a plugin, which any sandbox disables.
   - **Secret files must be private, or the agent does not start.** At startup it makes
     `~/.perch` 0700 and exits, naming each file and the `chmod 600` that fixes it, while
-    `relay-key.json`, `devices.json`, `pairing.json`, `token` or `deploy/agent.env` (named by
-    `PERCH_AGENT_ENV` from `run-agent.sh`) can be read or written by another user; the
-    self-hosted relay does the same for its directory, config and accounts, and
-    `relay-cf-deploy.sh` for `deploy/relay-cf.env`. A service that crash-loops right after an
-    update: read its log for that line first.
+    `relay-key.json` (the agent key, named when relays existed), `devices.json`, `pairing.json`,
+    `token` or `deploy/agent.env` (named by `PERCH_AGENT_ENV` from `run-agent.sh`) can be read or
+    written by another user. A service that crash-loops right after an update: read its log for
+    that line first.
   - **No process the agent starts gets a `PERCH_` variable** (`childEnv`, used by every
     `execFile` and the pty). A tmux server copies the environment of the client that starts it
     into its global environment, which every pane inherits; when the agent's own
     `new-session` found no server, every workspace got `PERCH_TOKEN`. A new spawn site must use
     `childEnv()` too. The CLI reads the agent.env the service reads for every command, since a
     shell in a workspace has none of the agent's variables.
-  - **A phone that pinned another agent key is told so, finally.** The responder tells a first
-    message sealed for another static key (`WrongStaticKeyError`) from any other failure; the
-    agent closes it with 4003 "wrong agent key", and the PWA words it as final. "Agent key
-    mismatch" is for an answer the pinned key did not make, which the real agent never sends.
-  - **The challenge comes on the phone's own socket (the gate); the fetch is the fallback.**
-    An older PWA upgrades with `?challenge=1`; the relay accepts at once, files the socket as a
-    `gate` (nobody's partner), sends a challenge text frame, takes exactly one text reply
-    carrying what the query would have (`relay-gate.ts`), runs the unchanged `admitDevice`, and
-    sends `ready` once the socket is paired; the phone starts IK only then. Things not to
-    "simplify": **a gate is held unauthenticated, so it is bounded** (5 s deadline, 4408; 8
-    waiting per account, and the ninth closes the *oldest* waiting one, never the newcomer, or
-    holding 8 idle sockets would lock the owner out); **anything but one well-formed text reply
-    closes it** (4400), and nothing from it is ever forwarded; **the nonce is not bound to the
-    gate** (the MAC and spent set carry replay, as for a fetched one), so a Durable Object that
-    lost a gate's memory just closes it (4401). Socket labels live in the DO attachment (tags are
-    fixed at accept, and a gate becomes a client), with the tags as fallback for sockets accepted
-    by older code. **The fetch flow (`?role=challenge`) stays on every relay** for the PWAs that
-    use it. The self-hosted relay prints when a phone's challenge, upgrade and the agent's dial
-    arrive, so a slow connect can be placed (at most 30 such lines a minute, so a flood cannot
-    fill the journal).
-  - **Machines join; phones pair.** Runbook: "Connecting a machine and pairing a phone".
-    `PERCH_JOIN_KEY=<join key> pnpm perch connect <relay>` registers the machine (`role=join`), adds the
-    relay to main's `agent.env` (backed up first), restarts the agent and prints a QR code;
-    `perch pair` mints another. The accounts a relay serves live in a registry (the Worker's
-    `RegistryRoom` SQLite Durable Object, `~/.perch/relay/accounts.json` on Node), changed only by
-    joins and removals; there is no hand-edited account list. Things not to "simplify":
-    - **A join carries two proofs, and neither alone registers anything:** the agent's Ed25519
-      signature and an HMAC under the join key, both over the same account/role/time message,
-      and the account must be `accountId(key)`. The join key never travels, so the relay takes
-      nothing it could replay for another account or action.
-    - **The join key only registers; listing and removing take a separate admin key**
-      (`adminKey` in the Node config, the Worker's `ADMIN_KEY`; none configured → 501). The join
-      key is handed to every machine, so it must not be able to remove other accounts.
-    - **Unknown account → 404 before any per-account state**, answered from the registry.
-      The Worker caches found accounts per isolate (60 s, every role, challenges included) and a
-      miss for 10 s, hits and misses in separate bounded maps so guesses never evict a hit. A
-      miss only absorbs a *repeated* guess: **every distinct guess still reaches the one
-      `RegistryRoom`**, which a flood past ~1,000 requests a second can overload for every
-      uncached account; the zone rate rule is the bound. With a custom domain (`RELAY_DOMAIN`)
-      the deploy targets `env.production`, which turns the `workers.dev` host off so nothing
-      bypasses the rule; without one it targets `env.production-workers-dev`, the same Worker on
-      its `workers.dev` host, which no zone rule can cover (runbook, accepted limits). A removed account cannot come back through a stale hit, by two
-      mechanisms, don't drop either: a control socket that passes its signature check against
-      the cached key is confirmed with the registry (`authorizeCached`), and an evicted
-      `RelayRoom` refuses every role as unknown until a join reinstates it (`Relay.evict` marks
-      the store; `RelayRoom.evict` wipes storage *before* that, or the mark would be wiped too).
-      A removed account's sockets close with 4004. **Removing an account already on the deny list
-      evicts it again and answers 200**: the registry changes before the eviction, so a failed
-      eviction would otherwise leave the account denied, unregistered, and its sockets open with no
-      removal able to reach them.
-    - **A removed account is on a deny list a join cannot lift** (`removed` in `accounts.json`,
-      a `removed` table in `RegistryRoom`): a join answers 403 until the admin key allows it
-      (`perch-relay machines allow`). Its thief holds the join key too, since every machine does.
-    - **The join rate limit counts every join-key request per client address** on both hosts,
-      and lives in the conformance suite with the rest.
-    - **A pairing secret is verify-only at the relay gate** (`admitsEnrolment`) **and spent
-      atomically at `auth`** (`redeemPairing`, under the pairing file's lock): spending it at the
-      gate would cost the phone a new code whenever the handshake after it failed. Enrolment
-      `off` still takes it (see "Enrolment has three modes" above); only `closed` refuses it. **It is spent by the first `auth` that presents it, enrolled
-      device or not**, and bound to that device's key (`usedBy`): an already-enrolled device
-      needs no code, but one it left live would admit whoever else holds the link for ten
-      minutes. The binding device presenting it again is not a second use; any other is refused.
-    - **An enrolled IK key authenticates its relay session on its own** (`keyCredential`:
-      `device` for a key enrolled at the handshake, `pairing` for one that just spent a code):
-      a paired phone has no token. That makes the device key the phone's whole credential, which
-      is why the extractable fallback below matters.
+  - **An agent.env from before still starts.** `PERCH_RELAY_URLS` or `PERCH_RELAY_URL` is
+    ignored with one startup warning, and `perch connect`, `perch relay-key` and
+    `perch pair --relay` refuse in one line pointing at `perch setup` and `perch pair` (exit 2).
+  - **Machines are set up with `perch setup`; phones pair with `perch pair`** (runbook:
+    `docs/DEPLOY.md`). Pairing-link rules:
     - **A link's default path (`p`, from `PERCH_DEFAULT_PATH`) is a convenience, never a reason
       to fail a pairing.** The phone drops one that is not absolute or exceeds 128 characters and
-      pairs anyway, so `perch pair`/`connect` refuse such a value up front instead. It sets a new
-      entry's `defaultPath` and fills an existing entry only when that has none: a re-scan is a
-      retry, and the owner's Settings value wins, like the entry's name.
+      pairs anyway, so `perch pair` refuses such a value up front instead. It sets a new entry's
+      `defaultPath` and fills an existing entry only when that has none: a re-scan is a retry,
+      and the owner's Settings value wins, like the entry's name.
     - **A pairing link carries up to four addresses and never re-pins an entry.**
       `#pair?u=<address>&u=…&k=<agent key>&s=<secret>&n=<name>&p=<path>` (`pairing-link.ts`):
       `u` repeats 1–4 times in the order the phone tries them, each `wss:` (`ws:` on loopback
-      only, for the e2e) with the path `/` or one segment (a relay account, or a `tailscale
-      serve --set-path` slug); a fifth or any invalid one nulls the whole link. A link naming an
-      address another key's entry holds is refused (`pairedMachine`, direct section). A link
-      opened from outside the app is confirmed first, showing every host and the machine key's
-      fingerprint that `perch pair` prints beside the code, and a pending pairing secret is sent
-      in preference to a token. A full link must name this app's own origin (`readPairingLink`).
+      only, for the e2e) with the path `/` or one segment (a `tailscale serve --set-path` slug); a
+      fifth or any invalid one nulls the whole link. A link naming an address another key's entry
+      holds is refused (`pairedMachine`, direct section). A link opened from outside the app is
+      confirmed first, showing every host and the machine key's fingerprint that `perch pair`
+      prints beside the code, and a pending pairing secret is sent in preference to a token. A
+      full link must name this app's own origin (`readPairingLink`).
     - **A pairing link tapped inside the app is paired by the running app**
       (`store.openPairingLink`, from the terminal's link handlers and a capture-phase click
       listener), never opened: on Android it opened another page context, which added the
@@ -865,28 +725,19 @@ See `docs/DEPLOY.md` for the full runbook. In short:
       then left. `InstallFirst` walks them through copying the link, adding the app, and
       **Paste pairing link** in Settings (the clipboard is the one thing the contexts share);
       "Pair in this browser instead" keeps the old path.
-    - **A new device key is read back before it is trusted.** A browser can take a `CryptoKey`
-      into IndexedDB without an error and return something else (Playwright's WebKit does): the
-      PWA then replaces its own just-created record with noble keys, and an existing record that
-      reads back malformed fails with a way out, never a `TypeError` and never a silent new key.
   - **An enrolled phone with no credential is served at once, right behind message 2.** Its
     device hello carries `push`; when the agent finds the key enrolled it answers `authResult`
     (`pushed`) and the opening replies (workspaces, keyterms) without waiting for the
-    phone's `auth`, which saves the two round trips that followed the handshake (on Cloudflare,
-    the list came ~480 ms after the handshake, now ~90). The phone still sends its `auth`; the
-    handler answers it with nothing (a token is still refused as not needed). Things not to
-    "simplify": **the phone asks only when its entry holds no token and no pairing secret** —
-    otherwise the pushed `enrolled` could make it forget a pairing code before its `auth` burned
-    it; **a pushed session keeps its auth deadline and dial-back slot until the phone's first
-    frame** (message 1 can be replayed by the relay, and its replies are unreadable, but each
-    one would otherwise free a slot as authenticated); and **`PushBudget` caps pushes at 10 a
-    minute per device key** across all relays, since each replay builds the list again; past
-    it, and with no budget wired at all, the phone gets the old flow. No prologue bump: an older
-    agent strips the unknown hello field and an older PWA never asks.
-  - **NK is retired; IK is the only handshake** (prologue `perch-relay-noise-v3`, flag `0x03`).
-    The old NK flag `0x02` fails as any non-handshake frame does (4002). The relay refuses a
-    client without a device key once a policy is published, and drops an older agent's
-    `anonymous` field unread; `PERCH_RELAY_ALLOW_NK` is ignored with a startup warning.
+    phone's `auth`, which saves the round trips that followed the handshake. The phone still
+    sends its `auth`; the handler answers it with nothing (a token is still refused as not
+    needed). Things not to "simplify": **the phone asks only when its entry holds no token and
+    no pairing secret** — otherwise the pushed `enrolled` could make it forget a pairing code
+    before its `auth` burned it; **a pushed session keeps its auth deadline and its
+    unauthenticated slot on the phone port until the phone's first frame** (message 1 can be
+    replayed by whoever saw it, and its replies are unreadable, but each one would otherwise free
+    a slot as authenticated); and **`PushBudget` caps pushes at 10 a minute per device key**,
+    since each replay builds the list again; past it, and with no budget wired at all, the phone
+    gets the old flow.
 
 ## CRITICAL: the PWA's origin and what it can reach
 The PWA was first served from the tailnet because browsers once blocked a **public-origin page
@@ -990,8 +841,8 @@ So the PWA is on a public origin, tarfa.app, and what follows from that:
   workspace with the connection id. The e2e uses a deliberately mismatched agent id to
   cover this.
 - **List on connect:** the agent sends workspaces in response to an explicit `list`, or pushes
-  them right behind the handshake to a phone it serves at once (relay section). Otherwise the
-  PWA sends `list` (with `listKeyterms`) once each relay session is
+  them right behind the handshake to a phone it serves at once ("Device keys, enrolment and
+  pairing"). Otherwise the PWA sends `list` (with `listKeyterms`) once each session is
   authenticated, on every (re)connect (`openingRequests`). The e2e fake agent is faithful to both.
 - **Restarting the agent must NOT kill tmux sessions:** the agent spawns the tmux server
   as a child, so it lives in the systemd unit's cgroup. The default
@@ -1324,13 +1175,13 @@ So the PWA is on a public origin, tarfa.app, and what follows from that:
     A subagent's request still maps to `needs-feedback`: the user is the one asked. `SessionEnd`
     is not registered: it can fire late, from a newer Codex process.
 - **Media previews come in acknowledged chunks inside the session, never as one message.**
-  Image, PDF and audio bytes are read with `readMedia` and arrive as `mediaChunk`s (relay
-  section), never as one base64 blob on the shared session, which would stall terminal output
+  Image, PDF and audio bytes are read with `readMedia` and arrive as `mediaChunk`s ("Device
+  keys, enrolment and pairing"), never as one base64 blob on the shared session, which would stall terminal output
   behind it. The agent once served them over an HTTP `GET /file`, which on the iPhone needed
   iCloud Private Relay off: it proxies Safari's HTTPS fetches through Apple, which cannot reach
   a tailnet `100.x` address, while WebSockets and the cached PWA shell kept working and masked
-  the cause. The one HTTPS fetch left to a tailnet host is the self-hosted relay's challenge
-  (`?role=challenge`); if it ever fails only on an iPhone, suspect Private Relay first.
+  the cause. If an HTTPS fetch to a tailnet host ever fails only on an iPhone, suspect Private
+  Relay first.
   Also: the image viewer's frame is sized to `calc(100dvh - 8rem)` like `FileViewer`,
   **not** `height:100%` — the narrow phone layout's `<main>` has no height, so a percentage
   height collapses the frame to 0 (image invisible). A phone-width Playwright test guards it;

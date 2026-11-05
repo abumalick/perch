@@ -34,8 +34,11 @@ export function renameLegacyEnvLines(text: string): { text: string; renamed: str
     const match = ASSIGNMENT.exec(line);
     if (!match) return [line];
     const name = `${ENV_PREFIX}${match[2]}`;
-    renamed.push(`PERCH_${match[2]}`);
-    if (assigned.has(name)) return [];
+    if (assigned.has(name)) {
+      renamed.push(`PERCH_${match[2]} dropped (${name} is set)`);
+      return [];
+    }
+    renamed.push(`PERCH_${match[2]} renamed ${name}`);
     assigned.add(name);
     return [line.replace(ASSIGNMENT, `$1${name}=`)];
   });

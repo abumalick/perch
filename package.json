@@ -16,7 +16,7 @@
     "serve:agent-heal": "deploy/serve-agent.sh --heal",
     "worktree:remove": "deploy/remove-worktree.sh",
     "tarfa": "pnpm --filter @tarfa/cli exec tsx src/cli.ts",
-    "perch": "pnpm tarfa"
+    "perch": "pnpm --filter @tarfa/cli exec tsx src/cli.ts"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

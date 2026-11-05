@@ -43,7 +43,7 @@ run `tarfa setup` with the machine's usual flags. It stops `perch-agent` (launch
 `com.perch.agent`; tmux and every workspace keep running), moves `~/.perch` to `~/.tarfa` (keeping
 `~/.perch` as a link to it, and the agent key as `agent-key.json`), renames `deploy/agent.env`'s
 `PERCH_*` lines to `TARFA_*` (the token is kept), installs and starts `tarfa-agent`
-(`app.tarfa.agent`), reinstalls the hooks as `tarfa-hook.sh`/`tarfa-guard.sh`, and removes the old
+(`app.tarfa.agent`, with the old unit's drop-ins copied over), reinstalls the hooks as `tarfa-hook.sh`/`tarfa-guard.sh`, and removes the old
 unit last. A Codex user then trusts the new hooks in Codex's `/hooks`. An agent merely restarted
 under its old unit moves `~/.perch` and re-tags the workspaces' tmux options itself, so the
 workspaces, their status, parents and Codex threads, and every paired phone carry over either way.

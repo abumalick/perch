@@ -33,6 +33,15 @@ describe('migrateStateDir', () => {
     const after = await loadOrCreateAgentKeys(resolveAgentKeyPath(current()));
     expect(after.x25519.publicKey).toBe(before);
     expect(resolveAgentKeyPath(current())).toBe(join(current(), 'agent-key.json'));
+    // An agent from before the rename, run again, still finds the same key.
+    expect(await readlink(join(current(), 'relay-key.json'))).toBe('agent-key.json');
+    expect((await loadOrCreateAgentKeys(join(legacy(), 'relay-key.json'))).x25519.publicKey).toBe(before);
+  });
+
+  it('refuses a dangling ~/.perch link instead of starting empty', async () => {
+    await symlink(join(home, 'gone'), legacy());
+    await expect(migrateStateDir(home)).rejects.toThrow(/link to nothing usable/);
+    await expect(stat(current())).rejects.toThrow();
   });
 
   it('is a no-op the second time, and leaves no lock behind', async () => {

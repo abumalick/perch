@@ -53,12 +53,14 @@ export async function migrateStateDir(home: string): Promise<MigrationResult> {
     } else if (old === 'link') {
       const target = await realpath(legacy).catch(() => null);
       if ((await kind(current)) === 'absent') {
-        // A ~/.perch kept elsewhere through a link of the user's own: the link moves, not its target.
-        if (target !== null && isRealDir(target)) {
-          await rename(legacy, current);
-          await symlink(STATE_DIR, legacy);
-          result = 'moved';
+        // A link whose target is gone would leave the agent to start empty, with a new key.
+        if (target === null || !isRealDir(target)) {
+          throw new Error(`${legacy} is a link to nothing usable, and ${current} does not exist: the agent will not start without its state. Restore what ${legacy} pointed at, or move it to ${current}`);
         }
+        // A ~/.perch kept elsewhere through a link of the user's own: the link moves, not its target.
+        await rename(legacy, current);
+        await symlink(STATE_DIR, legacy);
+        result = 'moved';
       } else if (target !== (await realpath(current))) {
         throw bothExist(current, legacy);
       }
@@ -68,14 +70,18 @@ export async function migrateStateDir(home: string): Promise<MigrationResult> {
   });
 }
 
+// The old name stays as a link to the new one for one release: an agent from before the rename
+// (a rollback, `serve:agent-restore`) reads relay-key.json, and finding none it would make a new key.
 async function renameLegacyKey(dir: string): Promise<void> {
   const legacyKey = join(dir, LEGACY_AGENT_KEY_FILE);
   const key = join(dir, AGENT_KEY_FILE);
-  if ((await kind(legacyKey)) === 'absent') return;
+  const legacyKind = await kind(legacyKey);
+  if (legacyKind === 'absent' || legacyKind === 'link') return;
   if ((await kind(key)) !== 'absent') {
     throw new Error(`${dir} holds both ${AGENT_KEY_FILE} and ${LEGACY_AGENT_KEY_FILE}: keep the one phones pinned (tarfa pair prints its fingerprint) and move the other away`);
   }
   await rename(legacyKey, key);
+  await symlink(AGENT_KEY_FILE, legacyKey);
 }
 
 function bothExist(current: string, legacy: string): Error {

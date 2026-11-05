@@ -121,15 +121,15 @@ describe('planSetup', () => {
         serve: SERVED,
       });
 
-    it('stops the old service and moves ~/.perch before installing and starting the new one, and removes the old one last', () => {
+    it('stops the old service, moves ~/.perch, then installs and starts the new one before any step that can fail, and removes the old one last', () => {
       expect(plan(flags(), old()).map((s) => s.kind)).toEqual([
         'stop-legacy-service',
         'move-state',
         'write-env',
         'install-unit',
-        'install-hooks',
         'restart',
         'check-listener',
+        'install-hooks',
         'remove-legacy-service',
       ]);
     });

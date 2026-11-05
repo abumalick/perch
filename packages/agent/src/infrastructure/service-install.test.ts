@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -36,11 +36,17 @@ describe('serviceInstall', () => {
     const old = join(home, '.config', 'systemd', 'user', 'perch-agent.service');
     await mkdir(dirname(old), { recursive: true });
     await writeFile(old, 'old unit\n');
+    await mkdir(`${old}.d`);
+    await writeFile(join(`${old}.d`, '50-protect.conf'), '[Service]\nOOMScoreAdjust=-500\n');
     expect(await service.legacyInstalled()).toBe(true);
+    await service.install('unit /r\n');
+    expect(await readFile(join(home, '.config', 'systemd', 'user', 'tarfa-agent.service.d', '50-protect.conf'), 'utf8')).toBe('[Service]\nOOMScoreAdjust=-500\n');
+    ran.length = 0;
     await service.stopLegacy();
     expect(ran).toEqual(['systemctl --user stop perch-agent', 'systemctl --user disable perch-agent']);
     await service.removeLegacy();
     expect(await service.legacyInstalled()).toBe(false);
+    await expect(stat(`${old}.d`)).rejects.toThrow();
     expect(ran.at(-1)).toBe('systemctl --user daemon-reload');
   });
 

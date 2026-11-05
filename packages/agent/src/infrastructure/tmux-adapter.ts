@@ -180,9 +180,14 @@ export class TmuxAdapter implements TmuxPort {
       if (((err as { stderr?: string }).stderr ?? '').includes('duplicate session')) throw new DuplicateSessionError(input.name);
       throw err;
     }
-    await this.tmux(['set-option', '-t', exactTarget(input.name), '@tarfa_command', input.storedCommand ?? input.command]);
-    if (input.parent) await this.tmux(['set-option', '-t', exactTarget(input.name), '@tarfa_parent', input.parent]);
-    if (input.codexThread) await this.tmux(['set-option', '-t', exactTarget(input.name), '@tarfa_codex_thread', input.codexThread]);
+    // Under the old @perch_ names too, for one release: an agent from before the rename, still
+    // running until its restart or brought back by a rollback, finds its sessions by them.
+    const set = async (option: (typeof OPTIONS)[number], value: string) => {
+      for (const prefix of ['tarfa', 'perch']) await this.tmux(['set-option', '-t', exactTarget(input.name), `@${prefix}_${option}`, value]);
+    };
+    await set('command', input.storedCommand ?? input.command);
+    if (input.parent) await set('parent', input.parent);
+    if (input.codexThread) await set('codex_thread', input.codexThread);
   }
 
   async killSession(name: string): Promise<void> {

@@ -89,7 +89,7 @@ describe('TmuxAdapter (real tmux)', () => {
       await adapter.createSession({ name: 'new-1', cwd: tmpdir(), command: 'sleep 30' });
 
       expect((await adapter.listSessions('perch-')).find((s) => s.name === 'old-1')).toMatchObject({ command: 'claude --model x', parent: 'orch-1' });
-      expect(await adapter.retagLegacyOptions()).toBe(2);
+      expect(await adapter.retagLegacyOptions()).toBe(2); // new-1 carries both names already
       expect((await raw(['show-options', '-v', '-t', '=old-1:', '@tarfa_command'])).stdout.trim()).toBe('claude --model x');
       expect((await raw(['show-options', '-v', '-t', '=old-1:', '@tarfa_parent'])).stdout.trim()).toBe('orch-1');
       expect(await adapter.retagLegacyOptions()).toBe(0);

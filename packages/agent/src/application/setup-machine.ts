@@ -153,10 +153,13 @@ export function planSetup(flags: SetupFlags, state: SetupState): { steps: SetupS
   }
   const unit = state.service.template.replaceAll('REPO_PATH', state.repo);
   if (!state.service.enabled || !unitIsCurrent(state.service.kind, state.service.installed, state.repo)) steps.push({ kind: 'install-unit', text: unit });
+  // The old agent is stopped: start the new one before anything that can fail, so a failed hooks
+  // or serve step never leaves the machine with no agent (and a phone with no way back in).
+  if (state.legacyService) steps.push({ kind: 'restart' }, { kind: 'check-listener', port: flags.phonePort });
   if (!state.hooksCurrent) steps.push({ kind: 'install-hooks' });
   if (serveStep) steps.push(serveStep);
-  if (steps.length > 0) steps.push({ kind: 'restart' }, { kind: 'check-listener', port: flags.phonePort });
   if (state.legacyService) steps.push({ kind: 'remove-legacy-service' });
+  else if (steps.length > 0) steps.push({ kind: 'restart' }, { kind: 'check-listener', port: flags.phonePort });
   if (operatorStep) steps.push(operatorStep);
   if (flags.pair) steps.push({ kind: 'pair' });
   return { steps, checks };
@@ -175,7 +178,7 @@ function planEnv(flags: SetupFlags, state: SetupState, addresses: string[]): Set
   if (flags.pwa || !values.TARFA_PWA_ORIGIN) wanted.push(['TARFA_PWA_ORIGIN', flags.pwa ?? DEFAULT_PWA_ORIGIN]);
 
   let text = before;
-  const changes: string[] = legacy.renamed.map((name) => `${name} renamed TARFA_${name.slice('PERCH_'.length)}`);
+  const changes: string[] = [...legacy.renamed];
   for (const [name, value, shown] of wanted) {
     if (values[name] === value) continue;
     text = setEnvValue(text, name, value);

@@ -123,23 +123,29 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     machine's agent.env is rewritten by `tarfa setup`.
   - `~/.perch` is moved to `~/.tarfa` by the agent at startup, **before it reads anything**
     (`infrastructure/state-dir.ts`, under `~/.tarfa-migrate.lock`), which leaves `~/.perch` a link
-    to it and renames `relay-key.json` to `agent-key.json`. It never merges: both holding
-    something stops the agent, since starting on an empty `~/.tarfa` beside the old key would make
+    to it and renames `relay-key.json` to `agent-key.json`, leaving the old name a link too (an
+    agent from before the rename, brought back, would otherwise make a new key). It never merges:
+    both holding something, or a `~/.perch` link to nothing, stops the agent, since starting on an empty `~/.tarfa` beside the old key would make
     a new key and every phone would refuse it. The CLI never moves it (an older agent may still
     run): it reads whichever exists (`resolveStateDir`, `resolveAgentKeyPath`), and
     `install-hooks` refuses until the move. Goes once every machine moved and no hook entry names it.
   - `@perch_command`/`_parent`/`_codex_thread` are read beside `@tarfa_*`, and the startup
     re-tags them (`retagLegacyOptions`) **before** `trackLiveWorkspaces`, `reconcileParked` and the
     prune (`application/startup-reconcile.ts`): a session missing its marker reads as a bare shell
-    to park, kill or prune. Goes once every startup logs zero re-tagged for a week.
-  - `~/.local/bin/perch` is a link to `tarfa`, `@tarfa/cli` has both bins and `pnpm perch` runs
-    `pnpm tarfa`, for one release after `tarfa` ships.
+    to park, kill or prune. `createSession` sets both names, so an agent from before the rename
+    (still running until its restart, or a rollback) sees every session. Goes once every startup
+    logs zero re-tagged for a week.
+  - `~/.local/bin/perch` is a link to `tarfa`, `deploy/perch-cli.sh` (what an older install
+    links) to `tarfa-cli.sh`, `@tarfa/cli` has both bins and `pnpm perch` runs the CLI, for one
+    release after `tarfa` ships.
   - The guard refuses `.perch/inbox/` and `@perch_parent`/`_codex_thread` too, and the quoting
     regex quotes `[Perch message` and `[Tarfa message`. `send` still writes the Perch header until
     the dotfiles rule accepts both spellings; both reads go a release after the switch.
   - `tarfa setup` swaps the service: stop `perch-agent`/`com.perch.agent`, move `~/.perch`,
-    install and start `tarfa-agent`/`app.tarfa.agent`, remove the old one; never two agents on one
-    hooks port. `port-owner` counts either unit as this user's agent meanwhile.
+    install and start `tarfa-agent`/`app.tarfa.agent` **before any step that can fail** (a failed
+    hooks or serve step must not leave a remote machine with no agent), remove the old one last;
+    never two agents on one hooks port. The old unit's drop-ins are copied to the new one.
+    `port-owner` counts either unit as this user's agent meanwhile.
   Not renamed: the Noise prologue `perch-relay-noise-v3` (a wire change of its own), the
   `perch-<6 hex>` ids and `sessionPrefix` (data), and Pi's `perch-message` custom type.
 - **The phone port: phones connect to the agent directly** (`TARFA_PHONE_PORT`, default 8797,

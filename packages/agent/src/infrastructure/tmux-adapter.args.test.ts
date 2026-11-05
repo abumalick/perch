@@ -131,6 +131,8 @@ describe('TmuxAdapter (spawn and peek arguments)', () => {
     await new TmuxAdapter().createSession({ name: 'perch-c', cwd: '/w', command: 'X=1 claude "$(cat f)"', storedCommand: 'claude' });
     expect(calls[0]).toEqual(['new-session', '-d', '-s', 'perch-c', '-c', '/w', 'X=1 claude "$(cat f)"']);
     expect(calls).toContainEqual(['set-option', '-t', '=perch-c:', '@tarfa_command', 'claude']);
+    // And under the old name, for an agent from before the rename that is still running.
+    expect(calls).toContainEqual(['set-option', '-t', '=perch-c:', '@perch_command', 'claude']);
   });
 
   it('sets the pane title', async () => {

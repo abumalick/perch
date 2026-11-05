@@ -362,7 +362,7 @@ describe('tarfa setup (fake service and Tailscale)', () => {
     await new FileDeviceStore(join(legacy, 'devices.json')).update((roster) => withEnrolmentMode(roster, 'off'));
 
     await run(['setup', ...FLAGS], m.env, m.home, m.io);
-    expect(m.calls).toEqual(['stop-legacy', 'install-unit roster=present', 'serve 10000/abu http://127.0.0.1:8797 funnel=true', 'restart', 'check', 'remove-legacy']);
+    expect(m.calls).toEqual(['stop-legacy', 'install-unit roster=present', 'restart', 'check', 'serve 10000/abu http://127.0.0.1:8797 funnel=true', 'remove-legacy']);
     expect(await readlink(legacy)).toBe('.tarfa');
     expect((await loadOrCreateAgentKeys(join(m.home, '.tarfa', 'agent-key.json'))).x25519.publicKey).toBe(key.x25519.publicKey);
     const env = await readFile(m.envPath, 'utf8');

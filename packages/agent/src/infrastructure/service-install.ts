@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { ServiceInstallPort } from '../ports/service-install-port';
@@ -22,6 +22,10 @@ const LEGACY_UNIT = 'perch-agent';
 const LEGACY_LABEL = 'com.perch.agent';
 
 const NO_USER_MANAGER = /Failed to connect to (the )?(user scope )?bus/i;
+
+async function exists(path: string): Promise<boolean> {
+  return stat(path).then(() => true, () => false);
+}
 
 async function readOrNull(path: string): Promise<string | null> {
   try {
@@ -73,6 +77,10 @@ export function serviceInstall(options: {
   }
   const unit = join(options.home, '.config', 'systemd', 'user', 'tarfa-agent.service');
   const legacyUnit = join(options.home, '.config', 'systemd', 'user', `${LEGACY_UNIT}.service`);
+  // The old unit's drop-ins (an OOM shield, an After=tmux-server, …) name no unit, so they apply
+  // to the new one as they are.
+  const dropIns = `${unit}.d`;
+  const legacyDropIns = `${legacyUnit}.d`;
   return {
     kind: 'systemd',
     template: () => readFile(join(options.repo, 'deploy', 'tarfa-agent.service'), 'utf8'),
@@ -95,6 +103,8 @@ export function serviceInstall(options: {
     async install(text) {
       await mkdir(dirname(unit), { recursive: true });
       await writeFile(unit, text, 'utf8');
+      const copied = (await exists(legacyDropIns)) && !(await exists(dropIns));
+      if (copied) await cp(legacyDropIns, dropIns, { recursive: true });
       const ran: Array<[string, string[]]> = [
         ['systemctl', ['--user', 'daemon-reload']],
         ['systemctl', ['--user', 'enable', 'tarfa-agent']],
@@ -102,7 +112,7 @@ export function serviceInstall(options: {
         ['loginctl', ['enable-linger', options.user]],
       ];
       for (const [command, args] of ran) await run(command, args);
-      return [`wrote ${unit}`, ...ran.map(([command, args]) => `${command} ${args.join(' ')}`)];
+      return [`wrote ${unit}`, ...(copied ? [`copied ${legacyDropIns} to ${dropIns}`] : []), ...ran.map(([command, args]) => `${command} ${args.join(' ')}`)];
     },
     legacyInstalled: async () => (await readOrNull(legacyUnit)) !== null,
     // KillMode=process: stopping it stops the agent alone, never tmux.
@@ -116,8 +126,9 @@ export function serviceInstall(options: {
     },
     async removeLegacy() {
       await rm(legacyUnit, { force: true });
+      await rm(legacyDropIns, { recursive: true, force: true });
       await run('systemctl', ['--user', 'daemon-reload']);
-      return [`removed ${legacyUnit}`, 'systemctl --user daemon-reload'];
+      return [`removed ${legacyUnit} and its drop-ins`, 'systemctl --user daemon-reload'];
     },
   };
 }

@@ -70,6 +70,12 @@ status=0
 out="$(cd "${SANDBOX}/cwd" && TARFA_AGENT_ENV="${NO_ENV}" "${SANDBOX}/bin/tarfa" spawn nope < /dev/null 2>&1)" || status=$?
 check "resolves a spawn path against the caller's directory" "not a directory: ${SANDBOX}/cwd/nope" "${out}"
 
+# A ~/.local/bin/perch installed before the rename names deploy/perch-cli.sh, kept as a link.
+ln -s "${HERE}/perch-cli.sh" "${SANDBOX}/bin/old-perch"
+status=0
+out="$(cd "${SANDBOX}/cwd" && TARFA_AGENT_ENV="${NO_ENV}" "${SANDBOX}/bin/old-perch" peek 2>&1)" || status=$?
+check "an install from before the rename still runs through deploy/perch-cli.sh" "usage: tarfa peek <workspace id> [-n <lines>]" "${out}"
+
 if [ "${fails}" -gt 0 ]; then
   echo "${fails} check(s) failed"
   exit 1

@@ -32,3 +32,4 @@ docs/superpowers/
 .dev.vars.*
 !.dev.vars.example
 deploy/relay-cf.env
+deploy/pwa-deploy.env

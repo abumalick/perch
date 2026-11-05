@@ -129,7 +129,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     sockets a minute per address. A session leaves every count once authenticated (a pushed
     session only at its first frame). Refusals are in band, `4429`.
   - **The client address is `x-forwarded-for`'s last hop, believed only from a loopback peer**;
-    a loopback peer naming nobody counts against the total only. IPv6 counts by its /64.
+    a loopback peer naming nobody counts against the total only. IPv6 counts by its /64 and its /56 (3× the caps); a `Tailscale-Funnel-Request` socket waits in a public pool of 16, so a public flood never evicts a tailnet handshake.
   - **Roster and pairing-file reads a stranger can cause are limited** (`DiskReadLimiter`, 4 at
     once, 10 a minute). A limited read closes the socket as busy (`4429` "too many pending", which
     the phone retries), never as a verdict on its code: an unread pairing code may still be live,
@@ -174,7 +174,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   on-device test (badge `tarfa-dev`), and `--dev --delete` removes it afterwards. Both, and
   `--dry-run`, build into `.tmp/pwa-deploy-dist`, never main's `dist`, which the staging PWA
   serves; `--dry-run` does not combine with `--dev`. The account is
-  `CLOUDFLARE_ACCOUNT_ID` in main's gitignored `deploy/pwa-deploy.env` (or `--env-file`).
+  `CLOUDFLARE_ACCOUNT_ID` in main's gitignored `deploy/pwa-deploy.env` (or `--env-file`), with `PWA_DEPLOY_TOKEN_CMD` printing the scoped API token wrangler gets (never a wrangler login).
   **Its storage keys are `tarfa.*`** (localStorage), `tarfa-device` (IndexedDB) and
   `tarfa-shared` (Cache Storage): it reads nothing an older build stored and needs no migration.
 - The tailnet origin is the **staging PWA** for worktree tests: it is built and served on the

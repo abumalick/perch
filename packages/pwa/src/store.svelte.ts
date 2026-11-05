@@ -23,6 +23,13 @@ import { describeError } from './core/describe-error';
 import { parsePairingLink } from '@perch/secure-channel';
 import { acceptPairingLink, readPairingLink } from './core/pairing';
 
+export interface DeviceNotice {
+  machine: string;
+  id: string;
+  name: string;
+  at: string;
+}
+
 export interface DeviceKeyInfo {
   fingerprint: string;
   storage: { x25519: KeyStorage; ed25519: KeyStorage };
@@ -198,6 +205,8 @@ export class PerchStore {
   // resumable Claude session. Without somewhere to land, such an error is dropped and the
   // action just appears to do nothing. Shown as a dismissible banner.
   actionError = $state<string | null>(null);
+  // Devices a machine says were just enrolled, newest last, each shown until dismissed.
+  deviceNotices = $state<DeviceNotice[]>([]);
   // True while the New-workspace folder picker is open. It shares dirEntries/browseError
   // with the file browser (the two are never open at once) and only needs this flag so an
   // agent `error` is routed to the picker even though the view is still 'create'.
@@ -585,6 +594,11 @@ export class PerchStore {
         };
         this.viewError = null;
         return;
+      case 'deviceEnrolled': {
+        const machine = this.machines.find((m) => m.id === machineId)?.name ?? machineId;
+        this.deviceNotices = [...this.deviceNotices, { machine, id: message.id, name: message.name, at: message.at }];
+        return;
+      }
       case 'error':
         // `bad_message` means an older agent rejected a client message it doesn't understand
         // (e.g. the heartbeat `ping` during a version-skew rollout). That's protocol noise,
@@ -773,6 +787,10 @@ export class PerchStore {
 
   dismissActionError(): void {
     this.actionError = null;
+  }
+
+  dismissDeviceNotice(notice: DeviceNotice): void {
+    this.deviceNotices = this.deviceNotices.filter((n) => n !== notice);
   }
 
   // The vocabulary a dictation request carries: every connected machine's list, unioned.

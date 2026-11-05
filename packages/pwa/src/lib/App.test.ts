@@ -40,6 +40,8 @@ function fakeStore(view: string) {
     folderHidden: [] as string[],
     folderFilterMode: 'only' as const,
     setFolderFilter: vi.fn(), setFolderHidden: vi.fn(), setFolderFilterMode: vi.fn(),
+    deviceNotices: [],
+    dismissDeviceNotice: vi.fn(),
   };
 }
 

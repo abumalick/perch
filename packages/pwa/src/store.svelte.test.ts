@@ -930,6 +930,18 @@ describe('PerchStore file browser', () => {
     expect(store.actionError).toBe('cannot park: no Claude session to resume');
   });
 
+  it('keeps a notice for each device enrolled on a machine until it is dismissed', () => {
+    const { store } = openWorkspace();
+    store.handleMessage('mac', { type: 'deviceEnrolled', id: 'c590-c6a1-9f8d', name: 'Android · Chrome', at: '2026-11-05T10:00:00.000Z' });
+    store.handleMessage('mac', { type: 'deviceEnrolled', id: 'aaaa-bbbb-cccc', name: 'iPhone', at: '2026-11-05T10:01:00.000Z' });
+    expect(store.deviceNotices.map((n) => [n.machine, n.id, n.name])).toEqual([
+      ['Mac', 'c590-c6a1-9f8d', 'Android · Chrome'],
+      ['Mac', 'aaaa-bbbb-cccc', 'iPhone'],
+    ]);
+    store.dismissDeviceNotice(store.deviceNotices[0]!);
+    expect(store.deviceNotices.map((n) => n.id)).toEqual(['aaaa-bbbb-cccc']);
+  });
+
   it('dismisses an action error', () => {
     const { store } = openWorkspace();
     store.handleMessage('mac', { type: 'error', code: 'not-restorable', message: 'nope' });

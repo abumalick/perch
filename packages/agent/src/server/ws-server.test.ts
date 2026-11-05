@@ -39,6 +39,7 @@ import {
   SecureSession,
   IkInitiator,
   b64url,
+  deviceFingerprint,
   encodeDeviceHello,
   generateAgentKeys,
   generateDeviceKeys,
@@ -438,6 +439,48 @@ describe('WsServer (E2E, real tmux)', () => {
       const nkClosed = new Promise<number>((r) => nk.once('close', (code) => r(code)));
       nk.send(Uint8Array.of(0x02, ...new Uint8Array(48)));
       expect(await nkClosed).toBe(4002);
+    } finally {
+      await new Promise((r) => outside.close(r));
+    }
+  });
+
+  it('tells every other connected phone when a device enrols', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-ik-'));
+    dirs.push(home);
+    const config = testConfig(home);
+    const keys = generateAgentKeys();
+    const store = new FileDeviceStore(config.devicesPath);
+    const pairings = new FilePairingStore(config.pairingPath);
+    const live = new WsServer(makeServerDeps(config, noClientLog));
+    server = live;
+    const devices = new RosterDevices({
+      store,
+      pairings,
+      now: () => new Date(),
+      onChange: () => undefined,
+      onEnrolled: (device) => live.broadcastDeviceEnrolled(device),
+    });
+    const outside = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    await new Promise((r) => outside.once('listening', r));
+    outside.on('connection', (socket) => live.acceptPhoneSocket(wsFrameSocket(socket), b64url.decode(keys.x25519.privateKey), { devices }));
+    const url = `ws://127.0.0.1:${(outside.address() as AddressInfo).port}`;
+    try {
+      const owner = await noiseClient(url, keys.x25519.publicKey, generateDeviceKeys());
+      owner.send({ type: 'auth', token: 'secret' });
+      expect(await owner.next()).toMatchObject({ type: 'authResult', ok: true, enrolled: true });
+
+      const secret = 's'.repeat(43);
+      await pairings.update((list) => addPairing(list, secret, new Date()));
+      const added = generateDeviceKeys();
+      const newcomer = await noiseClient(url, keys.x25519.publicKey, added);
+      newcomer.send({ type: 'auth', token: secret });
+      expect(await newcomer.next()).toMatchObject({ type: 'authResult', ok: true, enrolled: true });
+      expect(await owner.next()).toMatchObject({ type: 'deviceEnrolled', id: deviceFingerprint(added.x25519.publicKey), name: 'test phone' });
+      // The new phone is not told about itself.
+      newcomer.send({ type: 'list' });
+      expect(await newcomer.next()).toMatchObject({ type: 'workspaces' });
+      owner.socket.close();
+      newcomer.socket.close();
     } finally {
       await new Promise((r) => outside.close(r));
     }

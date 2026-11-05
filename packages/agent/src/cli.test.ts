@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deviceFingerprint, generateDeviceKeys, parsePairingLink } from '@perch/secure-channel';
 import { FileDeviceStore } from './infrastructure/file-device-store';
+import { parseEnvFile } from './application/agent-env';
 import { enrolDevice, enrolmentMode } from './application/device-roster';
 import type { Workspace } from '@perch/contracts';
 import type { TmuxPort, TmuxSessionInfo } from './ports/tmux-port';
@@ -229,9 +230,21 @@ describe('perch pair (arguments and agent.env)', () => {
     expect(pairing.name).toBe('box');
     const stored = JSON.parse(await readFile(join(home, '.perch', 'pairing.json'), 'utf8')) as Array<{ secret: string }>;
     expect(stored.map((p) => p.secret)).toEqual([pairing.secret]);
-    expect(out).toContain('10 minutes');
+    expect(out).toContain('for 10 minutes');
     // The phone shows the same fingerprint before it pairs, to compare by eye.
     expect(out).toContain(`machine key ${deviceFingerprint(pairing.agentKey)};`);
+  });
+
+  it('takes --ttl in minutes, from 1 to 10, and stores the expiry it states', async () => {
+    const { home, env } = await machine(base);
+    const before = Date.now();
+    const out = await run(['pair', '--ttl', '2'], env, home);
+    expect(out).toContain('for 2 minutes');
+    const [stored] = JSON.parse(await readFile(join(home, '.perch', 'pairing.json'), 'utf8')) as Array<{ expiresAt: string }>;
+    const left = Date.parse(stored!.expiresAt) - before;
+    expect(left).toBeGreaterThanOrEqual(2 * 60_000);
+    expect(left).toBeLessThan(2 * 60_000 + 5_000);
+    for (const bad of ['0', '11', '1.5', 'x']) await expect(run(['pair', '--ttl', bad], env, home)).rejects.toThrow(/--ttl/);
   });
 
   it('hands the phone the PERCH_DEFAULT_PATH agent.env sets', async () => {
@@ -335,9 +348,12 @@ describe('perch setup (fake service and Tailscale)', () => {
     const out = await run(['setup', ...FLAGS], m.env, m.home, m.io);
     expect(out).toContain('the phone port answers');
     expect(m.calls).toEqual(['install-unit roster=present', 'serve 10000/abu http://127.0.0.1:8797 funnel=true', 'restart', 'check']);
-    const values = Object.fromEntries((await readFile(m.envPath, 'utf8')).trim().split('\n').map((l) => l.split(/=(.*)/s).slice(0, 2)));
+    const values = parseEnvFile(await readFile(m.envPath, 'utf8'));
     expect(values).toMatchObject({ PERCH_MACHINE_ID: 'dev', PERCH_PHONE_ADDRESSES: `wss://${HOST}:10000/abu`, PERCH_PWA_ORIGIN: 'https://tarfa.app' });
     expect(values.PERCH_TOKEN).toMatch(/^[0-9a-f]{64}$/);
+    // What run-agent.sh does with it: bash reads back exactly what was written.
+    const sourced = await promisify(execFile)('bash', ['-c', '. "$1"; printf %s "$PERCH_PHONE_ADDRESSES|$PERCH_PROJECT_ROOTS"', '_', m.envPath], { env: {} });
+    expect(sourced.stdout).toBe(`wss://${HOST}:10000/abu|/home/u/workspace`);
     expect(enrolmentMode(await new FileDeviceStore(join(m.home, '.perch', 'devices.json')).read())).toBe('off');
     expect(JSON.parse(await readFile(join(m.home, '.perch', 'relay-key.json'), 'utf8'))).toHaveProperty('x25519');
     expect(await readFile(join(m.home, '.claude', 'settings.json'), 'utf8')).toContain('perch-hook.sh');

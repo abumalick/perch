@@ -146,6 +146,12 @@ export class ConnectionHandler {
     }
   }
 
+  pushDeviceEnrolled(device: { id: string; name: string; at: string; x25519?: string }): void {
+    if (this.authed && (device.x25519 === undefined || this.conn.device !== device.x25519)) {
+      this.conn.send({ type: 'deviceEnrolled', id: device.id, name: device.name, at: device.at });
+    }
+  }
+
   pushStats(stats: MachineStats): void {
     if (this.authed) {
       this.conn.send({ type: 'stats', stats });

@@ -20,7 +20,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 mkdir -p "${SB}/bin"
 cat > "${SB}/bin/pnpm" <<'FAKE'
 #!/usr/bin/env bash
-printf '%s|label=%s|id=%s|account=%s|cwd=%s\n' "$*" "${PERCH_BUILD_LABEL:-}" "${PERCH_BUILD_ID:-}" "${CLOUDFLARE_ACCOUNT_ID:-}" "$(basename "$PWD")" >> "${FAKE_LOG}"
+printf '%s|label=%s|id=%s|account=%s|token=%s|cwd=%s\n' "$*" "${PERCH_BUILD_LABEL:-}" "${PERCH_BUILD_ID:-}" "${CLOUDFLARE_ACCOUNT_ID:-}" "${CLOUDFLARE_API_TOKEN:-}" "$(basename "$PWD")" >> "${FAKE_LOG}"
 case "$*" in
   *build*) printf '%s' "${PERCH_BUILD_ID:-}" > "${FAKE_LOG}.built" ;;
   *"wrangler deploy --env dev"*) echo "Deployed tarfa-dev triggers" ; echo "  https://tarfa-dev.someone.workers.dev" ;;
@@ -61,8 +61,23 @@ deployed_with() { grep -q -- "wrangler deploy $1|" "${FAKE_LOG}" 2>/dev/null; }
 if run "${MAIN}/deploy/pwa-deploy.sh"; then fail "deployed without deploy/pwa-deploy.env"; fi
 grep -q "pwa-deploy.env" "${SB}/out" || fail "missing-env message does not name the file"
 
-# --- 2. clean main: install, build, deploy production, wait for the build -------
+# --- 1b. no token command: refused before anything runs, so wrangler never falls back to its
+# own OAuth login -------------------------------------------------------------------------
 printf 'CLOUDFLARE_ACCOUNT_ID=acct-123\n' > "${MAIN}/deploy/pwa-deploy.env"
+for args in "" "--dev" "--dev --delete"; do
+  # shellcheck disable=SC2086
+  if run "${MAIN}/deploy/pwa-deploy.sh" ${args}; then fail "ran '${args}' without PWA_DEPLOY_TOKEN_CMD"; fi
+  grep -q "PWA_DEPLOY_TOKEN_CMD" "${SB}/out" || fail "the missing-token refusal does not name PWA_DEPLOY_TOKEN_CMD"
+  [ -f "${FAKE_LOG}" ] && fail "'${args}' ran pnpm without a token"
+done
+printf 'CLOUDFLARE_ACCOUNT_ID=acct-123\nPWA_DEPLOY_TOKEN_CMD=false\n' > "${MAIN}/deploy/pwa-deploy.env"
+if run "${MAIN}/deploy/pwa-deploy.sh"; then fail "deployed when the token command failed"; fi
+[ -f "${FAKE_LOG}" ] && fail "a failed token command still ran pnpm"
+printf "CLOUDFLARE_ACCOUNT_ID=acct-123\nPWA_DEPLOY_TOKEN_CMD='printf \"\"'\n" > "${MAIN}/deploy/pwa-deploy.env"
+if run "${MAIN}/deploy/pwa-deploy.sh"; then fail "deployed with an empty token"; fi
+
+# --- 2. clean main: install, build, deploy production, wait for the build -------
+printf "CLOUDFLARE_ACCOUNT_ID=acct-123\nPWA_DEPLOY_TOKEN_CMD='printf tok-SECRET-1'\n" > "${MAIN}/deploy/pwa-deploy.env"
 run "${MAIN}/deploy/pwa-deploy.sh" || { cat "${SB}/out"; fail "clean main did not deploy"; }
 grep -q "^install --frozen-lockfile|" "${FAKE_LOG}" || fail "no frozen install before a production deploy"
 build="$(grep -- "--filter @perch/pwa build|" "${FAKE_LOG}")" || fail "no build"
@@ -70,7 +85,10 @@ case "${build}" in *"|label=main|"*) ;; *) fail "production build label: ${build
 sha="$(git -C "${MAIN}" rev-parse --short=12 HEAD)"
 case "${build}" in *"|id=${sha}-"*) ;; *) fail "build id does not start with the commit: ${build}" ;; esac
 deployed_with "--env production" || fail "did not deploy env.production: $(cat "${FAKE_LOG}")"
-grep -q -- "wrangler deploy --env production|.*account=acct-123|cwd=pwa" "${FAKE_LOG}" || fail "wrangler not run from packages/pwa with the account"
+grep -q -- "wrangler deploy --env production|.*account=acct-123|token=[^|]*|cwd=pwa" "${FAKE_LOG}" || fail "wrangler not run from packages/pwa with the account"
+grep -q -- "wrangler deploy --env production|.*token=tok-SECRET-1|" "${FAKE_LOG}" || fail "wrangler did not get the token"
+grep -q -- "build|.*token=|" "${FAKE_LOG}" || fail "the build saw the token"
+grep -q "tok-SECRET-1" "${SB}/out" && fail "the token was printed"
 grep -q "https://tarfa.app/version.json" "${FAKE_LOG}.curl" || fail "did not check tarfa.app/version.json"
 grep -q "tarfa.app" "${SB}/out" || fail "does not say where it went"
 
@@ -96,25 +114,27 @@ run "${WT}/deploy/pwa-deploy.sh" --dry-run || { cat "${SB}/out"; fail "dry run f
 grep -q -- "wrangler deploy --env production --assets .*/.tmp/pwa-deploy-dist --dry-run|" "${FAKE_LOG}" || fail "dry run not passed to wrangler with its own build: $(cat "${FAKE_LOG}")"
 # A build outside production goes to its own directory: main's dist is the staging PWA.
 grep -q -- "--filter @perch/pwa build --outDir .*/.tmp/pwa-deploy-dist --emptyOutDir|" "${FAKE_LOG}" || fail "dry run built into dist: $(cat "${FAKE_LOG}")"
+[ -f "${FAKE_LOG}.curl" ] && fail "a dry run checked tarfa.app"
+grep -q "^install" "${FAKE_LOG}" && fail "a dry run reinstalled dependencies"
+grep -q "token=tok" "${FAKE_LOG}" && fail "a dry run fetched the token"
 for combo in "--dry-run --dev" "--dry-run --dev --delete"; do
   # shellcheck disable=SC2086
   if run "${WT}/deploy/pwa-deploy.sh" ${combo}; then fail "accepted ${combo}"; fi
   [ -f "${FAKE_LOG}" ] && fail "${combo} ran pnpm"
 done
-[ -f "${FAKE_LOG}.curl" ] && fail "a dry run checked tarfa.app"
-grep -q "^install" "${FAKE_LOG}" && fail "a dry run reinstalled dependencies"
 
 # --- 5. --dev deploys this checkout to tarfa-dev and prints its URL -------------
 run "${WT}/deploy/pwa-deploy.sh" --dev || { cat "${SB}/out"; fail "--dev from a worktree refused"; }
 grep -q -- "wrangler deploy --env dev --assets .*/.tmp/pwa-deploy-dist|" "${FAKE_LOG}" || fail "--dev did not deploy its own build to env.dev: $(cat "${FAKE_LOG}")"
 grep -q -- "--filter @perch/pwa build --outDir .*|label=tarfa-dev|" "${FAKE_LOG}" || fail "dev build not labelled tarfa-dev"
+grep -q -- "wrangler deploy --env dev .*token=tok-SECRET-1|" "${FAKE_LOG}" || fail "--dev did not hand wrangler the token"
 grep -q "https://tarfa-dev.someone.workers.dev" "${SB}/out" || fail "--dev does not print the dev URL"
 grep -q "\-\-dev \-\-delete" "${SB}/out" || fail "--dev does not say how to delete it"
 [ -f "${FAKE_LOG}.curl" ] && fail "--dev checked tarfa.app"
 
 # --- 6. --dev --delete removes the dev Worker, building nothing ------------------
 run "${WT}/deploy/pwa-deploy.sh" --dev --delete || { cat "${SB}/out"; fail "--dev --delete refused"; }
-grep -q -- "wrangler delete --env dev" "${FAKE_LOG}" || fail "--delete did not delete env.dev"
+grep -q -- "wrangler delete --env dev|.*token=tok-SECRET-1|" "${FAKE_LOG}" || fail "--delete did not delete env.dev with the token"
 grep -q "build" "${FAKE_LOG}" && fail "--delete built"
 if run "${MAIN}/deploy/pwa-deploy.sh" --delete; then fail "--delete without --dev was accepted"; fi
 
@@ -131,8 +151,8 @@ if run "${WT}/deploy/pwa-deploy.sh" --dev --env-file "${SB}/nowhere/x.env"; then
 grep -q "nowhere/x.env" "${SB}/out" || fail "missing env file not named as given: $(cat "${SB}/out")"
 
 # --- 7. --env-file names another account's file ---------------------------------
-printf 'CLOUDFLARE_ACCOUNT_ID=other-acct\n' > "${SB}/other.env"
+printf "CLOUDFLARE_ACCOUNT_ID=other-acct\nPWA_DEPLOY_TOKEN_CMD='printf tok-other'\n" > "${SB}/other.env"
 run "${WT}/deploy/pwa-deploy.sh" --dev --env-file "${SB}/other.env" || { cat "${SB}/out"; fail "--env-file refused"; }
-grep -q "account=other-acct" "${FAKE_LOG}" || fail "--env-file account not used"
+grep -q "account=other-acct|token=tok-other|" "${FAKE_LOG}" || fail "--env-file account and token not used"
 
 echo "pwa-deploy tests passed"

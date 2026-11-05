@@ -5,6 +5,8 @@ export interface ClientConnection {
   // device key was enrolled at the handshake; `pairing`, one whose pairing secret was just
   // redeemed. `auth` then needs no token.
   readonly keyCredential?: 'device' | 'pairing';
+  // The phone's X25519 device key, once known (a Noise session).
+  readonly device?: string | null;
   send(message: AgentMessage): void;
   close(): void;
   // Closes with a refusal the phone can read.

@@ -57,8 +57,9 @@ export interface SetupState {
   hooksCurrent: boolean;
   // The unit (or plist) from before the rename, perch-agent / com.perch.agent, is installed.
   legacyService: boolean;
-  // ~/.tarfa holds the state, rather than a ~/.perch not moved yet.
-  stateMoved: boolean;
+  // Where the state is: moved to ~/.tarfa, still in ~/.perch, or in both (which the agent refuses
+  // to merge, so setup stops before it stops anything).
+  stateDir: 'moved' | 'legacy' | 'conflict';
   phonePortOwner: PortOwner;
   hooksPortOwner: PortOwner;
   // Null when Tailscale is not installed or its daemon does not answer.
@@ -96,6 +97,12 @@ export function planSetup(flags: SetupFlags, state: SetupState): { steps: SetupS
   }
   if (state.hooksPortOwner === 'other') {
     return { error: 'the hooks port is taken by another process (another user\'s agent?): set TARFA_PORT in deploy/agent.env to a free port, then run tarfa setup again' };
+  }
+
+  if (state.stateDir === 'conflict') {
+    return {
+      error: 'both ~/.perch and ~/.tarfa hold state (or ~/.perch links elsewhere): the agent will not merge them, so setup stops before touching the service. Keep the one that holds the agent key, move the other away, then run tarfa setup again',
+    };
   }
 
   const target = `http://127.0.0.1:${flags.phonePort}`;
@@ -139,7 +146,7 @@ export function planSetup(flags: SetupFlags, state: SetupState): { steps: SetupS
   // it, then the steps below install and start the new one. Never both at once: two agents would
   // share one hooks port and one state directory.
   if (state.legacyService) steps.push({ kind: 'stop-legacy-service' });
-  if (!state.stateMoved) steps.push({ kind: 'move-state' });
+  if (state.stateDir === 'legacy') steps.push({ kind: 'move-state' });
   const env = planEnv(flags, state, addresses);
   if (env) steps.push(env);
   if (!state.hasKey) steps.push({ kind: 'create-key' });

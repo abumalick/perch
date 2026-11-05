@@ -26,7 +26,7 @@ export function withLegacyEnv<T extends Record<string, string | undefined>>(env:
 // agent.env's text with each PERCH_X= line renamed TARFA_X=, every other byte kept. A PERCH_X
 // line beside a TARFA_X one is dropped, since TARFA_X is the one the agent reads.
 export function renameLegacyEnvLines(text: string): { text: string; renamed: string[] } {
-  const assigned = new Set(
+  const userSet = new Set(
     text.split('\n').flatMap((line) => /^\s*(?:export\s+)?(TARFA_[A-Za-z0-9_]*)=/.exec(line)?.[1] ?? []),
   );
   const renamed: string[] = [];
@@ -34,12 +34,12 @@ export function renameLegacyEnvLines(text: string): { text: string; renamed: str
     const match = ASSIGNMENT.exec(line);
     if (!match) return [line];
     const name = `${ENV_PREFIX}${match[2]}`;
-    if (assigned.has(name)) {
+    if (userSet.has(name)) {
       renamed.push(`PERCH_${match[2]} dropped (${name} is set)`);
       return [];
     }
+    // Every line of a repeated name is renamed, so the last still wins, as it does when sourced.
     renamed.push(`PERCH_${match[2]} renamed ${name}`);
-    assigned.add(name);
     return [line.replace(ASSIGNMENT, `$1${name}=`)];
   });
   return { text: lines.join('\n'), renamed };

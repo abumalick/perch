@@ -4,7 +4,7 @@ import { readFile, mkdir, realpath } from 'node:fs/promises';
 import { dirname, join as joinPath, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, withLegacyEnv, type AgentConfig } from './infrastructure/config';
-import { STATE_DIR, migrateStateDir, resolveStateDir } from './infrastructure/state-dir';
+import { migrateStateDir, stateDirLayout } from './infrastructure/state-dir';
 import { systemClock, systemPathResolver } from './infrastructure/system';
 import { ShortWorkspaceIds } from './application/short-workspace-ids';
 import { renameWorkspace } from './application/rename-workspace';
@@ -589,7 +589,7 @@ async function setup(argv: string[], env: NodeJS.ProcessEnv, home: string, io: C
     roster: hasRoster ? enrolmentMode(await devices.read()) : 'absent',
     hooksCurrent: await hooks.current(),
     legacyService: await service.legacyInstalled(),
-    stateMoved: resolveStateDir(home) === joinPath(home, STATE_DIR),
+    stateDir: stateDirLayout(home),
     phonePortOwner: await owner(flags.phonePort),
     hooksPortOwner: await owner(config.port),
     tailscale: flags.tailscale === 'none' ? null : await tailscale.status(),

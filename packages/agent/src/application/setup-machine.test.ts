@@ -59,7 +59,7 @@ function fresh(over: Partial<SetupState> = {}): SetupState {
     roster: 'absent',
     hooksCurrent: false,
     legacyService: false,
-    stateMoved: true,
+    stateDir: 'moved',
     phonePortOwner: 'free',
     hooksPortOwner: 'free',
     tailscale: TAILSCALE,
@@ -98,7 +98,7 @@ function applied(f: SetupFlags, s: SetupState): SetupState {
     if (step.kind === 'install-hooks') next = { ...next, hooksCurrent: true };
     if (step.kind === 'tailscale-serve') next = { ...next, serve: SERVED };
     if (step.kind === 'restart') next = { ...next, phonePortOwner: 'ours', hooksPortOwner: 'ours' };
-    if (step.kind === 'move-state') next = { ...next, stateMoved: true };
+    if (step.kind === 'move-state') next = { ...next, stateDir: 'moved' };
     if (step.kind === 'remove-legacy-service') next = { ...next, legacyService: false };
   }
   return next;
@@ -114,7 +114,7 @@ describe('planSetup', () => {
         roster: 'off',
         hooksCurrent: false,
         legacyService: true,
-        stateMoved: false,
+        stateDir: 'legacy',
         service: { kind: 'systemd', template: TEMPLATE, installed: null, enabled: false },
         phonePortOwner: 'ours',
         hooksPortOwner: 'ours',
@@ -150,6 +150,15 @@ describe('planSetup', () => {
     it('drops a PERCH_ line its TARFA_ twin overrides', () => {
       const env = plan(flags(), fresh({ ...old(), envText: `${OLD_ENV}TARFA_MACHINE_ID=dev\n` })).find((s) => s.kind === 'write-env');
       expect(env && 'text' in env ? env.text.match(/MACHINE_ID/g) : null).toEqual(['MACHINE_ID']);
+    });
+
+    it('refuses before stopping anything when both ~/.perch and ~/.tarfa hold state', () => {
+      expect(errorOf(flags(), fresh({ ...old(), stateDir: 'conflict' }))).toMatch(/will not merge them, so setup stops before touching the service/);
+    });
+
+    it('renames every line of a repeated PERCH_ name, so the last still wins', () => {
+      const env = plan(flags(), fresh({ ...old(), envText: `${OLD_ENV}PERCH_MACHINE_ID=box\n` })).find((s) => s.kind === 'write-env');
+      expect(env && 'text' in env ? env.text.match(/^TARFA_MACHINE_ID=.*$/gm) : null).toEqual(['TARFA_MACHINE_ID=dev', 'TARFA_MACHINE_ID=box']);
     });
 
     it('plans nothing once applied', () => {

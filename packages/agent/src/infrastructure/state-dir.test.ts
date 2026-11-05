@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, readFile, readlink, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { migrateStateDir, resolveAgentKeyPath, resolveStateDir } from './state-dir';
+import { migrateStateDir, resolveAgentKeyPath, resolveStateDir, stateDirLayout } from './state-dir';
 import { loadOrCreateAgentKeys } from './agent-key-file';
 
 let home: string;
@@ -98,11 +98,38 @@ describe('migrateStateDir', () => {
     expect(resolveAgentKeyPath(current())).toBe(join(current(), 'agent-key.json'));
   });
 
+  it('puts back the relay-key.json link a directory moved without one lacks', async () => {
+    await mkdir(current());
+    await loadOrCreateAgentKeys(join(current(), 'agent-key.json'));
+    await migrateStateDir(home);
+    expect(await readlink(join(current(), 'relay-key.json'))).toBe('agent-key.json');
+  });
+
   it('refuses when both key names exist', async () => {
     await mkdir(current());
     await loadOrCreateAgentKeys(join(current(), 'relay-key.json'));
     await loadOrCreateAgentKeys(join(current(), 'agent-key.json'));
     await expect(migrateStateDir(home)).rejects.toThrow(/both agent-key.json and relay-key.json/);
+  });
+});
+
+describe('stateDirLayout', () => {
+  it('reads each layout without changing anything', async () => {
+    expect(stateDirLayout(home)).toBe('moved');
+    await legacyWithKey();
+    expect(stateDirLayout(home)).toBe('legacy');
+    await mkdir(current());
+    expect(stateDirLayout(home)).toBe('legacy');
+    await writeFile(join(current(), 'leak-words.txt'), 'x\n');
+    expect(stateDirLayout(home)).toBe('conflict');
+    await rm(current(), { recursive: true });
+    await migrateStateDir(home);
+    expect(stateDirLayout(home)).toBe('moved');
+  });
+
+  it('calls a dangling ~/.perch link a conflict', async () => {
+    await symlink(join(home, 'gone'), legacy());
+    expect(stateDirLayout(home)).toBe('conflict');
   });
 });
 

@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { lstat, readdir, realpath, rename, rmdir, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { withFileLock } from './file-lock';
@@ -28,6 +28,33 @@ export function resolveAgentKeyPath(dir: string): string {
   if (existsSync(current)) return current;
   const legacy = join(dir, LEGACY_AGENT_KEY_FILE);
   return existsSync(legacy) ? legacy : current;
+}
+
+// What migrateStateDir would find, read without changing anything: setup asks before it stops
+// the old agent, so a move that would refuse never leaves the machine with no agent at all.
+export function stateDirLayout(home: string): 'moved' | 'legacy' | 'conflict' {
+  const current = join(home, STATE_DIR);
+  const legacy = join(home, LEGACY_STATE_DIR);
+  let old: 'absent' | 'dir' | 'link' | 'other' = 'absent';
+  try {
+    const s = lstatSync(legacy);
+    old = s.isSymbolicLink() ? 'link' : s.isDirectory() ? 'dir' : 'other';
+  } catch {
+    old = 'absent';
+  }
+  const hasCurrent = existsSync(current);
+  if (old === 'dir') return !hasCurrent || readdirSync(current).length === 0 ? 'legacy' : 'conflict';
+  if (old === 'link') {
+    let target: string | null = null;
+    try {
+      target = realpathSync(legacy);
+    } catch {
+      target = null;
+    }
+    if (!hasCurrent) return target !== null && isRealDir(target) ? 'legacy' : 'conflict';
+    return target === realpathSync(current) ? 'moved' : 'conflict';
+  }
+  return 'moved';
 }
 
 export type MigrationResult = 'moved' | 'unchanged';
@@ -76,7 +103,12 @@ async function renameLegacyKey(dir: string): Promise<void> {
   const legacyKey = join(dir, LEGACY_AGENT_KEY_FILE);
   const key = join(dir, AGENT_KEY_FILE);
   const legacyKind = await kind(legacyKey);
-  if (legacyKind === 'absent' || legacyKind === 'link') return;
+  if (legacyKind === 'link') return;
+  if (legacyKind === 'absent') {
+    // Moved by a build that left no link, or stopped between the rename and the link.
+    if ((await kind(key)) !== 'absent') await symlink(AGENT_KEY_FILE, legacyKey);
+    return;
+  }
   if ((await kind(key)) !== 'absent') {
     throw new Error(`${dir} holds both ${AGENT_KEY_FILE} and ${LEGACY_AGENT_KEY_FILE}: keep the one phones pinned (tarfa pair prints its fingerprint) and move the other away`);
   }

@@ -48,7 +48,9 @@ unit last. A Codex user then trusts the new hooks in Codex's `/hooks`. An agent 
 under its old unit moves `~/.perch` and re-tags the workspaces' tmux options itself, so the
 workspaces, their status, parents and Codex threads, and every paired phone carry over either way.
 On macOS, check that `launchctl bootout` of the old label leaves the tmux server running before
-relying on it.
+relying on it. Setup refuses, before it stops anything, when `~/.perch` and `~/.tarfa` both hold state.
+Going back to an agent from before the rename after `tarfa setup` also takes the `agent.env`
+backup setup reported, since that agent reads only `PERCH_*`; one merely restarted needs nothing.
 
 Several agents on one node share a Tailscale port under their own `--slug`, each with its own
 `--phone-port` (`setup` refuses a phone port another process holds). The node has one Tailscale

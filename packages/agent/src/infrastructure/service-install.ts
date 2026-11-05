@@ -126,6 +126,8 @@ export function serviceInstall(options: {
     },
     async removeLegacy() {
       await rm(legacyUnit, { force: true });
+      // An already current new unit skipped install(), which copies them.
+      if ((await exists(legacyDropIns)) && !(await exists(dropIns))) await cp(legacyDropIns, dropIns, { recursive: true });
       await rm(legacyDropIns, { recursive: true, force: true });
       await run('systemctl', ['--user', 'daemon-reload']);
       return [`removed ${legacyUnit} and its drop-ins`, 'systemctl --user daemon-reload'];

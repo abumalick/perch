@@ -92,6 +92,22 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   The hooks port (`PERCH_PORT`) serves only `POST /hooks`, `POST /unpark` and `POST /message`, and
   is never published with `tailscale serve`. `pnpm perch connect` joins a machine to a relay;
   `perch pair` pairs a phone (relay section).
+- **`perch setup` sets a machine up without prompting** (`application/setup-machine.ts` plans
+  from flags plus what the machine holds, `run-setup.ts` applies; `docs/DEPLOY.md`, "In one
+  command"): agent.env, agent key, roster, service, hooks, a `tailscale serve`/`funnel` handler,
+  then a restart and a phone-port check. Things not to "simplify": **every step is planned only
+  when it changes something**, so a rerun is a no-op and the agent is restarted only after a
+  change; **the roster is written, token enrolment off, before the service first starts** (no
+  `devices.json` means enrolment on, and a Funnel port is public); **an installed unit counts
+  as current when it runs `<checkout>/deploy/run-agent.sh` with `KillMode=process`**, however
+  it gets there (dev's runs it through `mise exec` from `WorkingDirectory`), so setup never
+  rewrites a working unit; **hooks count as installed regardless of key order and entry order**
+  (Claude Code rewrites `settings.json` with sorted keys); **an existing `PERCH_PWA_ORIGIN` is
+  kept unless `--pwa` is given**; **a phone or hooks port held by anything but this user's
+  agent is refused** (another Linux user's processes are invisible to `ss`/`lsof`); and **an
+  existing serve handler on the same port and path is never replaced**. `perch pair` mints a
+  link with every `PERCH_PHONE_ADDRESSES` address in order (`PERCH_PWA_ORIGIN` defaults to
+  `https://tarfa.app`); `--relay` still pairs through a relay.
 - **The phone port: phones connect to the agent directly** (`PERCH_PHONE_PORT`, default 8797,
   `infrastructure/phone-listener.ts`). It upgrades on **any** path (`tailscale serve --set-path`
   strips its prefix) and answers anything else 404, and each socket runs the unchanged Noise

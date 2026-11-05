@@ -188,6 +188,7 @@ function testConfig(home: string, overrides: Partial<AgentConfig> = {}): AgentCo
     port: 0,
     phonePort: 0,
     phoneAddresses: [],
+    pwaOrigin: 'https://pwa.example',
     projectRoots: [tmpdir()],
     recentStorePath: join(home, 'recent.json'),
     statusStorePath: join(home, 'status.json'),

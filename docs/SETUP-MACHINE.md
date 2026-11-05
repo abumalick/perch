@@ -180,6 +180,21 @@ deploy/install-cli.sh                                            # `perch` on PA
 Check: `curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8787/hooks` prints
 `401` (running, and refusing an unauthenticated hook).
 
+**Or in one step.** `pnpm perch setup` does the `agent.env`, unit and hooks steps above without
+prompting, and is safe to rerun (it changes only what differs):
+
+```bash
+pnpm perch setup --machine-id <name> --project-roots /home/<user>/workspace \
+  --default-path /home/<user>/workspace --dry-run      # the plan; drop --dry-run to apply it
+```
+
+It also writes `~/.perch/devices.json` with token enrolment off, so only a `perch pair` code adds
+a phone. With Tailscale on the machine, `--tailscale serve` (tailnet only) or `--tailscale funnel`
+(public, the phone needs no VPN) also publishes the phone port and records its address for
+`perch pair`; that path needs the direct-connection app, which steps 7 and 8 do not use yet.
+`pnpm perch setup --help` explains the flags and the Tailscale admin settings. The tmux drop-in,
+skills and `install-cli.sh` lines above are still yours to run.
+
 **Status hooks** tell your phone whether a session is working or waiting for you. They go into
 `~/.claude/settings.json`, and into `~/.codex/hooks.json` when `~/.codex` exists, which Codex
 creates on its first run: run `install-hooks` again after you first start Codex, then open Codex,
@@ -469,6 +484,13 @@ credentials of its own). In `deploy/agent.env`, three values differ:
   how you see the new user's jobs nearing their cap. `PERCH_STATS=off` hides that line.
 - **`PERCH_VOICE_DEVICE`**: for Claude voice, each user needs its own loopback subdevice, in
   its `~/.asoundrc` and its `agent.env` (step 11, "Several Linux users on one machine").
+
+With `perch setup` (step 6), the second user passes its own `--machine-id` and
+`--phone-port` (8798 beside your 8797; `setup` refuses a port another user's agent holds), and
+sets `PERCH_PORT` in its `agent.env` first (`setup` refuses a hooks port that is taken, naming
+it). To share your Tailscale port under its own path, it runs `--tailscale none --slug <user>
+--address wss://<node>.<tailnet>.ts.net/<user>`, and `setup` prints the `tailscale serve` line
+for you, the node's operator, to run.
 
 **What not to copy from your account.**
 - **`~/.perch`:** never copy it. Two agents with one agent key take turns on the relay instead of

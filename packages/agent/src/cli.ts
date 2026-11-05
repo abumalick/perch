@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { homedir, hostname } from 'node:os';
-import { readFile, writeFile, mkdir, copyFile, chmod, realpath } from 'node:fs/promises';
+import { homedir, hostname, userInfo } from 'node:os';
+import { readFile, mkdir, realpath } from 'node:fs/promises';
 import { dirname, join as joinPath, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, type AgentConfig } from './infrastructure/config';
@@ -20,13 +20,22 @@ import { closeWorkspace } from './application/close-workspace';
 import { getRecentPaths } from './application/get-recent-paths';
 import { browseDir } from './application/browse-dir';
 import { isHiddenPath } from './application/is-hidden-path';
-import { installHooks } from './application/install-hooks';
+import { hooksFiles } from './infrastructure/hooks-files';
+import { parseSetupFlags, planSetup, type PortOwner, type SetupState } from './application/setup-machine';
+import { runSetup } from './application/run-setup';
+import { serviceInstall } from './infrastructure/service-install';
+import { tailscaleCli } from './infrastructure/tailscale-cli';
+import { portOwner } from './infrastructure/port-owner';
+import { answersUpgrade } from './infrastructure/listener-check';
+import type { ServiceInstallPort } from './ports/service-install-port';
+import type { TailscalePort } from './ports/tailscale-port';
+import type { AgentServicePort } from './ports/agent-service-port';
 import { loadOrCreateRelayKeys } from './infrastructure/relay-key-file';
 import { accountId } from '@perch/secure-channel';
 import { FileDeviceStore } from './infrastructure/file-device-store';
 import { enrolmentMode, forgetDevice, policyWarning, relayPolicy, revokeDevice, withEnrolmentMode, type Device, type DeviceRoster, type EnrolmentMode } from './application/device-roster';
 import encodeQR from 'qr';
-import { deviceFingerprint, generatePairingSecret, isJoinKey, parsePairingLink, sanitizeDeviceName } from '@perch/secure-channel';
+import { deviceFingerprint, generatePairingSecret, isJoinKey, isMachineUrl, MAX_ADDRESSES, parsePairingLink, sanitizeDeviceName } from '@perch/secure-channel';
 import { parseEnvFile } from './application/agent-env';
 import { connectMachine, mintPairingLink, pairingName, relayPhoneUrl } from './application/connect-machine';
 import { FilePairingStore } from './infrastructure/file-pairing-store';
@@ -69,9 +78,21 @@ export interface CliIo {
   codex?: CodexSpawnPort;
   // Whether a command resolves through the login shell, as tmux will run it.
   resolveCommand?: (name: string) => Promise<boolean>;
+  // What `setup` reads and changes outside agent.env and ~/.perch.
+  setup?: {
+    service?: ServiceInstallPort;
+    tailscale?: TailscalePort;
+    portOwner?: (port: number) => Promise<PortOwner>;
+    restart?: AgentServicePort;
+    checkListener?: (port: number) => Promise<boolean>;
+  };
 }
 
+const HOOKS_DIR = joinPath(dirname(fileURLToPath(import.meta.url)), 'hooks');
+const CODEX_NEXT_STEP = 'open Codex and trust the Perch hooks in /hooks; repeat after any hook change';
+
 export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo = {}): Promise<string> {
+  if (argv[0] === 'setup') return setup(argv.slice(1), env, home, io);
   if (argv[0] === 'connect' || argv[0] === 'pair') return relaySetup(argv[0], argv.slice(1), env, home);
   if (argv[0] === 'ls' || argv[0] === 'spawn' || argv[0] === 'peek' || argv[0] === 'unpark' || argv[0] === 'rename' || argv[0] === 'send') {
     return orchestration(argv[0], argv.slice(1), env, home, io);
@@ -136,53 +157,16 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, 
       return JSON.stringify(await browseDir({ lister, hidden }, path, config.projectRoots), null, 2);
     }
     case 'install-hooks': {
-      // Copy the hook script to a stable, $HOME-relative location so the
-      // registered command is byte-identical across machines (the repo itself
-      // lives at different sub-paths per machine). Copy rather than symlink so
-      // the reference never goes stale if the repo moves or is removed.
-      const hooksDir = joinPath(dirname(fileURLToPath(import.meta.url)), 'hooks');
-      const stableScript = joinPath(home, '.perch', 'perch-hook.sh');
-      await mkdir(dirname(stableScript), { recursive: true });
-      for (const script of ['perch-hook.sh', 'perch-guard.sh']) {
-        const stable = joinPath(home, '.perch', script);
-        await copyFile(joinPath(hooksDir, script), stable);
-        await chmod(stable, 0o755);
-      }
-
-      const settingsPath = joinPath(home, '.claude', 'settings.json');
-      let current: Record<string, unknown> = {};
-      try {
-        current = JSON.parse(await readFile(settingsPath, 'utf8')) as Record<string, unknown>;
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-      }
-      const hookCommand = 'bash ~/.perch/perch-hook.sh';
-      const guardCommand = 'bash ~/.perch/perch-guard.sh';
-      const merged = installHooks({ settings: current }, { hookCommand, guardCommand, port: config.port });
-      await mkdir(dirname(settingsPath), { recursive: true });
-      await writeFile(settingsPath, JSON.stringify(merged, null, 2), 'utf8');
-
-      // Codex gets the same hooks only where it is installed, so a machine without it does not
-      // grow a ~/.codex. Codex runs no hook until the user trusts it (keyed on a hash it does not
-      // document), so that step stays with the user.
-      const codexDir = joinPath(home, '.codex');
-      if (!(await fsIsDirectory(codexDir))) {
-        return JSON.stringify({ installed: settingsPath, scriptPath: stableScript });
-      }
-      const codexHooksPath = joinPath(codexDir, 'hooks.json');
-      let codexCurrent: Record<string, unknown> = {};
-      try {
-        codexCurrent = JSON.parse(await readFile(codexHooksPath, 'utf8')) as Record<string, unknown>;
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-      }
-      const codexMerged = installHooks({ settings: codexCurrent }, { hookCommand, guardCommand, port: config.port, agent: 'codex' });
-      await writeFile(codexHooksPath, JSON.stringify(codexMerged, null, 2), 'utf8');
+      const hooks = hooksFiles(home, HOOKS_DIR, config.port);
+      const { codex } = await hooks.install();
+      // Codex runs no hook until the user trusts it (keyed on a hash it does not document), so
+      // that step stays with the user.
+      if (!codex) return JSON.stringify({ installed: hooks.settingsPath, scriptPath: hooks.scriptPath });
       return JSON.stringify({
-        installed: settingsPath,
-        codexInstalled: codexHooksPath,
-        codexNextStep: 'open Codex and trust the Perch hooks in /hooks; repeat after any hook change',
-        scriptPath: stableScript,
+        installed: hooks.settingsPath,
+        codexInstalled: hooks.codexHooksPath,
+        codexNextStep: CODEX_NEXT_STEP,
+        scriptPath: hooks.scriptPath,
       });
     }
     case 'relay-key': {
@@ -535,22 +519,144 @@ async function relaySetup(command: 'connect' | 'pair', argv: string[], env: Node
     const { lines, link } = await connectMachine(deps, { relayUrl, agentUrl, joinKey, pwaOrigin: pwa });
     return link ? [...lines, '', pairingInstructions(link)].join('\n') : lines.join('\n');
   }
+  let origin = pwa;
+  try {
+    origin ??= pwaOrigin(config.pwaOrigin)!;
+  } catch {
+    throw new Error(`PERCH_PWA_ORIGIN in agent.env must be the http(s) origin phones open the app at (got ${config.pwaOrigin})`);
+  }
   let relay = takeOption(args, '--relay', usage);
   if (args.length > 0) throw new Error(PAIR_USAGE);
+  // The machine's own addresses, unless a relay is named: relays stay for machines not yet moved.
+  if (!relay && config.phoneAddresses.length > 0) {
+    const bad = config.phoneAddresses.find((url) => !isMachineUrl(url));
+    if (bad) throw new Error(`PERCH_PHONE_ADDRESSES holds ${bad}, which a phone refuses: wss://<host>[:port][/<slug>] (run perch setup)`);
+    if (config.phoneAddresses.length > MAX_ADDRESSES) throw new Error(`PERCH_PHONE_ADDRESSES holds more than ${MAX_ADDRESSES} addresses`);
+    return pairingInstructions(await mintPairingLink(deps, { phoneUrls: config.phoneAddresses, pwaOrigin: origin }));
+  }
   if (!relay) {
     const reachable = config.relayUrls.filter((url) => !isLoopbackRelay(url));
     if (reachable.length !== 1) {
       throw new Error(
         reachable.length === 0
-          ? 'this machine holds no relay a phone can reach: run perch connect first, or name one with --relay'
+          ? 'this machine has no PERCH_PHONE_ADDRESSES and no relay a phone can reach: run perch setup first (perch setup --help)'
           : `this machine holds several relays; name one with --relay: ${reachable.join(', ')}`,
       );
     }
     relay = reachable[0]!;
   }
-  const origin = pwa ?? pwaOrigin(config.pwaOrigin);
-  if (!origin) throw new Error('no PWA origin: pass --pwa <where your phone opens Perch>, e.g. https://host:8443');
   return pairingInstructions(await mintPairingLink(deps, { phoneUrls: [relayPhoneUrl(deps.keys, relay)], pwaOrigin: origin }));
+}
+
+export class UsageError extends Error {
+  readonly exitCode = 2;
+}
+
+export const SETUP_USAGE = `usage: perch setup --machine-id <id> --project-roots <dir,dir> [options]
+
+Sets this machine up as a Perch agent, without prompting: deploy/agent.env (backed up first), the
+agent key, a new device roster that admits pairing codes only (an existing one is kept), the service started at boot (systemd
+user unit with linger, or launchd), the Claude Code hooks, and optionally a Tailscale address for
+phones. Rerunning it with the same flags changes nothing. It refuses rather than replace anything
+it did not make (an agent key, a token, another tailscale serve entry).
+
+  --machine-id <id>             the name phones show for this machine
+  --project-roots <dir,dir>     absolute folders new workspaces may be made in
+  --default-path <dir>          where a phone resolves relative paths (in pairing links)
+  --phone-port <n>              loopback port phones reach (default 8797); every Linux user on one
+                                machine needs their own, e.g. 8797 and 8798
+  --tailscale serve|funnel|none publish the phone port on the tailnet (serve), also on the public
+                                internet (funnel), or not at all (none, the default)
+  --tailscale-port <n>          the HTTPS port Tailscale serves it on (default 443 for serve, 10000
+                                for funnel; Funnel allows only 443, 8443 and 10000)
+  --slug <name>                 serve under /<name>, so several agents share one port
+  --address <wss-url>           another address phones try, after the Tailscale one (repeatable,
+                                4 in all), e.g. a reverse proxy
+  --pwa <origin>                where phones open the app (default https://tarfa.app; an existing
+                                PERCH_PWA_ORIGIN is kept unless this is given)
+  --token-enrolment on|off      let PERCH_TOKEN enrol phones (off by default on a new roster)
+  --pair                        print a pairing link and QR code at the end
+  --dry-run                     print the plan and the Tailscale checks; change nothing
+
+Tailscale, once per node:
+  1. Install Tailscale and run \`tailscale up\`.
+  2. In the admin console (DNS page): turn on MagicDNS and HTTPS certificates.
+  3. For --tailscale funnel: give the node the funnel attribute in the policy file, e.g.
+       "nodeAttrs": [{ "target": ["<you or the node's tag>"], "attr": ["funnel"] }]
+     Funnel serves only ports 443, 8443 and 10000.
+  4. If Tailscale says it needs root, make yourself its operator once:
+       sudo tailscale set --operator=$USER
+Several agents on one node (one per Linux user) share a Tailscale port, each under its own --slug.
+The node has one operator: a second user runs \`--tailscale none --slug <name> --address <url>\`
+with their own --phone-port, and setup prints the \`tailscale serve\` line for the operator to run.
+
+Example:
+  perch setup --machine-id dev --project-roots ~/workspace --tailscale funnel --slug me --pair`;
+
+async function setup(argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo): Promise<string> {
+  if (argv.includes('--help') || argv.includes('-h')) return SETUP_USAGE;
+  const flags = parseSetupFlags(argv);
+  if ('error' in flags) throw new UsageError(`${flags.error}\n\n${SETUP_USAGE.split('\n')[0]}\n(perch setup --help for every option)`);
+
+  const envPath = await locateAgentEnv(env);
+  // The checkout the service runs: the one whose deploy/ holds agent.env.
+  const repo = resolvePath(dirname(envPath), '..');
+  const envText = await readFile(envPath, 'utf8').catch((err: NodeJS.ErrnoException) => {
+    if (err.code === 'ENOENT') return null;
+    throw err;
+  });
+  const config = loadConfig({ ...parseEnvFile(envText ?? ''), PERCH_MACHINE_ID: flags.machineId }, home);
+  const fx = io.setup ?? {};
+  const service = fx.service ?? serviceInstall({ repo, home, user: userInfo().username, uid: process.getuid?.() ?? 0 });
+  const tailscale = fx.tailscale ?? tailscaleCli();
+  const owner = fx.portOwner ?? portOwner;
+  const hooks = hooksFiles(home, HOOKS_DIR, config.port);
+  const devices = new FileDeviceStore(config.devicesPath);
+  const hasRoster = await readFile(config.devicesPath).then(() => true, () => false);
+
+  const state: SetupState = {
+    repo,
+    service: { kind: service.kind, template: await service.template(), installed: await service.installed(), enabled: await service.enabled() },
+    envText,
+    newToken: randomBytes(32).toString('hex'),
+    hasKey: await readFile(config.relayKeyPath).then(() => true, () => false),
+    roster: hasRoster ? enrolmentMode(await devices.read()) : 'absent',
+    hooksCurrent: await hooks.current(),
+    phonePortOwner: await owner(flags.phonePort),
+    hooksPortOwner: await owner(config.port),
+    tailscale: flags.tailscale === 'none' ? null : await tailscale.status(),
+    serve: flags.tailscale === 'none' ? null : await tailscale.serveStatus(),
+  };
+  const plan = planSetup(flags, state);
+  if ('error' in plan) throw new Error(plan.error);
+
+  const envFile = agentEnvFile(envPath);
+  const result = await runSetup(
+    plan,
+    {
+      envPath,
+      writeEnv: (text) => envFile.write(text),
+      createKey: async () => {
+        await loadOrCreateRelayKeys(config.relayKeyPath);
+      },
+      writeRoster: async (mode) => {
+        await mkdir(dirname(config.devicesPath), { recursive: true, mode: 0o700 });
+        await devices.update((roster) => withEnrolmentMode(roster, mode));
+      },
+      installUnit: (text) => service.install(text),
+      installHooks: async () => {
+        const { codex } = await hooks.install();
+        if (codex) process.stderr.write(`${CODEX_NEXT_STEP}\n`);
+      },
+      serve: (entry) => tailscale.serve(entry),
+      restart: () => (fx.restart ?? agentService()).restart(),
+      checkListener: fx.checkListener ?? ((port) => answersUpgrade(port)),
+      pair: () => relaySetup('pair', [], env, home),
+    },
+    { dryRun: flags.dryRun, phonePort: flags.phonePort },
+  );
+  if (!result.ok) throw new Error(result.lines.join('\n'));
+  return result.lines.join('\n');
 }
 
 function pairingInstructions(link: string): string {
@@ -636,6 +742,6 @@ if (isEntrypoint) {
     })
     .catch((err: unknown) => {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exitCode = 1;
+      process.exitCode = err instanceof UsageError ? err.exitCode : 1;
     });
 }

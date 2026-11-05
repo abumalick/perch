@@ -34,9 +34,15 @@ export function agentEnvFile(path: string, now: () => Date = () => new Date()): 
       }
     },
     write: async (text) => {
-      const backup = `${path}.bak-${now().toISOString().replace(/[:.]/g, '-')}`;
-      await copyFile(path, backup);
-      await chmod(backup, 0o600);
+      let backup: string | null = `${path}.bak-${now().toISOString().replace(/[:.]/g, '-')}`;
+      try {
+        await copyFile(path, backup);
+        await chmod(backup, 0o600);
+      } catch (err) {
+        // A machine being set up has no file to back up yet.
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+        backup = null;
+      }
       await writeFile(path, text, { mode: 0o600 });
       // The mode above applies only when the file is created.
       await chmod(path, 0o600);

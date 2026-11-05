@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { isCleartextRemote, withoutTrailingSlash } from '../application/relay-url';
+import { DEFAULT_PWA_ORIGIN } from '../application/setup-machine';
 
 export interface AgentConfig {
   machineId: string;
@@ -38,8 +39,9 @@ export interface AgentConfig {
   devicesPath: string;
   // The phone pairing secrets `perch pair` hands out (~/.perch/pairing.json).
   pairingPath: string;
-  // Where phones open the PWA; the origin of the pairing links `perch pair` prints.
-  pwaOrigin?: string;
+  // Where phones open the PWA; the origin of the pairing links `perch pair` prints
+  // (PERCH_PWA_ORIGIN, default https://tarfa.app).
+  pwaOrigin: string;
   // false when PERCH_STATS turns the machine load strip off, e.g. for a second Linux user on a
   // machine whose load another agent already reports.
   stats?: false;
@@ -102,7 +104,7 @@ export function loadConfig(env: NodeJS.ProcessEnv, home: string): AgentConfig {
     relayKeyPath: join(home, '.perch', 'relay-key.json'),
     devicesPath: join(home, '.perch', 'devices.json'),
     pairingPath: join(home, '.perch', 'pairing.json'),
-    ...(env.PERCH_PWA_ORIGIN ? { pwaOrigin: env.PERCH_PWA_ORIGIN } : {}),
+    pwaOrigin: env.PERCH_PWA_ORIGIN?.trim() || DEFAULT_PWA_ORIGIN,
     ...(env.PERCH_DEFAULT_PATH ? { defaultPath: env.PERCH_DEFAULT_PATH } : {}),
     ...(['off', '0', 'false'].includes(env.PERCH_STATS?.trim().toLowerCase() ?? '') ? { stats: false as const } : {}),
     ...(env.PERCH_VOICE_DEVICE?.trim() ? { voiceDevice: env.PERCH_VOICE_DEVICE.trim() } : {}),

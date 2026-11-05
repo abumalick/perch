@@ -4,6 +4,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
 import { buildVersionJson, VERSION_FILE } from './src/core/version-file';
 import { CONTENT_SECURITY_POLICY } from './src/core/csp';
+import { buildHeadersFile, HEADERS_FILE, SECURITY_HEADERS } from './src/core/security-headers';
 
 const buildLabel = process.env.TARFA_BUILD_LABEL ?? 'main';
 // A per-build id (timestamp) that changes on every build, even a rebuild of the same
@@ -23,6 +24,21 @@ function emitVersionFile(label: string, id: string): Plugin {
   };
 }
 
+// dist/_headers, from the same policy as the meta tag, so the two cannot drift.
+function emitHeadersFile(): Plugin {
+  return {
+    name: 'tarfa-headers-file',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: HEADERS_FILE, source: buildHeadersFile() });
+    },
+  };
+}
+
+function previewHeaders(): Record<string, string> {
+  const { 'Strict-Transport-Security': _hsts, ...headers } = SECURITY_HEADERS;
+  return headers;
+}
+
 // The CSP goes in at build only: the dev server's module graph and HMR are not what ships.
 function contentSecurityPolicy(): Plugin {
   return {
@@ -39,6 +55,7 @@ export default defineConfig({
     svelte(),
     contentSecurityPolicy(),
     emitVersionFile(buildLabel, buildId),
+    emitHeadersFile(),
     VitePWA({
       // 'prompt', not 'autoUpdate': the new worker waits instead of reloading on its own.
       // main.ts surfaces a banner and reloads only on the user's tap (see UpdateBanner).
@@ -92,8 +109,11 @@ export default defineConfig({
   // `vite preview` (used by deploy/run-pwa.sh) is fronted by `tailscale serve` and bound to
   // loopback, so the tailnet Host header must be allowed (vite's anti-DNS-rebinding check would
   // otherwise 403 it). Safe here: only localhost + tailscale serve reach the loopback listener.
+  // It also sends tarfa.app's headers, so the staging origin and the e2e run under them too, but
+  // HSTS: on a tailnet host it would force https on every port of that machine.
   preview: {
     allowedHosts: true,
+    headers: previewHeaders(),
   },
   test: {
     environment: 'jsdom',

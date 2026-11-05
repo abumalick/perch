@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { b64url, generateAgentKeys } from '@tarfa/secure-channel';
+import { b64url, deviceFingerprint, generateAgentKeys, generateDeviceKeys } from '@tarfa/secure-channel';
 import type { DeviceStorePort } from '../ports/device-store-port';
 import type { PairingStorePort } from '../ports/pairing-store-port';
 import type { Pairing } from '../application/pairing';
@@ -34,18 +34,30 @@ function setup(roster: DeviceRoster) {
   const keys = generateAgentKeys();
   const store = new MemoryDeviceStore(roster);
   const revokedChecks: Array<(key: string) => boolean> = [];
+  const enrolled: unknown[] = [];
+  const logs: string[] = [];
   const gate = startDeviceGate({
     keys,
-    server: { refuseRevokedDevices: (isRevoked) => revokedChecks.push(isRevoked) },
+    server: { refuseRevokedDevices: (isRevoked) => revokedChecks.push(isRevoked), broadcastDeviceEnrolled: (d) => enrolled.push(d) },
     store,
     pairings: new MemoryPairingStore(),
-    log: () => undefined,
+    log: (line) => logs.push(line),
     rosterPollMs: 60_000,
   });
-  return { keys, store, gate, revokedChecks };
+  return { keys, store, gate, revokedChecks, enrolled, logs };
 }
 
 describe('startDeviceGate', () => {
+  it('logs a newly enrolled device and tells the connected phones', async () => {
+    const { gate, enrolled, logs } = setup(EMPTY_ROSTER);
+    const phone = generateDeviceKeys();
+    await gate.devices.enrol({ x25519: phone.x25519.publicKey, ed25519: phone.ed25519.publicKey, name: 'Pixel' }, 'pairing');
+    const id = deviceFingerprint(phone.x25519.publicKey);
+    expect(enrolled).toEqual([expect.objectContaining({ id, name: 'Pixel', x25519: phone.x25519.publicKey })]);
+    expect(logs).toContain(`device enrolled: ${id} "Pixel" (pairing code)`);
+    gate.stop();
+  });
+
   it('serves one static key, and hands every socket the same gate', () => {
     const { keys, gate } = setup(EMPTY_ROSTER);
     expect(gate.staticPrivate).toEqual(b64url.decode(keys.x25519.privateKey));

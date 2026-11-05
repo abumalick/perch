@@ -23,8 +23,8 @@ function stateOf(p: Pairing, now: Date): PairingState {
   return now.getTime() < Date.parse(p.expiresAt) ? 'live' : 'expired';
 }
 
-export function addPairing(list: Pairing[], secret: string, now: Date): Pairing[] {
-  return [...retained(list, now), { secret, expiresAt: new Date(now.getTime() + PAIRING_TTL_MS).toISOString() }];
+export function addPairing(list: Pairing[], secret: string, now: Date, ttlMs = PAIRING_TTL_MS): Pairing[] {
+  return [...retained(list, now), { secret, expiresAt: new Date(now.getTime() + ttlMs).toISOString() }];
 }
 
 // Spends a secret for `device`, which it is then bound to: the same device presenting it again

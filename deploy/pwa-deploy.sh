@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Deploys the PWA to tarfa.app, a static-assets Worker (packages/pwa/wrangler.jsonc), with the
 # Cloudflare account from the main checkout's gitignored deploy/pwa-deploy.env, wherever it is
-# run from. Wrangler's own login holds the credentials; the file names only the account.
+# run from. The file names the account and PWA_DEPLOY_TOKEN_CMD, a command that prints a scoped
+# API token (e.g. `bw get password <item>`). The token goes only into wrangler's environment, for
+# each wrangler call, and is never printed; without it nothing that reaches Cloudflare runs, so
+# wrangler never falls back to an OAuth login it may hold.
 #
 # A production deploy (env.production: the Worker `tarfa` on the tarfa.app custom domain) runs
 # only from a clean main checkout that matches its upstream after a fetch, with dependencies
@@ -45,11 +48,22 @@ done
 CLOUDFLARE_ACCOUNT_ID="$( (. "$env_file" >/dev/null && printf '%s' "${CLOUDFLARE_ACCOUNT_ID:-}") )"
 [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "set CLOUDFLARE_ACCOUNT_ID in $env_file" >&2; exit 1; }
 export CLOUDFLARE_ACCOUNT_ID
+# shellcheck source=/dev/null
+token_cmd="$( (. "$env_file" >/dev/null && printf '%s' "${PWA_DEPLOY_TOKEN_CMD:-}") )"
+token=''
+fetch_token() {
+  [ -n "$token_cmd" ] || { echo "set PWA_DEPLOY_TOKEN_CMD in $env_file: a command that prints the scoped Cloudflare API token" >&2; exit 1; }
+  token="$(bash -c "$token_cmd")" || { echo "PWA_DEPLOY_TOKEN_CMD failed: no token, nothing deployed" >&2; exit 1; }
+  [ -n "$token" ] || { echo "PWA_DEPLOY_TOKEN_CMD printed nothing: no token, nothing deployed" >&2; exit 1; }
+}
+# Wrangler with the token in its own environment only; the build and git never see it.
+wrangler() { CLOUDFLARE_API_TOKEN="$token" pnpm exec wrangler "$@"; }
 
 pwa="$root/packages/pwa"
 if [ "$delete" = 1 ]; then
+  fetch_token
   cd "$pwa"
-  pnpm exec wrangler delete --env dev
+  wrangler delete --env dev
   exit 0
 fi
 
@@ -65,8 +79,11 @@ if [ "$production" = 1 ]; then
     || { echo "refusing to deploy: could not fetch $upstream to compare main with" >&2; exit 1; }
   [ "$(git -C "$root" rev-parse HEAD)" = "$(git -C "$root" rev-parse "refs/remotes/$upstream")" ] \
     || { echo "refusing to deploy: main is not $upstream (push or pull first)" >&2; exit 1; }
+  fetch_token
   (cd "$root" && pnpm install --frozen-lockfile) || { echo "refusing to deploy: pnpm install --frozen-lockfile failed" >&2; exit 1; }
 fi
+# A dry run reaches no account, so it needs no token.
+[ "$dev" = 0 ] || fetch_token
 
 # The build's id names the commit and the time, so the check below can tell this build from the
 # one it replaces. A dev build carries a label, which the app shows as a badge. Outside
@@ -86,7 +103,7 @@ fi
 
 cd "$pwa"
 if [ "$dev" = 1 ]; then
-  log="$(pnpm exec wrangler deploy --env dev "${assets[@]}" | tee /dev/stderr)"
+  log="$(wrangler deploy --env dev "${assets[@]}" | tee /dev/stderr)"
   url="$(printf '%s\n' "$log" | grep -oE 'https://[A-Za-z0-9.-]+\.workers\.dev' | head -n1 || true)"
   echo "tarfa-dev: ${url:-see the wrangler output above}"
   echo "delete it after the test: deploy/pwa-deploy.sh --dev --delete"
@@ -97,7 +114,7 @@ if [ "$dry_run" = 1 ]; then
   exit 0
 fi
 
-pnpm exec wrangler deploy --env production
+wrangler deploy --env production
 # A new custom-domain version takes a few seconds to answer everywhere.
 deadline=$(( $(date +%s) + ${PWA_DEPLOY_WAIT_S:-60} ))
 mkdir -p "$root/.tmp"

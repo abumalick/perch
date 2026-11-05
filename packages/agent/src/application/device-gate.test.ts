@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateDeviceKeys } from '@tarfa/secure-channel';
+import { deviceFingerprint, generateDeviceKeys } from '@tarfa/secure-channel';
 import type { DeviceStorePort } from '../ports/device-store-port';
 import type { PairingStorePort } from '../ports/pairing-store-port';
 import { PAIRING_TTL_MS, addPairing, redeemPairing, type Pairing } from './pairing';
@@ -37,8 +37,15 @@ function setup(roster?: DeviceRoster) {
   const pairings = new MemoryPairingStore(addPairing([], SECRET, new Date(0)));
   let changes = 0;
   let now = new Date(0);
-  const devices = new RosterDevices({ store, pairings, now: () => now, onChange: () => (changes += 1) });
-  return { store, pairings, devices, changes: () => changes, at: (ms: number) => (now = new Date(ms)) };
+  const enrolled: Array<{ id: string; name: string; at: string; x25519: string; via: string }> = [];
+  const devices = new RosterDevices({
+    store,
+    pairings,
+    now: () => now,
+    onChange: () => (changes += 1),
+    onEnrolled: (device, via) => enrolled.push({ ...device, via }),
+  });
+  return { store, pairings, devices, enrolled, changes: () => changes, at: (ms: number) => (now = new Date(ms)) };
 }
 
 function phone() {
@@ -62,6 +69,32 @@ describe('RosterDevices', () => {
     const p = phone();
     await devices.enrol(p, 'pairing');
     expect(await devices.check(p.x25519)).toEqual({ standing: 'unknown', enrolment: 'closed' });
+  });
+
+  it('tells of a device it newly enrolled, once, and of no refused one', async () => {
+    const { devices, enrolled, store } = setup();
+    const p = phone();
+    await devices.enrol(p, 'pairing');
+    await devices.enrol(p, 'pairing');
+    expect(enrolled).toEqual([{ id: deviceFingerprint(p.x25519), name: 'p', at: new Date(0).toISOString(), x25519: p.x25519, via: 'pairing' }]);
+    store.roster = withEnrolmentMode(store.roster, 'closed');
+    await devices.enrol(phone(), 'pairing');
+    expect(enrolled).toHaveLength(1);
+  });
+
+  it('enrols even when telling of it fails', async () => {
+    const store = new MemoryDeviceStore();
+    const devices = new RosterDevices({
+      store,
+      pairings: new MemoryPairingStore([]),
+      now: () => new Date(0),
+      onChange: () => undefined,
+      onEnrolled: () => {
+        throw new Error('no phone to tell');
+      },
+    });
+    const p = phone();
+    expect(await devices.enrol(p, 'token')).toBe(true);
   });
 
   it('enrols with a pairing code but not the token while enrolment is off', async () => {

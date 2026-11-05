@@ -9,7 +9,7 @@
 # this repo's dominant integration path, so the merge + push hooks are what
 # actually keep red code off `main` and `origin`.
 #
-# Arg 1 is the hook name, used only for the log line.
+# Arg 1 is the hook name; arg 2, from pre-push, is the remote pushed to (for the leak check).
 set -euo pipefail
 
 REPO="$(git rev-parse --show-toplevel)"
@@ -22,7 +22,7 @@ done
 PNPM=("${RUN[@]}" pnpm)
 
 echo "${1:-test-gate}: checking for leaks…"
-"${RUN[@]}" bash "${REPO}/deploy/check-leaks.sh" "${1:-}"
+"${RUN[@]}" bash "${REPO}/deploy/check-leaks.sh" "${1:-}" "${2:-}"
 
 echo "${1:-test-gate}: running typecheck + unit tests…"
 "${PNPM[@]}" --dir "${REPO}" -r typecheck

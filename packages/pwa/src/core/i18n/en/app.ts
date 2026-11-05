@@ -21,8 +21,12 @@ export const app = {
     addMachine: 'Add a machine',
     then: ', then ',
     pastePairingLink: 'Paste pairing link',
-    notUsedYet: 'The code is not used yet. It works once, within 10 minutes of ',
+    notUsedYet: 'The code is not used yet. It works once, within the minutes stated by ',
     pairInBrowser: 'Pair in this browser instead',
+  },
+  deviceNotice: {
+    newDevice: (machine: string, name: string, id: string) => `New device paired with ${machine}: ${name} (${id})`,
+    notYou: (id: string) => `Not you? Revoke it on that machine: tarfa devices revoke ${id}`,
   },
   copyOffer: {
     label: 'Copy from terminal',

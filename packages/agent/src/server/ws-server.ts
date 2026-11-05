@@ -213,6 +213,11 @@ export class WsServer {
     }
   }
 
+  // A device was just enrolled: every phone connected here hears of it, except that device.
+  broadcastDeviceEnrolled(device: { id: string; name: string; at: string; x25519?: string }): void {
+    for (const handler of this.handlers) handler.pushDeviceEnrolled(device);
+  }
+
   // Pushes a `closed` message to every connected device — used when a workspace is closed
   // explicitly, so devices other than the requester learn about it immediately instead of
   // waiting for the next title-poll tick (which no longer fires it for this id, since

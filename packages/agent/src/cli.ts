@@ -38,6 +38,7 @@ import encodeQR from 'qr';
 import { deviceFingerprint, generatePairingSecret, isMachineUrl, MAX_ADDRESSES, parsePairingLink, sanitizeDeviceName } from '@tarfa/secure-channel';
 import { parseEnvFile } from './application/agent-env';
 import { mintPairingLink, pairingName } from './application/pairing-link';
+import { PAIRING_TTL_MS } from './application/pairing';
 import { FilePairingStore } from './infrastructure/file-pairing-store';
 import { agentEnvFile, locateAgentEnv } from './infrastructure/agent-env-file';
 import { agentService } from './infrastructure/agent-service';
@@ -444,7 +445,7 @@ async function readStdin(ttyError: string): Promise<string> {
 }
 
 const RELAYS_GONE = 'relays are gone: tarfa setup sets a machine up for phones, and tarfa pair pairs one';
-const PAIR_USAGE = 'usage: tarfa pair [--pwa <PWA origin>]';
+const PAIR_USAGE = 'usage: tarfa pair [--pwa <PWA origin>] [--ttl <minutes, 1-10, default 10>]';
 
 function takeOption(args: string[], name: string, usage: string): string | undefined {
   const at = args.indexOf(name);
@@ -485,6 +486,9 @@ async function pair(argv: string[], env: NodeJS.ProcessEnv, home: string): Promi
   const args = [...argv];
   const config = loadConfig({ ...env, ...(await agentEnvValues(env)) }, home);
   let origin = pwaOrigin(takeOption(args, '--pwa', PAIR_USAGE));
+  const ttl = takeOption(args, '--ttl', PAIR_USAGE) ?? String(PAIRING_TTL_MS / 60_000);
+  const minutes = Number(ttl);
+  if (!/^\d+$/.test(ttl) || minutes < 1 || minutes * 60_000 > PAIRING_TTL_MS) throw new Error(`--ttl takes whole minutes from 1 to ${PAIRING_TTL_MS / 60_000} (got ${ttl})`);
   if (args.length > 0) throw new Error(PAIR_USAGE);
   try {
     origin ??= pwaOrigin(config.pwaOrigin)!;
@@ -505,10 +509,11 @@ async function pair(argv: string[], env: NodeJS.ProcessEnv, home: string): Promi
       pairings: new FilePairingStore(config.pairingPath),
       newSecret: generatePairingSecret,
       now: () => new Date(),
+      ttlMs: minutes * 60_000,
     },
     { phoneUrls: config.phoneAddresses, pwaOrigin: origin },
   );
-  return pairingInstructions(link);
+  return pairingInstructions(link, minutes);
 }
 
 export class UsageError extends Error {
@@ -633,7 +638,7 @@ async function setup(argv: string[], env: NodeJS.ProcessEnv, home: string, io: C
   return result.lines.join('\n');
 }
 
-function pairingInstructions(link: string): string {
+function pairingInstructions(link: string, minutes = PAIRING_TTL_MS / 60_000): string {
   return [
     'On the phone, in Tarfa: Settings → Scan QR code, then scan this. Or open the link below on the',
     'phone (Android opens the installed app; on an iPhone copy it and use Settings → Paste pairing link).',
@@ -644,7 +649,7 @@ function pairingInstructions(link: string): string {
     '',
     // The phone asks before pairing and shows this fingerprint: they must match.
     `The phone will show machine key ${deviceFingerprint(parsePairingLink(link)!.agentKey)}; check it matches.`,
-    'It works once, for 10 minutes. `tarfa pair` makes another.',
+    `It works once, for ${minutes} minute${minutes === 1 ? '' : 's'}. \`tarfa pair\` makes another.`,
   ].join('\n');
 }
 

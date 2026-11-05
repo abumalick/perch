@@ -23,8 +23,12 @@ export const app: Messages['app'] = {
     addMachine: 'Ajouter une machine',
     then: ', puis ',
     pastePairingLink: 'Coller le lien d’association',
-    notUsedYet: 'Le code n’a pas encore servi. Il fonctionne une fois, dans les 10 minutes suivant ',
+    notUsedYet: 'Le code n’a pas encore servi. Il fonctionne une fois, dans le délai annoncé par ',
     pairInBrowser: 'Associer plutôt dans ce navigateur',
+  },
+  deviceNotice: {
+    newDevice: (machine, name, id) => `Nouvel appareil associé à ${machine} : ${name} (${id})`,
+    notYou: (id) => `Ce n’est pas vous ? Révoquez-le sur cette machine : tarfa devices revoke ${id}`,
   },
   copyOffer: {
     label: 'Copier depuis le terminal',

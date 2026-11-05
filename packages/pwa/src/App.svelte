@@ -13,6 +13,7 @@
   import UpdateBanner from './lib/UpdateBanner.svelte';
   import DictationErrorBanner from './lib/DictationErrorBanner.svelte';
   import ActionErrorBanner from './lib/ActionErrorBanner.svelte';
+  import DeviceEnrolledNotice from './lib/DeviceEnrolledNotice.svelte';
   import InstallFirst from './lib/InstallFirst.svelte';
   import { trackWide } from './lib/viewport';
   import { msg } from './i18n.svelte';
@@ -157,6 +158,7 @@
 <UpdateBanner {store} />
 <DictationErrorBanner {store} />
 <ActionErrorBanner {store} />
+<DeviceEnrolledNotice {store} />
 <textarea bind:this={kbAnchor} class="kb-anchor" aria-hidden="true" tabindex="-1"></textarea>
 
 <style>

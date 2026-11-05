@@ -137,7 +137,7 @@ describe('planSetup', () => {
     it('renames agent.env to TARFA_ names, keeping the token and every other byte', () => {
       const env = plan(flags(), old()).find((s) => s.kind === 'write-env');
       expect(env).toMatchObject({
-        text: 'TARFA_TOKEN=keep-me\nTARFA_MACHINE_ID=dev\nexport TARFA_PROJECT_ROOTS=/home/u/workspace:/home/u/other\nTARFA_PHONE_PORT=8797\n# PERCH_STATS=off\nTARFA_PHONE_ADDRESSES=wss://dev.example.ts.net:10000/abu\nTARFA_PWA_ORIGIN=https://tarfa.app\n',
+        text: "TARFA_TOKEN=keep-me\nTARFA_MACHINE_ID=dev\nexport TARFA_PROJECT_ROOTS=/home/u/workspace:/home/u/other\nTARFA_PHONE_PORT=8797\n# PERCH_STATS=off\nTARFA_PHONE_ADDRESSES='wss://dev.example.ts.net:10000/abu'\nTARFA_PWA_ORIGIN='https://tarfa.app'\n",
       });
       expect(env && 'changes' in env ? env.changes.slice(0, 4) : []).toEqual([
         'PERCH_TOKEN renamed TARFA_TOKEN',
@@ -158,7 +158,7 @@ describe('planSetup', () => {
 
     it('renames every line of a repeated PERCH_ name, so the last still wins', () => {
       const env = plan(flags(), fresh({ ...old(), envText: `${OLD_ENV}PERCH_MACHINE_ID=box\n` })).find((s) => s.kind === 'write-env');
-      expect(env && 'text' in env ? env.text.match(/^TARFA_MACHINE_ID=.*$/gm) : null).toEqual(['TARFA_MACHINE_ID=dev', 'TARFA_MACHINE_ID=box']);
+      expect(env && 'text' in env ? env.text.match(/^TARFA_MACHINE_ID=.*$/gm) : null).toEqual(["TARFA_MACHINE_ID='dev'", 'TARFA_MACHINE_ID=box']);
     });
 
     it('plans nothing once applied', () => {
@@ -474,6 +474,12 @@ describe('parseSetupFlags', () => {
     ['a ws address off loopback', [...base, '--address', 'ws://a.example/x']],
     ['an address with a deep path', [...base, '--address', 'wss://a.example/x/y']],
     ['a bad PWA origin', [...base, '--pwa', 'ftp://x']],
+    ['an address host bash would run', [...base, '--address', 'wss://$(touch${IFS}x).example.com']],
+    ['an address host with a backtick', [...base, '--address', 'wss://a`id`.example']],
+    ['an address with a query', [...base, '--address', 'wss://a.example/x?y=1']],
+    ['an address with credentials', [...base, '--address', 'wss://u:p@a.example']],
+    ['a PWA host bash would run', [...base, '--pwa', 'https://$(id).example']],
+    ['a PWA origin with a path', [...base, '--pwa', 'https://a.example/app']],
     ['a relative default path', [...base, '--default-path', 'x']],
     ['a root bash would split', ['--machine-id', 'dev', '--project-roots', '/home/u/My Projects']],
     ['a root bash would expand', ['--machine-id', 'dev', '--project-roots', '/home/$USER']],

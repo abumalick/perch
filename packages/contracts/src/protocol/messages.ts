@@ -181,6 +181,10 @@ export const agentMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('voiceDone'), id: z.string(), ok: z.boolean(), error: z.string().optional() }),
   z.object({ type: z.literal('detached'), workspaceId: z.string(), reason: detachReasonSchema }),
   z.object({ type: z.literal('closed'), workspaceId: z.string() }),
+  // A phone was just enrolled on this machine (a pairing code or the token), told to every other
+  // phone connected to it: a device nobody meant to add must not go unnoticed. An older PWA drops
+  // the unknown type.
+  z.object({ type: z.literal('deviceEnrolled'), id: z.string(), name: z.string(), at: z.string() }),
   z.object({ type: z.literal('error'), code: z.string(), message: z.string() }),
   // Live agent-browser sessions, sent after every `workspaces` reply. `sessions` defaults
   // to [] so a skewed sender omitting it can't make the strict client parser drop the

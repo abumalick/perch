@@ -128,10 +128,11 @@ agent where phones reach it:
 ```sh
 tailscale serve --bg --https=10000 --set-path=/me http://127.0.0.1:8797   # or `tailscale funnel`
 # deploy/agent.env: TARFA_PHONE_ADDRESSES=wss://<node>.<tailnet>.ts.net:10000/me
-pnpm tarfa pair [--pwa https://<where phones open the app>]
+pnpm tarfa pair [--pwa https://<where phones open the app>] [--ttl <minutes>]
 ```
-`tarfa pair` prints a one-time pairing QR code and link (ten minutes, one phone) with every
-address in `TARFA_PHONE_ADDRESSES`. The link names the origin phones open the app at,
+`tarfa pair` prints a one-time pairing QR code and link (ten minutes, or `--ttl` 1–10; one phone)
+with every address in `TARFA_PHONE_ADDRESSES`. When a phone enrols, every other phone connected to
+that machine shows "New device paired", and the agent logs `device enrolled: <id> "<name>"`. The link names the origin phones open the app at,
 `TARFA_PWA_ORIGIN` (default `https://tarfa.app`). Set `TARFA_DEFAULT_PATH` (an absolute path) and
 the link hands it to the phone as the new entry's default path; a re-scan fills it only on an
 entry that has none. `TARFA_RELAY_URLS` from an older setup is ignored with a warning at
@@ -237,7 +238,7 @@ Tarfa is a static-assets Worker (`packages/pwa/wrangler.jsonc`) in the maintaine
 account, on the `tarfa.app` custom domain. Deploy it only with the script, from a clean main that
 matches origin:
 ```sh
-cp deploy/pwa-deploy.env.example deploy/pwa-deploy.env   # once, in the main checkout: CLOUDFLARE_ACCOUNT_ID
+cp deploy/pwa-deploy.env.example deploy/pwa-deploy.env   # once, in the main checkout: CLOUDFLARE_ACCOUNT_ID, PWA_DEPLOY_TOKEN_CMD
 deploy/pwa-deploy.sh             # frozen install, build, deploy, then waits until tarfa.app serves this build
 deploy/pwa-deploy.sh --dry-run   # build and check only, from any checkout
 ```
@@ -246,6 +247,14 @@ to a throwaway `tarfa-dev` Worker on workers.dev and prints its URL (its header 
 `tarfa-dev` badge); mint a link for it with `pnpm tarfa pair --pwa <that URL>`, and remove it with
 `deploy/pwa-deploy.sh --dev --delete` when done. Another Cloudflare account serves its own copy the
 same way with `--env-file <its file>`.
+
+The script never uses a wrangler login: `PWA_DEPLOY_TOKEN_CMD` prints an API token scoped to
+Workers Scripts:Edit (kept in a password manager, e.g. `bw get password <item>`), which goes only
+into each wrangler call's environment; without it the script deploys nothing (a `--dry-run` needs
+none). The build writes `dist/_headers` from `src/core/security-headers.ts` (the meta CSP plus
+`frame-ancestors`, nosniff, no-referrer, COOP, HSTS and a Permissions-Policy), which the Worker
+applies to every response. Redirecting `http://` to `https://` is the zone's "Always Use HTTPS"
+setting: static assets cannot match on the scheme.
 
 The tailnet copy below is the **staging PWA**, which `pnpm serve:build` points at a worktree
 (the always-on Linux machine only). It is a separate origin, so phones install and pair it

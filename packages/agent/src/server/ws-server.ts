@@ -108,9 +108,8 @@ const DEFAULT_STATS_POLL_MS = 5000;
 // How long an explicit close keeps the poll from taking a still-listed workspace back.
 const CLOSING_MS = 10_000;
 
-// Phones reach the agent only through the relays it dials out to. The one thing it listens for
-// is Claude Code's hooks, from this machine, so the listener is bound to loopback whatever the
-// environment says.
+// This listener takes Claude Code's hooks (and `perch unpark`/`perch send`), from this machine
+// only, so it is bound to loopback whatever the environment says. Phones reach the phone port.
 const LOOPBACK = '127.0.0.1';
 
 // A hook event is a few kilobytes of JSON (Claude Code's hook input, no transcript); a body past
@@ -271,9 +270,8 @@ export class WsServer {
     });
   }
 
-  // A phone's socket: one the agent dialed out to a relay on a phone's behalf, or one a phone
-  // opened on the phone port. Either is served only through the end-to-end Noise session keyed by
-  // the agent's static X25519 key.
+  // A socket a phone opened on the phone port, served only through the end-to-end Noise session
+  // keyed by the agent's static X25519 key.
   acceptPhoneSocket(socket: FrameSocket, staticPrivate: Uint8Array, options: NoiseClientConnectionOptions): void {
     const conn = new NoiseClientConnection(socket, staticPrivate, options);
     this.phoneClients.add(conn);

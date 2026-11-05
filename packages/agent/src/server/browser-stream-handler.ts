@@ -175,7 +175,7 @@ export class BrowserStreamHandler {
     this.deps.client.send(data);
   }
 
-  // One message in flight: the phone's acknowledgement is the only backpressure a relay leaves,
+  // One message in flight: the phone's acknowledgement is the only backpressure a proxy in front of the phone port leaves,
   // and whatever is in flight is what terminal output waits behind. Frames arriving meanwhile
   // are replaced, not queued (latest wins).
   private backpressured(): boolean {

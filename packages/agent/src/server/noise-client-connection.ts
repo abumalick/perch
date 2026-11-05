@@ -13,7 +13,6 @@ import {
   parseDeviceHello,
   readHandshakeFrame,
   startTimer,
-  verifyDeviceHello,
   MAX_MESSAGE_BYTES,
   type DeviceHello,
 } from '@perch/secure-channel';
@@ -24,8 +23,8 @@ import type { FrameSocket } from '../ports/frame-socket';
 
 const SECURE_CHANNEL_FAILED = 4002;
 const BUSY = IN_BAND_REFUSAL + 429;
-// Until the handler has accepted the token, a socket would otherwise hold one of the relay's few
-// pair slots until an idle timeout.
+// Until the handler has accepted the token, a socket would otherwise hold one of the phone port's
+// unauthenticated slots until an idle timeout.
 const AUTH_TIMEOUT_MS = 10_000;
 // Until `auth` is accepted the phone sends one small message: nothing that has proven nothing may
 // make the agent reassemble up to MAX_MESSAGE_BYTES.
@@ -33,8 +32,7 @@ export const PRE_AUTH_MAX_MESSAGE_BYTES = 8 * 1024;
 // A phone sends `auth` once per connection; a socket repeating it is probing.
 const MAX_AUTH_ATTEMPTS = 3;
 // What may wait while a credential is being checked. An honest phone sends nothing behind its
-// `auth` until the `authResult`, so the queue only ever holds a prober's traffic, and the relay
-// forwards whatever it pushes meanwhile.
+// `auth` until the `authResult`, so the queue only ever holds a prober's traffic.
 const MAX_HELD_MESSAGES = 16;
 
 // A pairing secret's shape (32 bytes, base64url), so a token is not looked up as one needlessly.
@@ -63,8 +61,7 @@ type State =
   | { kind: 'open' }
   | { kind: 'failed' };
 
-// A client reached through the relay. The relay only ever carries Noise ciphertext: the first
-// frame must be the phone's IK handshake against this agent's static key, which tells the agent
+// A phone's socket. Everything on it is Noise ciphertext: the first frame must be the phone's IK handshake against this agent's static key, which tells the agent
 // which phone it is before answering, so it refuses a revoked or unenrolled one. Nothing reaches
 // the handler until the handshake has succeeded, and any failure closes the socket.
 export class NoiseClientConnection implements ClientConnection {
@@ -78,9 +75,9 @@ export class NoiseClientConnection implements ClientConnection {
   // Messages that arrived while a pairing secret was being redeemed, in order.
   private held: unknown[] | null = null;
   private authAttempts = 0;
-  // Set when the phone is served at once, until its first frame. Message 1 can be replayed by the
-  // relay, so a pushed authResult does not end the deadline nor free the dial-back slot until the
-  // phone has proven it holds the session keys by sending something.
+  // Set when the phone is served at once, until its first frame. Message 1 can be replayed by
+  // whoever saw it, so a pushed authResult does not end the deadline nor free the socket's
+  // unauthenticated slot until the phone has proven it holds the session keys by sending something.
   private awaitingPhone = false;
   // The pushed authResult went out while awaiting the phone: authenticated once it speaks.
   private deferredAuth = false;
@@ -218,17 +215,15 @@ export class NoiseClientConnection implements ClientConnection {
     const key = b64url.encode(responder.remoteStatic());
     this.deviceKey = key;
     this.state = { kind: 'checking' };
-    Promise.all([this.options.devices.check(key), verifyDeviceHello(hello, responder.remoteStatic(), responder.payloadHash())]).then(
-      ([{ standing, enrolment }, proven]) => this.admit(responder, hello, key, standing, enrolment, proven),
+    this.options.devices.check(key).then(
+      ({ standing, enrolment }) => this.admit(responder, hello, key, standing, enrolment),
       (err) => (err instanceof DeviceGateBusy ? this.fail(REFUSAL.tooManyPending, BUSY) : this.fail('device roster unreadable')),
     );
   }
 
-  // `proven`: the hello's relay key is the phone's own. An enrolled device is known by its X25519
-  // key already; a new one must prove the relay key the agent is about to publish for it.
-  private admit(responder: IkResponder, hello: DeviceHello, key: string, standing: DeviceStanding, enrolment: EnrolmentMode, proven: boolean): void {
+  private admit(responder: IkResponder, hello: DeviceHello, key: string, standing: DeviceStanding, enrolment: EnrolmentMode): void {
     if (this.state.kind !== 'checking') return;
-    const line = `relay client: device ${deviceFingerprint(key)} "${hello.name}" ${standing}`;
+    const line = `phone: device ${deviceFingerprint(key)} "${hello.name}" ${standing}`;
     if (standing === 'enrolled') this.options.log?.(line);
     else this.logRefusal(`handshake:${standing}`, line);
     if (standing === 'revoked') {
@@ -237,10 +232,6 @@ export class NoiseClientConnection implements ClientConnection {
     }
     if (standing === 'unknown' && enrolment === 'closed') {
       this.fail(REFUSAL.notEnrolled, DEVICE_REFUSED);
-      return;
-    }
-    if (standing === 'unknown' && !proven) {
-      this.fail(REFUSAL.signature, DEVICE_REFUSED);
       return;
     }
     try {
@@ -339,14 +330,14 @@ export class NoiseClientConnection implements ClientConnection {
     const fingerprint = deviceFingerprint(key);
     const resume = (redemption: Redemption) => {
       if (redemption.redeemed && this.keyAuth === null) this.keyAuth = 'pairing';
-      if (redemption.redeemed && redemption.fresh) this.options.log?.(`relay client: pairing code used by device ${fingerprint}`);
+      if (redemption.redeemed && redemption.fresh) this.options.log?.(`phone: pairing code used by device ${fingerprint}`);
       const held = this.held ?? [];
       this.held = null;
       if (this.state.kind === 'failed') return;
-      // A code this agent knows is dead (spent, or expired since the relay let it through): say
+      // A code this agent knows is dead (spent, or expired): say
       // so. An unknown one may be a token after all, so the handler checks it.
       if (!redemption.redeemed && redemption.reason) {
-        this.logRefusal(redemption.reason, `relay client: device ${fingerprint} refused: ${redemption.reason}`);
+        this.logRefusal(redemption.reason, `phone: device ${fingerprint} refused: ${redemption.reason}`);
         this.fail(redemption.reason, DEVICE_REFUSED);
         return;
       }
@@ -374,7 +365,7 @@ export class NoiseClientConnection implements ClientConnection {
   // may enrol it: refused here, so the token never gets as far as the handler.
   private refusesToken(): boolean {
     if (this.state.kind !== 'enrolling' || this.state.tokenEnrols || this.keyAuth !== null) return false;
-    this.logRefusal('token-off', `relay client: device ${deviceFingerprint(this.deviceKey!)} refused: token enrolment is off`);
+    this.logRefusal('token-off', `phone: device ${deviceFingerprint(this.deviceKey!)} refused: token enrolment is off`);
     this.fail(REFUSAL.enrolmentOff, DEVICE_REFUSED);
     return true;
   }
@@ -392,12 +383,12 @@ export class NoiseClientConnection implements ClientConnection {
       const enrolled = await this.options.devices.enrol({ x25519: key, ed25519: hello.sig, name: hello.name }, via);
       this.options.log?.(
         enrolled
-          ? `relay client: enrolled device ${deviceFingerprint(key)} "${hello.name}"`
-          : `relay client: device ${deviceFingerprint(key)} not enrolled (enrolment changed meanwhile, or its id is taken); closing its session`,
+          ? `phone: enrolled device ${deviceFingerprint(key)} "${hello.name}"`
+          : `phone: device ${deviceFingerprint(key)} not enrolled (enrolment changed meanwhile, or its id is taken); closing its session`,
       );
       return enrolled ? 'enrolled' : 'declined';
     } catch (err) {
-      this.options.log?.(`relay client: enrolling ${deviceFingerprint(key)} failed: ${String(err)}`);
+      this.options.log?.(`phone: enrolling ${deviceFingerprint(key)} failed: ${String(err)}`);
       return 'failed';
     }
   }

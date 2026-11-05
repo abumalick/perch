@@ -11,10 +11,11 @@ export interface SessionBrowserStreamsDeps {
   serve(socket: BrowserStreamSocket, session: string): void;
 }
 
-// Browser views carried inside the client connection, so through a relay they ride the
-// end-to-end session. Each stream looks to its handler like a socket of its own. Its
-// `bufferedAmount` is the bytes the phone has not yet acknowledged: the agent's own socket
-// drains into the relay at once, so only the phone can say that it is falling behind.
+// Browser views carried inside the client connection, so they ride the end-to-end session. Each
+// stream looks to its handler like a socket of its own. Its `bufferedAmount` is the bytes the
+// phone has not yet acknowledged: the agent's own socket drains into whatever publishes the phone
+// port (tailscale serve, Funnel, a proxy) at once, so only the phone can say that it is falling
+// behind.
 export class SessionBrowserStreams {
   private readonly streams = new Map<string, StreamSocket>();
 

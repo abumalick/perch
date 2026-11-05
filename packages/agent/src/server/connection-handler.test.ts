@@ -290,7 +290,7 @@ describe('ConnectionHandler auth', () => {
   });
 
   // A phone whose key is enrolled has no use for the token, and sending it on every connect
-  // hands it to whoever holds the agent's relay key. The agent refuses it, so the phone drops it.
+  // hands it to whoever holds the agent's key. The agent refuses it, so the phone drops it.
   it('refuses the token on a connection whose device key is already enrolled', () => {
     const keyed = fakeConn();
     const refused: string[] = [];

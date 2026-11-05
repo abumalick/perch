@@ -39,14 +39,11 @@ import { GitRepoRemote } from './infrastructure/git-repo-remote';
 import { AgentBrowserCli } from './infrastructure/agent-browser-cli';
 import { connectBrowserUpstream } from './infrastructure/ws-browser-stream-socket';
 import { WsServer } from './server/ws-server';
-import { startRelayLinks } from './server/relay-wiring';
 import { startDeviceGate } from './server/device-gate-wiring';
 import { startPhoneListener } from './infrastructure/phone-listener';
 import { PhoneAdmission } from './application/phone-admission';
 import { DiskReadLimiter } from './application/disk-read-limiter';
-import { wsRelayTransport } from './infrastructure/ws-relay-transport';
-import { frameSocketTransport } from './infrastructure/ws-frame-socket';
-import { loadOrCreateRelayKeys } from './infrastructure/relay-key-file';
+import { loadOrCreateAgentKeys } from './infrastructure/agent-key-file';
 import { FileDeviceStore } from './infrastructure/file-device-store';
 import { FilePairingStore } from './infrastructure/file-pairing-store';
 import { writeHookToken } from './infrastructure/token-file';
@@ -64,7 +61,7 @@ async function main(): Promise<void> {
   // Refused before anything is served: a secret another user can read is a leaked secret.
   await securePrivateDir(join(homedir(), '.perch'));
   await assertPrivateFiles([
-    config.relayKeyPath,
+    config.agentKeyPath,
     config.devicesPath,
     config.pairingPath,
     join(homedir(), '.perch', 'token'),
@@ -156,21 +153,19 @@ async function main(): Promise<void> {
   });
   await server.start();
   process.stdout.write(`perch agent: hooks on 127.0.0.1:${server.address().port}\n`);
-  // The agent key exists from the first start, so `perch pair` works with no relay configured.
-  const keys = await loadOrCreateRelayKeys(config.relayKeyPath);
+  // The agent key exists from the first start, so `perch pair` works on a fresh machine.
+  const keys = await loadOrCreateAgentKeys(config.agentKeyPath);
   const log = (message: string) => process.stdout.write(`${message}\n`);
-  const store = new FileDeviceStore(config.devicesPath);
   const gate = startDeviceGate({
     keys,
-    token: config.token,
     server,
-    store,
+    store: new FileDeviceStore(config.devicesPath),
     pairings: new FilePairingStore(config.pairingPath),
     log,
     rosterPollMs: ROSTER_POLL_MS,
   });
   // A port another agent on this machine already holds (a second Linux user left on the default)
-  // must not take the relays down with it: the agent goes on without its phone port.
+  // must not crash-loop this one: it goes on without its phone port, and says so.
   try {
     const phones = await startPhoneListener({
       port: config.phonePort,
@@ -186,18 +181,6 @@ async function main(): Promise<void> {
     process.stderr.write(
       `perch agent: no phone port: 127.0.0.1:${config.phonePort} ${err instanceof Error ? err.message : String(err)}; set PERCH_PHONE_PORT in deploy/agent.env\n`,
     );
-  }
-  if (config.relayUrls.length > 0) {
-    const relays = startRelayLinks({
-      config,
-      keys,
-      gate,
-      server,
-      store,
-      transport: frameSocketTransport(wsRelayTransport),
-      log,
-    });
-    log(`relay account ${relays.account}`);
   }
 }
 

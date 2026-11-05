@@ -5,12 +5,12 @@ import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { accountId, deviceFingerprint, generateDeviceKeys, parsePairingLink } from '@perch/secure-channel';
+import { deviceFingerprint, generateDeviceKeys, parsePairingLink } from '@perch/secure-channel';
 import { FileDeviceStore } from './infrastructure/file-device-store';
 import { enrolDevice, enrolmentMode } from './application/device-roster';
 import type { Workspace } from '@perch/contracts';
 import type { TmuxPort, TmuxSessionInfo } from './ports/tmux-port';
-import { run, type CliIo } from './cli';
+import { run, UsageError, type CliIo } from './cli';
 
 const exec = promisify(execFile);
 const sessions: string[] = [];
@@ -74,40 +74,17 @@ describe('perch CLI (real tmux)', () => {
   });
 });
 
-describe('perch relay-key', () => {
-  it('creates the relay identity and prints only what the phone and the relay need', async () => {
+describe('removed relay commands', () => {
+  it('refuses connect, relay-key and pair --relay with one line naming what replaces them, exit 2', async () => {
     const home = await mkdtemp(join(tmpdir(), 'perch-cli-home-'));
     tmpDirs.push(home);
-    const env = {
-      PERCH_MACHINE_ID: 'test',
-      PERCH_RELAY_URLS: 'wss://relay.example.com/, wss://relay-dev.example.com',
-      PERCH_AGENT_ENV: join(home, 'agent.env'),
-    };
-    const out = await run(['relay-key'], env, home);
-    const keys = JSON.parse(await readFile(join(home, '.perch', 'relay-key.json'), 'utf8')) as {
-      x25519: { publicKey: string; privateKey: string };
-      ed25519: { publicKey: string; privateKey: string };
-    };
-    const account = accountId(keys.ed25519.publicKey);
-    expect(out).toContain(`agent key: ${keys.x25519.publicKey}`);
-    expect(out).toContain(`phone URL: wss://relay.example.com/${account}`);
-    expect(out).toContain(`phone URL: wss://relay-dev.example.com/${account}`);
-    expect(out).not.toContain('AGENTS');
-    expect(out).not.toContain(keys.x25519.privateKey);
-    expect(out).not.toContain(keys.ed25519.privateKey);
-    expect(await run(['relay-key'], env, home)).toBe(out);
-  });
-
-  // A shell inside a workspace no longer inherits the agent's env, and a stale copy of it once
-  // printed a relay the agent had long dropped: the CLI reads what the service reads.
-  it('reads the relays from the agent.env the service reads, over an inherited environment', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'perch-cli-home-'));
-    tmpDirs.push(home);
-    const envPath = join(home, 'agent.env');
-    await writeFile(envPath, 'PERCH_MACHINE_ID=box\nPERCH_RELAY_URLS=wss://relay.example.com\n');
-    const out = await run(['relay-key'], { PERCH_RELAY_URLS: 'wss://stale.example.com', PERCH_AGENT_ENV: envPath }, home);
-    expect(out).toMatch(/phone URL: wss:\/\/relay\.example\.com\//);
-    expect(out).not.toContain('stale.example.com');
+    // No agent.env at all: the refusal needs nothing from the machine.
+    const env = { PERCH_AGENT_ENV: join(home, 'agent.env') };
+    for (const argv of [['connect', 'wss://relay.example', '--key', 'k'], ['relay-key'], ['pair', '--relay', 'wss://relay.example']]) {
+      const refused = run(argv, env, home);
+      await expect(refused).rejects.toBeInstanceOf(UsageError);
+      await expect(refused).rejects.toMatchObject({ exitCode: 2, message: expect.stringMatching(/^[^\n]*relays are gone[^\n]*perch setup[^\n]*perch pair[^\n]*$/) });
+    }
   });
 });
 
@@ -193,12 +170,6 @@ describe('perch devices', () => {
     expect(await run(['devices', 'list'], env, home)).toBe(out);
   });
 
-  it('warns when there are more devices than a relay takes in its policy', async () => {
-    const { home, env, store } = await withPhones();
-    await store.update((r) => ({ ...r, revoked: Array.from({ length: 257 }, (_, i) => ({ ...r.devices[0]!, id: `r${i}`, revokedAt: r.devices[0]!.enrolledAt })) }));
-    expect(await run(['devices'], env, home)).toMatch(/257 revoked.*256/);
-  });
-
   it('revokes a device by a prefix of its fingerprint, and forgets it', async () => {
     const { home, env, store, ids } = await withPhones();
     const revoked = await run(['devices', 'revoke', ids[0]!.slice(0, 4)], env, home);
@@ -239,7 +210,7 @@ describe('perch devices', () => {
   });
 });
 
-describe('perch pair / connect (arguments and agent.env)', () => {
+describe('perch pair (arguments and agent.env)', () => {
   async function machine(envText: string) {
     const home = await mkdtemp(join(tmpdir(), 'perch-pair-home-'));
     tmpDirs.push(home);
@@ -247,14 +218,14 @@ describe('perch pair / connect (arguments and agent.env)', () => {
     await writeFile(envPath, envText);
     return { home, env: { PERCH_AGENT_ENV: envPath } };
   }
-  const base = 'PERCH_MACHINE_ID=box\nPERCH_TOKEN=t\n';
+  const base = 'PERCH_MACHINE_ID=box\nPERCH_TOKEN=t\nPERCH_PHONE_ADDRESSES=wss://box.example.ts.net\n';
 
-  it('mints a pairing link for the one relay a phone can reach, reading the agent.env the service reads', async () => {
-    const { home, env } = await machine(`${base}PERCH_RELAY_URLS=ws://127.0.0.1:8450,wss://relay.example\nPERCH_PWA_ORIGIN=https://pwa.example:8443\n`);
-    const out = await run(['pair'], env, home);
+  it('mints a pairing link for the phone address, reading the agent.env the service reads', async () => {
+    const { home, env } = await machine(`${base}PERCH_PWA_ORIGIN=https://pwa.example:8443\n`);
+    const out = await run(['pair'], { ...env, PERCH_PHONE_ADDRESSES: 'wss://stale.example.ts.net' }, home);
     const link = out.split('\n').find((line) => line.startsWith('https://'))!;
     const pairing = parsePairingLink(link)!;
-    expect(pairing.urls).toEqual([expect.stringMatching(/^wss:\/\/relay\.example\/[\w-]+$/)]);
+    expect(pairing.urls).toEqual(['wss://box.example.ts.net']);
     expect(pairing.name).toBe('box');
     const stored = JSON.parse(await readFile(join(home, '.perch', 'pairing.json'), 'utf8')) as Array<{ secret: string }>;
     expect(stored.map((p) => p.secret)).toEqual([pairing.secret]);
@@ -264,29 +235,33 @@ describe('perch pair / connect (arguments and agent.env)', () => {
   });
 
   it('hands the phone the PERCH_DEFAULT_PATH agent.env sets', async () => {
-    const { home, env } = await machine(`${base}PERCH_RELAY_URLS=wss://relay.example\nPERCH_PWA_ORIGIN=https://pwa.example:8443\nPERCH_DEFAULT_PATH=/home/u/workspace\n`);
+    const { home, env } = await machine(`${base}PERCH_PWA_ORIGIN=https://pwa.example:8443\nPERCH_DEFAULT_PATH=/home/u/workspace\n`);
     const out = await run(['pair'], env, home);
     expect(parsePairingLink(out.split('\n').find((line) => line.startsWith('https://'))!)!.defaultPath).toBe('/home/u/workspace');
   });
 
   it('names the pairing after the host when the machine id is the generic "local"', async () => {
-    const { home, env } = await machine('PERCH_MACHINE_ID=local\nPERCH_TOKEN=t\nPERCH_RELAY_URLS=wss://relay.example\nPERCH_PWA_ORIGIN=https://pwa.example:8443\n');
+    const { home, env } = await machine('PERCH_MACHINE_ID=local\nPERCH_TOKEN=t\nPERCH_PHONE_ADDRESSES=wss://box.example.ts.net\nPERCH_PWA_ORIGIN=https://pwa.example:8443\n');
     const out = await run(['pair'], env, home);
     const pairing = parsePairingLink(out.split('\n').find((line) => line.startsWith('https://'))!)!;
     expect(pairing.name).toBe(hostname().split('.')[0]);
   });
 
-  it('asks which relay when there are several, and takes --relay and --pwa', async () => {
-    const { home, env } = await machine(`${base}PERCH_RELAY_URLS=wss://a.example,wss://b.example\n`);
-    await expect(run(['pair'], env, home)).rejects.toThrow(/--relay/);
-    expect(await run(['pair', '--relay', 'wss://b.example'], env, home)).toContain('https://tarfa.app/#pair?');
-    const out = await run(['pair', '--relay', 'wss://b.example', '--pwa', 'https://pwa.example/ignored/path'], env, home);
+  it('takes --pwa over PERCH_PWA_ORIGIN, and the tarfa.app default without either', async () => {
+    const { home, env } = await machine(base);
+    expect(await run(['pair'], env, home)).toContain('https://tarfa.app/#pair?');
+    const out = await run(['pair', '--pwa', 'https://pwa.example/ignored/path'], env, home);
     expect(out).toContain('https://pwa.example/#pair?');
+  });
+
+  it('refuses a machine with no PERCH_PHONE_ADDRESSES, pointing at perch setup', async () => {
+    const { home, env } = await machine('PERCH_MACHINE_ID=box\nPERCH_TOKEN=t\nPERCH_RELAY_URLS=wss://relay.example\n');
+    await expect(run(['pair'], env, home)).rejects.toThrow(/PERCH_PHONE_ADDRESSES.*perch setup/);
   });
 
   it('mints a link with every PERCH_PHONE_ADDRESSES address, in order', async () => {
     const { home, env } = await machine(
-      'PERCH_MACHINE_ID=dev\nPERCH_TOKEN=t\nPERCH_DEFAULT_PATH=/home/u/workspace\nPERCH_RELAY_URLS=wss://relay.example\n' +
+      'PERCH_MACHINE_ID=dev\nPERCH_TOKEN=t\nPERCH_DEFAULT_PATH=/home/u/workspace\n' +
         'PERCH_PHONE_ADDRESSES=wss://dev.example.ts.net:10000/abu,wss://dev.example.ts.net:8443/abu\n',
     );
     const out = await run(['pair'], env, home);
@@ -295,22 +270,11 @@ describe('perch pair / connect (arguments and agent.env)', () => {
     expect(link).toBe(
       `https://tarfa.app/#pair?u=wss://dev.example.ts.net:10000/abu&u=wss://dev.example.ts.net:8443/abu&k=${agentKey}&s=${secret}&n=dev&p=/home/u/workspace`,
     );
-    // A relay still pairs when named, for machines not yet moved.
-    expect(parsePairingLink((await run(['pair', '--relay', 'wss://relay.example'], env, home)).split('\n').find((l) => l.startsWith('https://'))!)!.urls).toEqual([
-      expect.stringMatching(/^wss:\/\/relay\.example\/[\w-]+$/),
-    ]);
   });
 
   it('refuses a PERCH_PHONE_ADDRESSES address a phone would refuse', async () => {
-    const { home, env } = await machine(`${base}PERCH_PHONE_ADDRESSES=ws://dev.example.ts.net/abu\n`);
+    const { home, env } = await machine('PERCH_MACHINE_ID=box\nPERCH_TOKEN=t\nPERCH_PHONE_ADDRESSES=ws://dev.example.ts.net/abu\n');
     await expect(run(['pair'], env, home)).rejects.toThrow(/PERCH_PHONE_ADDRESSES/);
-  });
-
-  it('refuses a connect without a well-formed join key', async () => {
-    const { home, env } = await machine(base);
-    await expect(run(['connect', 'wss://relay.example'], env, home)).rejects.toThrow(/usage/);
-    await expect(run(['connect', 'wss://relay.example', '--key', 'nope'], env, home)).rejects.toThrow(/join key/);
-    await expect(run(['connect', 'wss://relay.example'], { ...env, PERCH_JOIN_KEY: 'nope' }, home)).rejects.toThrow(/join key/);
   });
 });
 

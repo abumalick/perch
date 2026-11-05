@@ -1,7 +1,8 @@
-import { MAX_POLICY_KEYS, deviceFingerprint, type RelayPolicy } from '@perch/secure-channel';
+import { deviceFingerprint } from '@perch/secure-channel';
 
 // A phone's keys, as its IK handshake presented them. `x25519` is its Noise static key, the one
-// the agent checks; `ed25519` is the key it signs relay challenges with, published to the relay.
+// the agent checks; `ed25519` is the key its hello names, which relays once admitted it by and
+// nothing checks now. It stays in the file format.
 export interface Device {
   id: string;
   x25519: string;
@@ -56,16 +57,12 @@ export function standingOf(roster: DeviceRoster, x25519: string): DeviceStanding
   return 'unknown';
 }
 
-export function isRevokedRelayKey(roster: DeviceRoster, ed25519: string): boolean {
-  return roster.revoked.some((d) => d.ed25519 === ed25519);
-}
-
 export function enrolDevice(
   roster: DeviceRoster,
   keys: { x25519: string; ed25519: string; name: string },
   at: Date,
 ): DeviceRoster {
-  if (standingOf(roster, keys.x25519) !== 'unknown' || isRevokedRelayKey(roster, keys.ed25519)) return roster;
+  if (standingOf(roster, keys.x25519) !== 'unknown') return roster;
   // An id is 48 bits, so two keys sharing one can be searched out; the second is refused, or
   // `perch devices` could no longer tell them apart by id.
   const id = deviceFingerprint(keys.x25519);
@@ -106,28 +103,5 @@ export function forgetDevice(roster: DeviceRoster, id: string): { roster: Device
       revoked: roster.revoked.filter((d) => d.x25519 !== device.x25519),
     },
     device,
-  };
-}
-
-// Why a relay would ignore this policy, or null. A relay takes at most MAX_POLICY_KEYS keys a list
-// and keeps the policy it had past that, so later enrolments and revocations never reach it (the
-// agent still checks every key itself). Forgetting revoked devices is the way back under it.
-export function policyWarning(policy: RelayPolicy): string | null {
-  const over = [
-    policy.devices.length > MAX_POLICY_KEYS ? `${policy.devices.length} enrolled` : null,
-    policy.revoked.length > MAX_POLICY_KEYS ? `${policy.revoked.length} revoked` : null,
-  ].filter((part) => part !== null);
-  if (over.length === 0) return null;
-  return `relay policy too large (${over.join(', ')}; a relay takes ${MAX_POLICY_KEYS} of each), so relays keep the previous one: forget devices no longer needed with \`perch devices forget\``;
-}
-
-// What the relay may admit before the agent looks: the relay is a first gate, never the only one.
-export function relayPolicy(roster: DeviceRoster): RelayPolicy {
-  return {
-    type: 'policy',
-    devices: roster.devices.map((d) => d.ed25519),
-    revoked: roster.revoked.map((d) => d.ed25519),
-    enrol: enrolmentMode(roster) !== 'closed',
-    tokenEnrol: enrolmentMode(roster) === 'on',
   };
 }

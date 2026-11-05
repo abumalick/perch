@@ -36,9 +36,6 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
-      '@perch/relay':
-        specifier: workspace:*
-        version: link:../relay
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.21

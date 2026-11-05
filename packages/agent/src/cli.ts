@@ -30,18 +30,16 @@ import { answersUpgrade } from './infrastructure/listener-check';
 import type { ServiceInstallPort } from './ports/service-install-port';
 import type { TailscalePort } from './ports/tailscale-port';
 import type { AgentServicePort } from './ports/agent-service-port';
-import { loadOrCreateRelayKeys } from './infrastructure/relay-key-file';
-import { accountId } from '@perch/secure-channel';
+import { loadOrCreateAgentKeys } from './infrastructure/agent-key-file';
 import { FileDeviceStore } from './infrastructure/file-device-store';
-import { enrolmentMode, forgetDevice, policyWarning, relayPolicy, revokeDevice, withEnrolmentMode, type Device, type DeviceRoster, type EnrolmentMode } from './application/device-roster';
+import { enrolmentMode, forgetDevice, revokeDevice, withEnrolmentMode, type Device, type DeviceRoster, type EnrolmentMode } from './application/device-roster';
 import encodeQR from 'qr';
-import { deviceFingerprint, generatePairingSecret, isJoinKey, isMachineUrl, MAX_ADDRESSES, parsePairingLink, sanitizeDeviceName } from '@perch/secure-channel';
+import { deviceFingerprint, generatePairingSecret, isMachineUrl, MAX_ADDRESSES, parsePairingLink, sanitizeDeviceName } from '@perch/secure-channel';
 import { parseEnvFile } from './application/agent-env';
-import { connectMachine, mintPairingLink, pairingName, relayPhoneUrl } from './application/connect-machine';
+import { mintPairingLink, pairingName } from './application/pairing-link';
 import { FilePairingStore } from './infrastructure/file-pairing-store';
 import { agentEnvFile, locateAgentEnv } from './infrastructure/agent-env-file';
 import { agentService } from './infrastructure/agent-service';
-import { relayJoinClient } from './infrastructure/relay-join-client';
 import { FileStatusStore } from './infrastructure/file-status-store';
 import { FileParkedStore } from './infrastructure/file-parked-store';
 import { FsFileWriter } from './infrastructure/fs-file-writer';
@@ -93,7 +91,10 @@ const CODEX_NEXT_STEP = 'open Codex and trust the Perch hooks in /hooks; repeat 
 
 export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo = {}): Promise<string> {
   if (argv[0] === 'setup') return setup(argv.slice(1), env, home, io);
-  if (argv[0] === 'connect' || argv[0] === 'pair') return relaySetup(argv[0], argv.slice(1), env, home);
+  if (argv[0] === 'connect' || argv[0] === 'relay-key' || (argv[0] === 'pair' && argv.includes('--relay'))) {
+    throw new UsageError(RELAYS_GONE);
+  }
+  if (argv[0] === 'pair') return pair(argv.slice(1), env, home);
   if (argv[0] === 'ls' || argv[0] === 'spawn' || argv[0] === 'peek' || argv[0] === 'unpark' || argv[0] === 'rename' || argv[0] === 'send') {
     return orchestration(argv[0], argv.slice(1), env, home, io);
   }
@@ -168,17 +169,6 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, 
         codexNextStep: CODEX_NEXT_STEP,
         scriptPath: hooks.scriptPath,
       });
-    }
-    case 'relay-key': {
-      const keys = await loadOrCreateRelayKeys(config.relayKeyPath);
-      const account = accountId(keys.ed25519.publicKey);
-      const lines = [
-        `relay key file: ${config.relayKeyPath}`,
-        `account: ${account}`,
-        `agent key: ${keys.x25519.publicKey}`,
-      ];
-      for (const url of config.relayUrls) lines.push(`phone URL: ${url}/${account}`);
-      return lines.join('\n');
     }
     case 'devices':
       return devices(new FileDeviceStore(config.devicesPath), rest);
@@ -451,8 +441,8 @@ async function readStdin(ttyError: string): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-const CONNECT_USAGE = 'usage: perch connect <relay URL> --key <join key> (or PERCH_JOIN_KEY) [--pwa <PWA origin>] [--agent-url <relay URL for this agent>]';
-const PAIR_USAGE = 'usage: perch pair [--relay <relay URL>] [--pwa <PWA origin>]';
+const RELAYS_GONE = 'relays are gone: perch setup sets a machine up for phones, and perch pair pairs one';
+const PAIR_USAGE = 'usage: perch pair [--pwa <PWA origin>]';
 
 function takeOption(args: string[], name: string, usage: string): string | undefined {
   const at = args.indexOf(name);
@@ -475,8 +465,6 @@ function pwaOrigin(value: string | undefined): string | undefined {
   return url.origin;
 }
 
-const isLoopbackRelay = (url: string) => /^wss?:\/\/(127\.|localhost[:/]|localhost$|\[::1\])/.test(url);
-
 // What the service reads, over the shell's environment: a shell inside a workspace has none of
 // the agent's variables, or a stale copy of them. No agent.env (a machine not set up as a
 // service) leaves the environment alone.
@@ -489,63 +477,36 @@ async function agentEnvValues(env: NodeJS.ProcessEnv): Promise<Record<string, st
   }
 }
 
-// `perch connect` and `perch pair` configure the machine itself, so they read the agent.env the
-// service reads rather than expecting it in the shell's environment.
-async function relaySetup(command: 'connect' | 'pair', argv: string[], env: NodeJS.ProcessEnv, home: string): Promise<string> {
+// `perch pair` reads the agent.env the service reads rather than expecting it in the shell's
+// environment.
+async function pair(argv: string[], env: NodeJS.ProcessEnv, home: string): Promise<string> {
   const args = [...argv];
-  const usage = command === 'connect' ? CONNECT_USAGE : PAIR_USAGE;
-  const envFile = agentEnvFile(await locateAgentEnv(env));
-  const config = loadConfig({ ...env, ...parseEnvFile(await envFile.read()) }, home);
-  const keys = await loadOrCreateRelayKeys(config.relayKeyPath);
-  const deps = {
-    keys,
-    machineId: pairingName(config.machineId, hostname()),
-    ...(config.defaultPath ? { defaultPath: config.defaultPath } : {}),
-    relay: relayJoinClient,
-    env: envFile,
-    service: agentService(),
-    pairings: new FilePairingStore(config.pairingPath),
-    newSecret: generatePairingSecret,
-    now: () => new Date(),
-  };
-  const pwa = pwaOrigin(takeOption(args, '--pwa', usage));
-  if (command === 'connect') {
-    // From the environment instead, the key stays out of the process list other local users see.
-    const joinKey = takeOption(args, '--key', usage) ?? env.PERCH_JOIN_KEY;
-    const agentUrl = takeOption(args, '--agent-url', usage);
-    const [relayUrl, ...extra] = args;
-    if (!relayUrl || extra.length > 0 || !joinKey) throw new Error(CONNECT_USAGE);
-    if (!isJoinKey(joinKey)) throw new Error('--key must be the relay\'s join key, as its operator printed it');
-    const { lines, link } = await connectMachine(deps, { relayUrl, agentUrl, joinKey, pwaOrigin: pwa });
-    return link ? [...lines, '', pairingInstructions(link)].join('\n') : lines.join('\n');
-  }
-  let origin = pwa;
+  const config = loadConfig({ ...env, ...(await agentEnvValues(env)) }, home);
+  let origin = pwaOrigin(takeOption(args, '--pwa', PAIR_USAGE));
+  if (args.length > 0) throw new Error(PAIR_USAGE);
   try {
     origin ??= pwaOrigin(config.pwaOrigin)!;
   } catch {
     throw new Error(`PERCH_PWA_ORIGIN in agent.env must be the http(s) origin phones open the app at (got ${config.pwaOrigin})`);
   }
-  let relay = takeOption(args, '--relay', usage);
-  if (args.length > 0) throw new Error(PAIR_USAGE);
-  // The machine's own addresses, unless a relay is named: relays stay for machines not yet moved.
-  if (!relay && config.phoneAddresses.length > 0) {
-    const bad = config.phoneAddresses.find((url) => !isMachineUrl(url));
-    if (bad) throw new Error(`PERCH_PHONE_ADDRESSES holds ${bad}, which a phone refuses: wss://<host>[:port][/<slug>] (run perch setup)`);
-    if (config.phoneAddresses.length > MAX_ADDRESSES) throw new Error(`PERCH_PHONE_ADDRESSES holds more than ${MAX_ADDRESSES} addresses`);
-    return pairingInstructions(await mintPairingLink(deps, { phoneUrls: config.phoneAddresses, pwaOrigin: origin }));
+  if (config.phoneAddresses.length === 0) {
+    throw new Error('this machine has no PERCH_PHONE_ADDRESSES: run perch setup first (perch setup --help)');
   }
-  if (!relay) {
-    const reachable = config.relayUrls.filter((url) => !isLoopbackRelay(url));
-    if (reachable.length !== 1) {
-      throw new Error(
-        reachable.length === 0
-          ? 'this machine has no PERCH_PHONE_ADDRESSES and no relay a phone can reach: run perch setup first (perch setup --help)'
-          : `this machine holds several relays; name one with --relay: ${reachable.join(', ')}`,
-      );
-    }
-    relay = reachable[0]!;
-  }
-  return pairingInstructions(await mintPairingLink(deps, { phoneUrls: [relayPhoneUrl(deps.keys, relay)], pwaOrigin: origin }));
+  const bad = config.phoneAddresses.find((url) => !isMachineUrl(url));
+  if (bad) throw new Error(`PERCH_PHONE_ADDRESSES holds ${bad}, which a phone refuses: wss://<host>[:port][/<slug>] (run perch setup)`);
+  if (config.phoneAddresses.length > MAX_ADDRESSES) throw new Error(`PERCH_PHONE_ADDRESSES holds more than ${MAX_ADDRESSES} addresses`);
+  const link = await mintPairingLink(
+    {
+      keys: await loadOrCreateAgentKeys(config.agentKeyPath),
+      machineId: pairingName(config.machineId, hostname()),
+      ...(config.defaultPath ? { defaultPath: config.defaultPath } : {}),
+      pairings: new FilePairingStore(config.pairingPath),
+      newSecret: generatePairingSecret,
+      now: () => new Date(),
+    },
+    { phoneUrls: config.phoneAddresses, pwaOrigin: origin },
+  );
+  return pairingInstructions(link);
 }
 
 export class UsageError extends Error {
@@ -622,7 +583,7 @@ async function setup(argv: string[], env: NodeJS.ProcessEnv, home: string, io: C
     service: { kind: service.kind, template: await service.template(), installed: await service.installed(), enabled: await service.enabled() },
     envText,
     newToken: randomBytes(32).toString('hex'),
-    hasKey: await readFile(config.relayKeyPath).then(() => true, () => false),
+    hasKey: await readFile(config.agentKeyPath).then(() => true, () => false),
     roster: hasRoster ? enrolmentMode(await devices.read()) : 'absent',
     hooksCurrent: await hooks.current(),
     phonePortOwner: await owner(flags.phonePort),
@@ -641,7 +602,7 @@ async function setup(argv: string[], env: NodeJS.ProcessEnv, home: string, io: C
       envPath,
       writeEnv: (text) => envFile.write(text),
       createKey: async () => {
-        await loadOrCreateRelayKeys(config.relayKeyPath);
+        await loadOrCreateAgentKeys(config.agentKeyPath);
       },
       writeRoster: async (mode) => {
         await mkdir(dirname(config.devicesPath), { recursive: true, mode: 0o700 });
@@ -655,7 +616,7 @@ async function setup(argv: string[], env: NodeJS.ProcessEnv, home: string, io: C
       serve: (entry) => tailscale.serve(entry),
       restart: () => (fx.restart ?? agentService()).restart(),
       checkListener: fx.checkListener ?? ((port) => answersUpgrade(port)),
-      pair: () => relaySetup('pair', [], env, home),
+      pair: () => pair([], env, home),
     },
     { dryRun: flags.dryRun, phonePort: flags.phonePort },
   );
@@ -691,8 +652,8 @@ const ENROLMENT_MODES: Record<EnrolmentMode, string> = {
   closed: 'closed (no new phone can enrol)',
 };
 
-// The phones this agent accepts through the relay. A running agent picks up a change within
-// seconds: it republishes the list to its relays and closes a revoked phone's sessions.
+// The phones this agent accepts. A running agent picks up a change within seconds, and closes a
+// revoked phone's sessions.
 async function devices(store: FileDeviceStore, [action = 'list', arg]: string[]): Promise<string> {
   switch (action) {
     case 'list':
@@ -733,8 +694,6 @@ function formatRoster(roster: DeviceRoster): string {
   for (const d of roster.devices) lines.push(`${d.id}  ${sanitizeDeviceName(d.name)}  enrolled ${day(d.enrolledAt)}  key ${d.x25519}`);
   for (const d of roster.revoked) lines.push(`${d.id}  ${sanitizeDeviceName(d.name)}  revoked ${day(d.revokedAt)}  key ${d.x25519}`);
   if (roster.devices.length + roster.revoked.length === 0) lines.push('no devices');
-  const warning = policyWarning(relayPolicy(roster));
-  if (warning) lines.push('', `warning: ${warning}`);
   return lines.join('\n');
 }
 

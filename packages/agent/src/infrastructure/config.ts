@@ -1,5 +1,4 @@
 import { join } from 'node:path';
-import { isCleartextRemote, withoutTrailingSlash } from '../application/relay-url';
 import { DEFAULT_PWA_ORIGIN } from '../application/setup-machine';
 
 export interface AgentConfig {
@@ -30,12 +29,10 @@ export interface AgentConfig {
   // The sockets the Perch extension for Pi binds, one per workspace (docs/MESSAGING.md).
   inboxDir: string;
   sessionPrefix: string;
-  // The relays the agent also serves clients through, one RelayLink each (e.g. the Cloudflare
-  // Worker and a self-hosted relay), from PERCH_RELAY_URLS. The account comes from the key
-  // file, not the URL, so it is the same on every relay.
-  relayUrls: string[];
-  relayKeyPath: string;
-  // The phones enrolled for the relay path (~/.perch/devices.json), managed by `perch devices`.
+  // The agent's identity, whose X25519 public key every phone pins. The file keeps the name it had
+  // when relays existed.
+  agentKeyPath: string;
+  // The phones this agent accepts (~/.perch/devices.json), managed by `perch devices`.
   devicesPath: string;
   // The phone pairing secrets `perch pair` hands out (~/.perch/pairing.json).
   pairingPath: string;
@@ -100,8 +97,7 @@ export function loadConfig(env: NodeJS.ProcessEnv, home: string): AgentConfig {
     claudeSessionsDir: join(home, '.claude', 'sessions'),
     inboxDir: join(home, '.perch', 'inbox'),
     sessionPrefix: 'perch-',
-    relayUrls: relayUrls(env),
-    relayKeyPath: join(home, '.perch', 'relay-key.json'),
+    agentKeyPath: join(home, '.perch', 'relay-key.json'),
     devicesPath: join(home, '.perch', 'devices.json'),
     pairingPath: join(home, '.perch', 'pairing.json'),
     pwaOrigin: env.PERCH_PWA_ORIGIN?.trim() || DEFAULT_PWA_ORIGIN,
@@ -122,35 +118,18 @@ export function assertServerConfig(
 // Settings that are ignored or missing, for the agent to print at startup.
 export function configWarnings(env: NodeJS.ProcessEnv): string[] {
   const warnings: string[] = [];
-  const single = env.PERCH_RELAY_URL?.trim();
-  if (single) warnings.push(`PERCH_RELAY_URL is ignored: move ${single} into PERCH_RELAY_URLS in deploy/agent.env`);
-  for (const url of listedRelayUrls(env).filter(isCleartextRemote)) {
-    warnings.push(`${url} is ignored: a relay off this machine must be wss://, or its upgrades travel in the clear`);
-  }
-  if (relayUrls(env).length === 0 && phoneAddresses(env).length === 0) {
-    warnings.push(
-      'no relay in PERCH_RELAY_URLS and no PERCH_PHONE_ADDRESSES: phones reach this agent only once its phone port is published (tailscale serve, a reverse proxy)',
-    );
-  }
-  if (env.PERCH_RELAY_ALLOW_NK !== undefined) {
-    warnings.push('PERCH_RELAY_ALLOW_NK is ignored: phones without a device key are no longer served; remove it from deploy/agent.env');
+  const relays = ['PERCH_RELAY_URLS', 'PERCH_RELAY_URL'].filter((name) => env[name]?.trim());
+  if (relays.length > 0) warnings.push(`relays are gone; remove ${relays.join(' and ')} from deploy/agent.env`);
+  if (phoneAddresses(env).length === 0) {
+    warnings.push('no PERCH_PHONE_ADDRESSES: phones reach this agent only once its phone port is published (tailscale serve, a reverse proxy)');
   }
   const host = env.PERCH_HOST?.trim();
   if (host && host !== '127.0.0.1' && host !== 'localhost') {
-    warnings.push(`PERCH_HOST=${host} is ignored: the agent listens on 127.0.0.1 only, and phones reach it through its relays or its published phone port`);
+    warnings.push(`PERCH_HOST=${host} is ignored: the agent listens on 127.0.0.1 only, and phones reach it through its published phone port`);
   }
   return warnings;
 }
 
 function phoneAddresses(env: Record<string, string | undefined>): string[] {
   return (env.PERCH_PHONE_ADDRESSES ?? '').split(',').map((url) => url.trim()).filter(Boolean);
-}
-
-function listedRelayUrls(env: Record<string, string | undefined>): string[] {
-  const listed = (env.PERCH_RELAY_URLS ?? '').split(/[\s,]+/);
-  return [...new Set(listed.map((url) => withoutTrailingSlash(url.trim())).filter(Boolean))];
-}
-
-function relayUrls(env: Record<string, string | undefined>): string[] {
-  return listedRelayUrls(env).filter((url) => !isCleartextRemote(url));
 }

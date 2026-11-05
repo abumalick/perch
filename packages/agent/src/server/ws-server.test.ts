@@ -56,8 +56,7 @@ import { FilePairingStore } from '../infrastructure/file-pairing-store';
 import { addPairing } from '../application/pairing';
 import { revokeDevice, standingOf } from '../application/device-roster';
 
-// Plays the phone on the relay path: a Noise session against the agent's public key, IK with a
-// device key, NK without.
+// Plays the phone: a Noise session against the agent's public key, IK with a device key.
 // A phone with a device key (a fresh, unknown one unless given).
 async function noiseClient(url: string, agentPublicKey: string, device: DeviceKeys = generateDeviceKeys()) {
   const socket = new WebSocket(url);
@@ -116,8 +115,8 @@ const dirs: string[] = [];
 let server: WsServer | null = null;
 const harnesses: WebSocketServer[] = [];
 
-// Phones reach the agent only through relays. These tests hand the server a plaintext client over
-// a local socket of their own, to exercise what it does with a client.
+// Phones reach the agent on its phone port, in a Noise session. These tests hand the server a
+// plaintext client over a local socket of their own, to exercise what it does with a client.
 async function clientUrl(): Promise<string> {
   const target = server!;
   const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
@@ -201,8 +200,7 @@ function testConfig(home: string, overrides: Partial<AgentConfig> = {}): AgentCo
     workspaceLogPath: join(home, 'workspace-log.jsonl'),
     parkedStorePath: join(home, 'parked.json'),
     liveSnapshotPath: join(home, 'live.json'),
-    relayUrls: [],
-    relayKeyPath: join(home, 'relay-key.json'),
+    agentKeyPath: join(home, 'relay-key.json'),
     devicesPath: join(home, 'devices.json'),
     pairingPath: join(home, 'pairing.json'),
     claudeSessionsDir: join(home, 'claude-sessions'),
@@ -300,13 +298,13 @@ describe('WsServer (E2E, real tmux)', () => {
     });
   });
 
-  it('serves a relay-dialed socket only through the Noise session, token check unchanged', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'perch-relayed-'));
+  it('serves a phone socket only through the Noise session, token check unchanged', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'perch-phone-socket-'));
     dirs.push(home);
     const config = testConfig(home);
     const keys = generateAgentKeys();
     server = new WsServer(makeServerDeps(config, noClientLog));
-    // Stands in for the relay: a socket the agent did not accept on its own listener.
+    // Stands in for the phone port: a socket the agent did not accept on its own listener.
     const outside = new WebSocketServer({ port: 0, host: '127.0.0.1' });
     await new Promise((r) => outside.once('listening', r));
     const devices = {
@@ -331,7 +329,7 @@ describe('WsServer (E2E, real tmux)', () => {
       const strangerClosed = new Promise<void>((r) => stranger.socket.once('close', () => r()));
       stranger.send({ type: 'auth', token: 'wrong' });
       expect(await stranger.next()).toMatchObject({ type: 'authResult', ok: false });
-      // The agent hangs up on a failed auth, freeing the relay's pair slot.
+      // The agent hangs up on a failed auth, freeing its unauthenticated slot.
       await strangerClosed;
 
       const client = await noiseClient(url, keys.x25519.publicKey);
@@ -369,7 +367,7 @@ describe('WsServer (E2E, real tmux)', () => {
     const keys = generateAgentKeys();
     const store = new FileDeviceStore(config.devicesPath);
     const pairings = new FilePairingStore(config.pairingPath);
-    const devices = new RosterDevices({ store, pairings, now: () => new Date(), account: 'acct', enrolKey: new Uint8Array(32), onChange: () => undefined });
+    const devices = new RosterDevices({ store, pairings, now: () => new Date(), onChange: () => undefined });
     server = new WsServer(makeServerDeps(config, noClientLog));
     const outside = new WebSocketServer({ port: 0, host: '127.0.0.1' });
     await new Promise((r) => outside.once('listening', r));
@@ -1532,8 +1530,7 @@ describe('WsServer (E2E, real tmux)', () => {
 });
 
 describe('WsServer listener', () => {
-  // Phones come through the relays the agent dials out to: the only thing listening is the
-  // loopback hooks endpoint, and it answers nothing a phone used to ask for.
+  // Phones come through the phone port: the hooks listener is loopback only, and it answers nothing a phone used to ask for.
   it('listens on loopback only, and serves no WebSocket and no phone endpoint', async () => {
     const home = await mkdtemp(join(tmpdir(), 'perch-listener-'));
     dirs.push(home);
@@ -2132,22 +2129,22 @@ describe('connectBrowserUpstream (real ws client adapter)', () => {
       });
     });
     try {
-      const relay = await connectBrowserUpstream(port);
+      const client = await connectBrowserUpstream(port);
       const received: string[] = [];
       const gotReply = new Promise<void>((resolve) => {
-        relay.onMessage((data) => {
+        client.onMessage((data) => {
           received.push(data);
           resolve();
         });
       });
-      relay.send('hello');
+      client.send('hello');
       await gotReply;
       expect(origin).toBeUndefined();
       expect(serverGot).toEqual(['hello']);
       expect(received).toEqual(['reply-from-upstream']);
-      expect(typeof relay.bufferedAmount?.()).toBe('number');
-      const closed = new Promise<void>((resolve) => relay.onClose(resolve));
-      for (const client of upstream.clients) client.close();
+      expect(typeof client.bufferedAmount?.()).toBe('number');
+      const closed = new Promise<void>((resolve) => client.onClose(resolve));
+      for (const socket of upstream.clients) socket.close();
       await closed;
     } finally {
       await new Promise((r) => upstream.close(r));

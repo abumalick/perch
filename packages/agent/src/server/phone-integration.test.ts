@@ -40,7 +40,8 @@ import { FilePairingStore } from '../infrastructure/file-pairing-store';
 import { FileParkedStore } from '../infrastructure/file-parked-store';
 import { InMemoryStatusStore } from '../infrastructure/in-memory-status-store';
 import { systemClock, RandomIdGenerator, systemPathResolver } from '../infrastructure/system';
-import { enrolDevice, revokeDevice } from '../application/device-roster';
+import { enrolDevice, revokeDevice, withEnrolmentMode } from '../application/device-roster';
+import { addPairing } from '../application/pairing';
 import type { TmuxPort } from '../ports/tmux-port';
 import type { PtyPort } from '../ports/pty-port';
 
@@ -116,7 +117,6 @@ async function startStack(opts: StackOptions = {}): Promise<Stack> {
   const store = new FileDeviceStore(config.devicesPath);
   const gate = startDeviceGate({
     keys,
-    token: TOKEN,
     server,
     store,
     pairings: new FilePairingStore(config.pairingPath),
@@ -177,8 +177,9 @@ interface Phone {
   close(): void;
 }
 
-// What the PWA does on a direct entry: open the socket, run IK against the agent's key.
-async function phone(stack: Stack, device: DeviceKeys, path = '/'): Promise<Phone> {
+// What the PWA does on a direct entry: open the socket, run IK against the agent's key. `hello`
+// 'proof' builds the hello as a PWA from before direct connections did, signed for a relay.
+async function phone(stack: Stack, device: DeviceKeys, path = '/', hello: 'plain' | 'proof' = 'plain'): Promise<Phone> {
   const { socket, closed } = await open(`${stack.url}${path}`);
   const inbox: Message[] = [];
   const waiters: Array<{ type: string; resolve: (m: Message) => void }> = [];
@@ -216,11 +217,19 @@ async function phone(stack: Stack, device: DeviceKeys, path = '/'): Promise<Phon
         encodeDeviceHello({
           sig: device.ed25519.publicKey,
           name: 'integration phone',
-          proof: await signDeviceHello(ed25519Signer(device.ed25519.privateKey), b64url.decode(device.x25519.publicKey), hash),
+          ...(hello === 'proof'
+            ? { proof: await signDeviceHello(ed25519Signer(device.ed25519.privateKey), b64url.decode(device.x25519.publicKey), hash) }
+            : {}),
         }),
       )
       .then((m1) => socket.send(handshakeFrame(m1, 'ik')));
   });
+}
+
+async function newPairing(stack: Stack): Promise<string> {
+  const secret = b64url.encode(randomBytes(32));
+  await new FilePairingStore(join(stack.home, '.perch', 'pairing.json')).update((list) => addPairing(list, secret, new Date()));
+  return secret;
 }
 
 async function get(stack: Stack, path: string): Promise<number> {
@@ -256,6 +265,50 @@ describe('phones on the phone port', () => {
         expect(await conn.next('workspaces')).toMatchObject({ workspaces: [] });
       });
     }
+
+    for (const hello of ['plain', 'proof'] as const) {
+      it(`enrols a phone with a pairing code and no token, its hello ${hello === 'proof' ? 'still carrying an old relay proof' : 'carrying no proof'}`, async () => {
+        const device = generateDeviceKeys();
+        const conn = await phone(stack, device, '/', hello);
+        cleanups.push(() => conn.close());
+        conn.send({ type: 'auth', token: await newPairing(stack) });
+        expect(await conn.next('authResult')).toMatchObject({ ok: true, credential: 'pairing', enrolled: true });
+        conn.send({ type: 'list' });
+        expect(await conn.next('workspaces')).toMatchObject({ workspaces: [] });
+        expect((await stack.store.read()).devices.map((d) => d.x25519)).toEqual([device.x25519.publicKey]);
+
+        const again = await phone(stack, device, '/', hello);
+        cleanups.push(() => again.close());
+        again.send({ type: 'auth', token: '' });
+        expect(await again.next('authResult')).toMatchObject({ ok: true, credential: 'device' });
+      });
+    }
+
+    it('enrols a phone with the token, then refuses the token from it once enrolled', async () => {
+      const device = generateDeviceKeys();
+      const conn = await phone(stack, device);
+      conn.send({ type: 'auth', token: TOKEN });
+      expect(await conn.next('authResult')).toMatchObject({ ok: true, credential: 'token', enrolled: true });
+      conn.close();
+      const stale = await phone(stack, device);
+      stale.send({ type: 'auth', token: TOKEN });
+      expect(await stale.closed).toEqual({ code: DEVICE_REFUSED, reason: REFUSAL.tokenNotNeeded });
+    });
+
+    it('refuses the token while enrolment is off, and a pairing code once it is closed', async () => {
+      await stack.store.update((roster) => withEnrolmentMode(roster, 'off'));
+      const byToken = await phone(stack, generateDeviceKeys());
+      byToken.send({ type: 'auth', token: TOKEN });
+      expect(await byToken.closed).toEqual({ code: DEVICE_REFUSED, reason: REFUSAL.enrolmentOff });
+      // A pairing code is an explicit authorisation, so `off` still takes it.
+      const paired = await phone(stack, generateDeviceKeys());
+      cleanups.push(() => paired.close());
+      paired.send({ type: 'auth', token: await newPairing(stack) });
+      expect(await paired.next('authResult')).toMatchObject({ ok: true, credential: 'pairing' });
+
+      await stack.store.update((roster) => withEnrolmentMode(roster, 'closed'));
+      await expect(phone(stack, generateDeviceKeys())).rejects.toMatchObject({ code: DEVICE_REFUSED, reason: REFUSAL.notEnrolled });
+    });
 
     it('fails to start on a port another listener holds', async () => {
       await expect(

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { addRelayUrl, parseEnvFile, setEnvValue } from './agent-env';
+import { parseEnvFile, setEnvValue } from './agent-env';
 
 const FILE = `# Perch agent
 PERCH_TOKEN=abc123
 PERCH_MACHINE_ID="dev box"
 export PERCH_PORT=8787
-# PERCH_RELAY_URLS=wss://commented.example
+# PERCH_PHONE_ADDRESSES=wss://commented.example
 `;
 
 describe('parseEnvFile', () => {
@@ -15,26 +15,6 @@ describe('parseEnvFile', () => {
 
   it("reads single quotes literally, as bash would", () => {
     expect(parseEnvFile(`A='{"x":"y"}'\n`)).toEqual({ A: '{"x":"y"}' });
-  });
-});
-
-describe('addRelayUrl', () => {
-  it('adds PERCH_RELAY_URLS when there is none, leaving everything else as it was', () => {
-    const { text, changed } = addRelayUrl(FILE, 'wss://relay.example/');
-    expect(changed).toBe(true);
-    expect(text.startsWith(FILE)).toBe(true);
-    expect(parseEnvFile(text).PERCH_RELAY_URLS).toBe('wss://relay.example');
-  });
-
-  it('appends to an existing list', () => {
-    const { text } = addRelayUrl(`${FILE}PERCH_RELAY_URLS=ws://127.0.0.1:8450\n`, 'wss://relay.example');
-    expect(parseEnvFile(text).PERCH_RELAY_URLS).toBe('ws://127.0.0.1:8450,wss://relay.example');
-    expect(text.match(/^PERCH_RELAY_URLS=/gm)).toHaveLength(1);
-  });
-
-  it('changes nothing when the relay is already listed', () => {
-    const file = `${FILE}PERCH_RELAY_URLS=wss://a.example, wss://relay.example/\n`;
-    expect(addRelayUrl(file, 'wss://relay.example')).toEqual({ text: file, changed: false });
   });
 });
 

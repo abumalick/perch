@@ -1,7 +1,7 @@
 import type { AgentMessage } from '@perch/contracts';
 
 export interface ClientConnection {
-  // Set once the transport itself has proven who the client is: `device`, a relay client whose
+  // Set once the transport itself has proven who the client is: `device`, a phone whose
   // device key was enrolled at the handshake; `pairing`, one whose pairing secret was just
   // redeemed. `auth` then needs no token.
   readonly keyCredential?: 'device' | 'pairing';

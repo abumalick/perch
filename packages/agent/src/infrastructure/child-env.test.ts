@@ -7,7 +7,7 @@ describe('childEnv', () => {
       PERCH_TOKEN: 'secret',
       PERCH_JOIN_KEY: 'join',
       PERCH_ADMIN_KEY: 'admin',
-      PERCH_RELAY_URLS: 'wss://relay.example',
+      PERCH_PHONE_ADDRESSES: 'wss://box.example.ts.net',
       HOME: '/home/u',
       PATH: '/bin',
       LANG: 'C.UTF-8',

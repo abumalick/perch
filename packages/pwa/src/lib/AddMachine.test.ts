@@ -16,12 +16,12 @@ const KEY = generateAgentKeys().x25519.publicKey;
 
 async function fillRequired(name: string, url: string): Promise<void> {
   await fireEvent.input(screen.getByLabelText(/name/i), { target: { value: name } });
-  await fireEvent.input(screen.getByLabelText(/url/i), { target: { value: url } });
+  await fireEvent.input(screen.getByLabelText(/addresses/i), { target: { value: url } });
   await fireEvent.input(screen.getByLabelText(/token/i), { target: { value: 'sek' } });
 }
 
 describe('AddMachine', () => {
-  it('adds a relay machine with the agent key it pins, and returns to settings', async () => {
+  it('adds a machine with its addresses and the agent key it pins, and returns to settings', async () => {
     const store = fakeStore();
     render(AddMachine, { props: { store: store as never } });
     await fillRequired('Mini PC', 'wss://relay/acct');
@@ -30,7 +30,7 @@ describe('AddMachine', () => {
     expect(store.addMachine).toHaveBeenCalledWith({
       id: 'mini-pc',
       name: 'Mini PC',
-      url: 'wss://relay/acct',
+      addresses: ['wss://relay/acct'],
       token: 'sek',
       agentKey: KEY,
     });

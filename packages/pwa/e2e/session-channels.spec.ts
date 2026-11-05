@@ -6,7 +6,7 @@ import { failOnCspViolation } from './csp';
 failOnCspViolation(test);
 
 // A machine's media previews, browser view and connection-log flush ride its end-to-end
-// session: the fake agent speaks Noise IK, like a relay-dialed socket on the real agent, and
+// session: the fake agent speaks Noise IK, as the real agent's phone listener does, and
 // would refuse anything in plaintext.
 
 let agent: FakeAgent;

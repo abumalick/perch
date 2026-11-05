@@ -68,12 +68,12 @@ function encode(text: string): string {
 }
 
 // How long to show the "Connecting…" home screen before concluding the machines are
-// unreachable (phone offline, agent down or off its relay) and switching to the reconnect screen.
+// unreachable (phone offline, agent down or its address unreachable) and switching to the reconnect screen.
 const GRACE_MS = 4000;
 // A machine that has connected before is known-reachable, so we give it a much longer calm
 // "Reconnecting…" window before falling through to the actionable "Can't reach" screen — a
 // brief blip (phone waking, backoff) shouldn't alarm, but a genuine extended outage (phone
-// offline, agent down) still surfaces the relay hint + Reconnect button so the user can act.
+// offline, agent down) still surfaces the network hint + Reconnect button so the user can act.
 const RECONNECT_GRACE_MS = 25_000;
 // How long after the end of a Claude voice dictation the agent may take to answer before it
 // is taken not to support it: the last second of playback, the release and Claude's transcription.
@@ -96,7 +96,7 @@ export class PerchStore {
   // The last connection failure per machine, surfaced in Settings so a user can see why
   // a machine won't connect. Cleared once that machine reaches `online`.
   lastConnectionError = $state<Record<string, ConnectionDiagnostic | undefined>>({});
-  // This device's relay identity, shown in Settings; null until loaded or where unavailable.
+  // This device's identity, shown in Settings; null until loaded or where unavailable.
   deviceKey = $state<DeviceKeyInfo | null>(null);
   // Why this device has no identity, when loading or creating it failed.
   deviceKeyError = $state<string | null>(null);
@@ -107,7 +107,7 @@ export class PerchStore {
   // they auto-retry forever. Used to show a calm "Reconnecting…" instead of "Can't reach"
   // while such a machine is briefly down. Reactive record (not a Set) so `homeView` recomputes.
   reachedOnce = $state<Record<string, boolean>>({});
-  // Enabled machines the relay or the agent refused, and why: the home screen shows these in place
+  // Enabled machines the agent refused, and why: the home screen shows these in place
   // of the network hint, which would send the owner after the wrong cause.
   refusals = $derived(
     this.machines
@@ -419,7 +419,7 @@ export class PerchStore {
   // Reconnect every enabled machine that is idle-offline (the home Reconnect button, plus app
   // refocus / browser `online`). Deliberately **skips machines already `connecting`**: aborting
   // an in-flight attempt to restart it just resets progress on a slow-to-establish path (a phone
-  // waking, a slow relay) — the connect-deadline reaps a genuinely stalled one within 10s
+  // waking, a slow first open) — the connect-deadline reaps a genuinely stalled one within 10s
   // anyway. Their backoff is reset instead: an attempt left in flight while the app was
   // backgrounded fails right after it returns, and would otherwise wait up to 10s to retry.
   // `manual` distinguishes a user tap from an automatic refocus in the connection log.
@@ -1028,7 +1028,7 @@ export class PerchStore {
     }
   }
 
-  // Stops a relay media transfer nobody will look at, so it does not keep squatting the
+  // Stops a media transfer nobody will look at, so it does not keep squatting the
   // session ahead of terminal output.
   private cancelMediaLoad(): void {
     this.mediaLoad += 1;
@@ -1210,7 +1210,7 @@ export class PerchStore {
     return this.deps.origin ?? location.origin;
   }
 
-  // A pairing link, scanned or pasted: adds (or updates) the relay entry and connects it.
+  // A pairing link, scanned or pasted: adds (or updates) the machine's entry and connects it.
   // Returns the machine's name, or why the link was refused.
   pairFromLink(text: string): { name: string } | { error: string } {
     const read = readPairingLink(text, this.origin());
@@ -1276,7 +1276,7 @@ export class PerchStore {
     this.recomputeGrace();
   }
 
-  updateMachine(id: string, patch: { url: string; token?: string; defaultPath?: string; agentKey?: string }): void {
+  updateMachine(id: string, patch: { addresses: string[]; token?: string; defaultPath?: string; agentKey?: string }): void {
     this.deps.settings.update(id, patch);
     this.machines = this.deps.settings.list();
     this.deps.manager.setMachines(this.machines);

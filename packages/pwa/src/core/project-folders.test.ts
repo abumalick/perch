@@ -16,8 +16,9 @@ const ws = (over: Partial<Workspace> & Pick<Workspace, 'id' | 'machineId' | 'pro
 const machine = (id: string, defaultPath?: string): MachineConfig => ({
   id,
   name: id,
-  url: `ws://${id}`,
+  addresses: [`wss://${id}`],
   token: 't',
+  agentKey: 'k',
   defaultPath,
 });
 

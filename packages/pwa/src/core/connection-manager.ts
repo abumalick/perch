@@ -2,24 +2,18 @@ import type { AgentMessage, ClientMessage } from '@perch/contracts';
 import { MachineConnection, type ConnectionDiagnostic, type ConnectionStatus } from './machine-connection';
 import type { SocketFactory } from './ports/socket';
 import type { WorkspaceAggregator } from './workspace-aggregator';
-import { en } from './i18n/en';
-import { isConnectable, isRelayMachine, type MachineConfig } from './settings-store';
+import { isConnectable, type MachineConfig } from './settings-store';
 import type { RefusalContext } from './refusal';
 
 export interface ConnectionManagerDeps {
-  // Sockets end-to-end encrypted to the given agent key. The token (or pairing secret) proves,
-  // inside the relay handshake, that this device's key may be enrolled.
-  secureSocketFactory: (
-    agentKey: string,
-    token: string,
-    credential: RefusalContext['credential'],
-    onPhase: (phase: string, detail: string) => void,
-  ) => SocketFactory;
+  // Sockets end-to-end encrypted to the given agent key. Whether the entry holds a token (or a
+  // pairing secret) decides whether the handshake asks to be served at once.
+  secureSocketFactory: (agentKey: string, token: string, onPhase: (phase: string, detail: string) => void) => SocketFactory;
   aggregator: WorkspaceAggregator;
   onMessage: (machineId: string, message: AgentMessage) => void;
   onStatus: (machineId: string, status: ConnectionStatus) => void;
   onDiagnostic?: (machineId: string, diagnostic: ConnectionDiagnostic) => void;
-  // A phase of a relay connect (challenge fetch, socket open, handshake) with its timing.
+  // A phase of a connect (device key, socket open, handshake, an address failing) with its timing.
   onPhase?: (machineId: string, phase: string, detail: string) => void;
   // The agent said this entry's device key is enrolled (`all`: its token and pairing secret are to
   // be forgotten), or an older agent spent its pairing secret (`pairing`). The store persists it.
@@ -46,6 +40,9 @@ export class ConnectionManager {
   private readonly configs = new Map<string, MachineConfig>();
   // When each machine's connect attempt began, until its workspace list arrives (the `list` phase).
   private readonly listPending = new Map<string, number>();
+  // The address each machine last reached `online` by, for this app session: tried first next
+  // time. Kept here because a change to the machine list rebuilds every connection.
+  private readonly worked = new Map<string, string>();
   private readonly now: () => number;
 
   constructor(private readonly deps: ConnectionManagerDeps) {
@@ -63,17 +60,16 @@ export class ConnectionManager {
       }
     }
     for (const config of configs) {
-      if (!isRelayMachine(config)) {
-        this.notConnecting(config.id, en.status.diagnostic.legacyEntry);
-        continue;
-      }
-      if (config.enabled === false) continue;
+      if (!isConnectable(config)) continue;
       this.connections.get(config.id)?.close();
       this.configs.set(config.id, config);
       const conn = new MachineConnection({
-        url: config.url,
+        addresses: config.addresses,
+        preferredAddress: () => this.worked.get(config.id),
+        onAddressWorked: (address) => this.worked.set(config.id, address),
+        onPhase: (phase, detail) => this.deps.onPhase?.(config.id, phase, detail),
         token: credential(config),
-        socketFactory: (url) => this.socketFactoryFor(this.configs.get(config.id) ?? config)(url),
+        socketFactory: (url) => this.socketFactoryFor(this.configs.get(config.id) ?? config, url)(url),
         onCredentialsSpent: (scope) => {
           const current = this.configs.get(config.id) ?? config;
           this.configs.set(config.id, scope === 'all' ? { ...current, token: '', pairing: undefined } : { ...current, pairing: undefined });
@@ -107,17 +103,11 @@ export class ConnectionManager {
     }
   }
 
-  private notConnecting(machineId: string, message: string): void {
-    this.deps.aggregator.setMachineOffline(machineId);
-    this.deps.onStatus(machineId, 'offline');
-    this.deps.onDiagnostic?.(machineId, { message, at: this.now() });
-  }
-
-  // A machine is never reached in plaintext, which would hand its token to the relay: without a
-  // valid agent key it gets no socket at all (setMachines checks the key first).
-  private socketFactoryFor(config: MachineConfig): SocketFactory {
-    return this.deps.secureSocketFactory(config.agentKey!.trim(), credential(config), credentialKind(config), (phase, detail) =>
-      this.deps.onPhase?.(config.id, phase, detail),
+  // A machine is never reached in plaintext: without a valid agent key it gets no socket at all
+  // (setMachines checks the key first). Each phase names the address it was measured on.
+  private socketFactoryFor(config: MachineConfig, address: string): SocketFactory {
+    return this.deps.secureSocketFactory(config.agentKey.trim(), credential(config), (phase, detail) =>
+      this.deps.onPhase?.(config.id, phase, `${detail} ${address}`),
     );
   }
 

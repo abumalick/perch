@@ -37,7 +37,7 @@ const prompts = { confirm: () => false, alert: () => undefined, newId: () => `id
 
 function memStorage(seed: unknown[] = []): StoragePort {
   const map = new Map<string, string>();
-  if (seed.length) map.set('perch.machines', JSON.stringify(seed));
+  if (seed.length) map.set('tarfa.machines', JSON.stringify(seed));
   return { read: (k) => map.get(k) ?? null, write: (k, v) => void map.set(k, v) };
 }
 
@@ -100,7 +100,7 @@ function build(
 }
 
 const agentKey = generateAgentKeys().x25519.publicKey;
-const mac = { id: 'mac', name: 'Mac', url: 'wss://mac', token: 't', agentKey };
+const mac = { id: 'mac', name: 'Mac', addresses: ['wss://mac'], token: 't', agentKey };
 
 describe('PerchStore pairing', () => {
   const link = pairingLink('https://pwa.example', {
@@ -115,7 +115,7 @@ describe('PerchStore pairing', () => {
     store.start();
     store.goSettings();
     expect(store.pairFromLink(`  ${link}\n`)).toEqual({ name: 'dev' });
-    expect(store.machines).toEqual([expect.objectContaining({ name: 'dev', url: 'wss://relay.example/acct', token: '', pairing: 'S'.repeat(43) })]);
+    expect(store.machines).toEqual([expect.objectContaining({ name: 'dev', addresses: ['wss://relay.example/acct'], token: '', pairing: 'S'.repeat(43) })]);
     expect(store.view).toBe('list');
   });
 
@@ -138,7 +138,7 @@ describe('PerchStore pairing', () => {
   it('refuses anything that is not a pairing link, and stores nothing', () => {
     const { store } = build();
     store.start();
-    expect(store.pairFromLink('https://pwa.example/#pair?u=wss://x/acct')).toEqual({ error: expect.stringMatching(/not a Perch pairing code/) });
+    expect(store.pairFromLink('https://pwa.example/#pair?u=wss://x/acct')).toEqual({ error: expect.stringMatching(/not a Tarfa pairing code/) });
     expect(store.machines).toEqual([]);
   });
 
@@ -185,7 +185,7 @@ describe('PerchStore pairing', () => {
 
   it('says why a tapped pairing link was refused', () => {
     const alerts: string[] = [];
-    const other = { id: 'x', name: 'dev', url: 'wss://relay.example/acct', token: '', agentKey: generateAgentKeys().x25519.publicKey };
+    const other = { id: 'x', name: 'dev', addresses: ['wss://relay.example/acct'], token: '', agentKey: generateAgentKeys().x25519.publicKey };
     const { store } = build([other], undefined, undefined, undefined, { confirm: () => true, alert: (m) => alerts.push(m) });
     store.start();
     expect(store.openPairingLink(link)).toBe(true);
@@ -200,8 +200,8 @@ describe('PerchStore pairing', () => {
     const before = store.machines;
     store.refreshMachines();
     expect(store.machines).toBe(before);
-    const added = { id: 'dev', name: 'dev', url: 'wss://relay.example/acct', token: '', agentKey: generateAgentKeys().x25519.publicKey };
-    storage.write('perch.machines', JSON.stringify([mac, added]));
+    const added = { id: 'dev', name: 'dev', addresses: ['wss://relay.example/acct'], token: '', agentKey: generateAgentKeys().x25519.publicKey };
+    storage.write('tarfa.machines', JSON.stringify([mac, added]));
     store.refreshMachines();
     expect(store.machines.map((m) => m.id)).toEqual(['mac', 'dev']);
   });
@@ -591,7 +591,7 @@ describe('PerchStore', () => {
   it('records a connection error and clears it on online', () => {
     const { store } = build([mac]);
     store.setStatus('mac', 'offline');
-    store.setConnectionError('mac', { message: 'connection failed (likely network error — relay unreachable)', code: 1006, at: 1000 });
+    store.setConnectionError('mac', { message: 'connection failed (likely network error — machine unreachable)', code: 1006, at: 1000 });
     expect(store.lastConnectionError['mac']?.code).toBe(1006);
     store.setStatus('mac', 'online');
     expect(store.lastConnectionError['mac']).toBeUndefined();
@@ -600,8 +600,8 @@ describe('PerchStore', () => {
   it('updateMachine persists new url/token and reconnects via the manager', () => {
     const { store, sockets } = build([mac]);
     store.start();
-    store.updateMachine('mac', { url: 'wss://mac-new', token: 't2' });
-    expect(store.machines).toEqual([{ ...mac, url: 'wss://mac-new', token: 't2' }]);
+    store.updateMachine('mac', { addresses: ['wss://mac-new'], token: 't2' });
+    expect(store.machines).toEqual([{ ...mac, addresses: ['wss://mac-new'], token: 't2' }]);
     // setMachines reconnects with the new url → a socket for it now exists.
     expect(sockets['wss://mac-new']).toBeDefined();
   });
@@ -609,8 +609,8 @@ describe('PerchStore', () => {
   it('updateMachine keeps the existing token when omitted', () => {
     const { store } = build([mac]);
     store.start();
-    store.updateMachine('mac', { url: 'wss://mac-new' });
-    expect(store.machines[0]).toEqual({ ...mac, url: 'wss://mac-new', token: 't' });
+    store.updateMachine('mac', { addresses: ['wss://mac-new'] });
+    expect(store.machines[0]).toEqual({ ...mac, addresses: ['wss://mac-new'], token: 't' });
   });
 
   it('opens an existing workspace without auto-focusing the terminal', () => {
@@ -649,7 +649,7 @@ describe('PerchStore', () => {
   });
 
   it('opens the created workspace when another machine already has a workspace with its id', () => {
-    const other = { ...mac, id: 'mini', name: 'Mini', url: 'wss://mini', token: 't2' };
+    const other = { ...mac, id: 'mini', name: 'Mini', addresses: ['wss://mini'], token: 't2' };
     const { store, sockets } = build([mac, other]);
     store.start();
     for (const url of ['wss://mac', 'wss://mini']) {
@@ -675,7 +675,7 @@ describe('PerchStore', () => {
   });
 
   it('ignores another machine closing or streaming a workspace with the open id', () => {
-    const other = { ...mac, id: 'mini', name: 'Mini', url: 'wss://mini', token: 't2' };
+    const other = { ...mac, id: 'mini', name: 'Mini', addresses: ['wss://mini'], token: 't2' };
     const { store, sockets } = build([mac, other]);
     store.start();
     for (const url of ['wss://mac', 'wss://mini']) {
@@ -1730,7 +1730,7 @@ describe('PerchStore browser view', () => {
   });
 
   it('startBrowser sends on the chosen connection only', () => {
-    const { store, sockets } = build([mac, { ...mac, id: 'mini', name: 'Mini', url: 'wss://mini', token: 't2' }]);
+    const { store, sockets } = build([mac, { ...mac, id: 'mini', name: 'Mini', addresses: ['wss://mini'], token: 't2' }]);
     store.start();
     sockets['wss://mac']!.open();
     sockets['wss://mini']!.open();
@@ -1784,7 +1784,7 @@ describe('PerchStore browser view', () => {
   });
 });
 
-const mini = { id: 'mini', name: 'Mini', url: 'wss://mini', token: 't', agentKey };
+const mini = { id: 'mini', name: 'Mini', addresses: ['wss://mini'], token: 't', agentKey };
 
 describe('PerchStore home view', () => {
   it('prompts to add a machine when none are configured, with no grace timer', () => {
@@ -1795,9 +1795,9 @@ describe('PerchStore home view', () => {
     expect(timer.pending()).toBe(0);
   });
 
-  it('ignores an old direct entry, even one switched on: no socket, no grace timer, no alarm', () => {
+  it('ignores an entry with no agent key, even one switched on: no socket, no grace timer, no alarm', () => {
     const timer = manualTimer();
-    const { store, sockets } = build([{ id: 'old', name: 'Old', url: 'wss://old', token: 't', enabled: true }], undefined, timer.startTimer);
+    const { store, sockets } = build([{ id: 'old', name: 'Old', addresses: ['wss://old'], token: 't', enabled: true }], undefined, timer.startTimer);
     store.start();
     expect(sockets).toEqual({});
     expect(store.homeView).toBe('add-machine');
@@ -1807,9 +1807,9 @@ describe('PerchStore home view', () => {
     expect(store.homeView).toBe('add-machine');
   });
 
-  it('counts only the relay machines beside an old direct entry', () => {
+  it('counts only the connectable machines beside an entry with no agent key', () => {
     const timer = manualTimer();
-    const { store, aggregator } = build([{ id: 'old', name: 'Old', url: 'wss://old', token: 't' }, mac], undefined, timer.startTimer);
+    const { store, aggregator } = build([{ id: 'old', name: 'Old', addresses: ['wss://old'], token: 't' }, mac], undefined, timer.startTimer);
     store.start();
     store.setStatus('mac', 'online');
     aggregator.apply('mac', { type: 'workspaces', workspaces: [] });
@@ -2082,7 +2082,7 @@ describe('PerchStore reconnect UX', () => {
 
 describe('PerchStore relay machines carry the side channels inside the session', () => {
   const key = 'A'.repeat(42) + 'Q';
-  const relayMac = { ...mac, url: 'wss://relay.example/acct', agentKey: key };
+  const relayMac = { ...mac, addresses: ['wss://relay.example/acct'], agentKey: key };
   const ws = { machineId: 'mac', id: 'perch-a', name: 'a', projectPath: '/home/u/proj', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'idle' as const };
   const settle = () => new Promise((r) => setTimeout(r, 0));
 
@@ -2245,11 +2245,11 @@ describe('PerchStore device key', () => {
     expect(fine.deviceKeyUnreadable).toBe(false);
   });
 
-  it('replaces an unreadable device key and reconnects the relay machines', async () => {
-    const relay = { id: 'r', name: 'R', url: 'ws://relay/acct', token: 't', agentKey };
-    const direct = { id: 'd', name: 'D', url: 'ws://direct', token: 't' };
+  it('replaces an unreadable device key and reconnects the machines it connects', async () => {
+    const relay = { id: 'r', name: 'R', addresses: ['ws://127.0.0.1:8/acct'], token: 't', agentKey };
+    const off = { id: 'd', name: 'D', addresses: ['ws://127.0.0.1:9/'], token: 't', agentKey, enabled: false };
     const replace = vi.fn(async () => fresh);
-    const store = make(unreadable, replace, [relay, direct]);
+    const store = make(unreadable, replace, [relay, off]);
     store.start();
     await settle();
     store.reconnected.mockClear();
@@ -2296,7 +2296,7 @@ describe('PerchStore dictation presets', () => {
     expect(store.currentPreset.id).toBe('scribe');
     store.selectPreset('clean');
     expect(store.currentPreset.id).toBe('clean');
-    expect(storage.read('perch.dictationPreset')).toBe('clean');
+    expect(storage.read('tarfa.dictationPreset')).toBe('clean');
   });
 
   it('saves an edited list, falling back to the first preset when the current one is gone', () => {
@@ -2333,7 +2333,7 @@ describe('PerchStore dictation presets', () => {
     store.saveDictationPresets([DEFAULT_PRESETS[1]!]);
     store.resetDictationPresets();
     expect(store.dictationPresets).toEqual(DEFAULT_PRESETS);
-    expect(storage.read('perch.dictationPresets')).toBe('');
+    expect(storage.read('tarfa.dictationPresets')).toBe('');
   });
 
   it('keeps the OpenRouter key', () => {
@@ -2341,7 +2341,7 @@ describe('PerchStore dictation presets', () => {
     store.start();
     store.setOpenRouterApiKey('sk-or-x');
     expect(store.openRouterApiKey).toBe('sk-or-x');
-    expect(storage.read('perch.openRouterApiKey')).toBe('sk-or-x');
+    expect(storage.read('tarfa.openRouterApiKey')).toBe('sk-or-x');
   });
 });
 

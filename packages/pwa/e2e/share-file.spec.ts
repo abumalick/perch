@@ -38,7 +38,7 @@ test('a shared file surfaces a Home banner and attaches only once the user confi
 
   // Stash a shared file exactly as the share-target SW would, then reload so the app reads it.
   await page.evaluate(async () => {
-    const cache = await caches.open('perch-shared');
+    const cache = await caches.open('tarfa-shared');
     await cache.put(
       '/shared-file',
       new Response(new Uint8Array([137, 80, 78, 71]), {
@@ -70,7 +70,7 @@ test('a shared file surfaces a Home banner and attaches only once the user confi
 
   // Attaching consumes the cache entry (deleted on attach, not on read), so a later boot
   // won't offer the same file again.
-  const stillCached = await page.evaluate(async () => !!(await (await caches.open('perch-shared')).match('/shared-file')));
+  const stillCached = await page.evaluate(async () => !!(await (await caches.open('tarfa-shared')).match('/shared-file')));
   expect(stillCached).toBe(false);
 });
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { MachineConnection, type ConnectionDiagnostic } from './machine-connection';
+import { ADDRESS_OPEN_MS, MachineConnection, type ConnectionDiagnostic } from './machine-connection';
+import { REFUSAL } from '@perch/secure-channel';
 import type { CloseInfo, Socket } from './ports/socket';
 import type { AgentMessage } from '@perch/contracts';
 import type { RefusalContext } from './refusal';
@@ -40,22 +41,29 @@ function fakeSocket() {
   };
 }
 
-function harness(refusalContext?: RefusalContext) {
+function harness(refusalContext?: RefusalContext, addresses = ['wss://m1.ts.net'], memory: { preferred?: string } = {}) {
   const spent: string[] = [];
   const sockets: ReturnType<typeof fakeSocket>[] = [];
+  const dialed: string[] = [];
+  const phases: string[] = [];
+  let clock = 1000;
   const messages: AgentMessage[] = [];
   const statuses: string[] = [];
   const diagnostics: ConnectionDiagnostic[] = [];
   const scheduled: Array<{ fn: () => void; ms: number }> = [];
   const timers: Array<{ fn: () => void; ms: number; cancelled: boolean }> = [];
   const conn = new MachineConnection({
-    url: 'wss://m1.ts.net',
+    addresses,
     token: 'secret',
-    socketFactory: () => {
+    socketFactory: (url) => {
+      dialed.push(url);
       const f = fakeSocket();
       sockets.push(f);
       return f.socket;
     },
+    preferredAddress: () => memory.preferred,
+    onAddressWorked: (url) => (memory.preferred = url),
+    onPhase: (phase, detail) => phases.push(`${phase} ${detail}`),
     onMessage: (m) => messages.push(m),
     onStatus: (s) => statuses.push(s),
     onDiagnostic: (d) => diagnostics.push(d),
@@ -67,11 +75,12 @@ function harness(refusalContext?: RefusalContext) {
         t.cancelled = true;
       };
     },
-    now: () => 1000,
+    now: () => clock,
     refusalContext,
     onCredentialsSpent: (scope) => spent.push(scope),
   });
-  return { conn, sockets, messages, statuses, diagnostics, scheduled, timers, spent };
+  const advance = (ms: number) => (clock += ms);
+  return { conn, sockets, messages, statuses, diagnostics, scheduled, timers, spent, dialed, phases, memory, advance };
 }
 
 const authOf = (socket: ReturnType<typeof fakeSocket>) => socket.sent.map((d) => JSON.parse(d) as { type: string; token?: string }).find((m) => m.type === 'auth');
@@ -184,8 +193,8 @@ describe('MachineConnection refusals', () => {
   it('keeps redialing through a refusal that can pass', () => {
     const h = harness(paired);
     h.conn.connect();
-    h.sockets[0]!.fireClose({ code: 4503, reason: 'agent offline' });
-    expect(h.diagnostics[0]).toMatchObject({ message: 'dev box is not connected to the relay', refused: true });
+    h.sockets[0]!.fireClose({ code: 4429, reason: 'too many enrolment attempts' });
+    expect(h.diagnostics[0]).toMatchObject({ message: 'Too many phones are asking to pair with dev box right now — retrying', refused: true });
     expect(h.scheduled).toHaveLength(1);
   });
 
@@ -427,7 +436,7 @@ describe('MachineConnection', () => {
     h.conn.connect();
     h.sockets[0]!.fireClose({ code: 1006 });
     expect(h.diagnostics).toEqual([
-      { message: 'connection failed (likely network error — relay unreachable)', code: 1006, at: 1000, attempt: 1, retryInMs: 250 },
+      { message: 'connection failed (likely network error — machine unreachable)', code: 1006, at: 1000, attempt: 1, retryInMs: 250 },
     ]);
   });
 
@@ -436,7 +445,7 @@ describe('MachineConnection', () => {
     h.conn.connect();
     h.sockets[0]!.fireError();
     h.sockets[0]!.fireClose();
-    expect(h.diagnostics[0]!.message).toBe('connection failed (likely network error — relay unreachable)');
+    expect(h.diagnostics[0]!.message).toBe('connection failed (likely network error — machine unreachable)');
   });
 
   it('reports the reason a socket gives for closing before it opened', () => {
@@ -608,7 +617,7 @@ describe('MachineConnection authResult channels', () => {
     const events: string[] = [];
     const sockets: ReturnType<typeof fakeSocket>[] = [];
     const conn = new MachineConnection({
-      url: 'wss://m1',
+      addresses: ['wss://m1'],
       token: 't',
       socketFactory: () => {
         const f = fakeSocket();
@@ -637,7 +646,7 @@ describe('MachineConnection opening requests', () => {
     const sockets: ReturnType<typeof fakeSocket>[] = [];
     const events: string[] = [];
     const conn = new MachineConnection({
-      url: 'wss://m1',
+      addresses: ['wss://m1'],
       token: '',
       socketFactory: () => {
         const f = fakeSocket();
@@ -667,5 +676,159 @@ describe('MachineConnection opening requests', () => {
     sockets[0]!.deliver({ type: 'authResult', ok: true, credential: 'device', enrolled: true, pushed: true });
     sockets[0]!.deliver({ type: 'workspaces', workspaces: [] });
     expect(events).toEqual(['connecting', 'sent auth', 'online', 'message workspaces']);
+  });
+});
+
+const ADDRS = ['wss://funnel.example:10000/abu', 'wss://tailnet.example:8443/abu', 'wss://lan.example/'];
+const live = (timers: Array<{ cancelled: boolean; ms: number; fn: () => void }>) => timers.filter((t) => !t.cancelled);
+
+describe('MachineConnection address walk', () => {
+  it('dials the addresses in order until one opens, and stays connecting meanwhile', () => {
+    const h = harness(undefined, ADDRS);
+    h.conn.connect();
+    h.sockets[0]!.fireClose({ code: 1006 });
+    h.sockets[1]!.fireClose({ code: 1006 });
+    h.sockets[2]!.open();
+    h.sockets[2]!.deliver({ type: 'authResult', ok: true });
+    expect(h.dialed).toEqual(ADDRS);
+    expect(h.statuses).toEqual(['connecting', 'online']);
+    expect(h.scheduled).toEqual([]);
+  });
+
+  it(`gives each address ${ADDRESS_OPEN_MS} ms to open, then tries the next`, () => {
+    const h = harness(undefined, ADDRS);
+    h.conn.connect();
+    expect(live(h.timers).map((t) => t.ms)).toEqual([ADDRESS_OPEN_MS]);
+    h.advance(ADDRESS_OPEN_MS);
+    live(h.timers)[0]!.fn();
+    expect(h.sockets[0]!.isClosed()).toBe(true);
+    expect(h.dialed).toEqual(ADDRS.slice(0, 2));
+    // The first socket's late close changes nothing: the walk has moved on.
+    h.sockets[0]!.fireClose({ code: 1006 });
+    expect(h.dialed).toEqual(ADDRS.slice(0, 2));
+    h.sockets[1]!.open();
+    h.sockets[1]!.deliver({ type: 'authResult', ok: true });
+    expect(h.statuses).toEqual(['connecting', 'online']);
+    expect(h.phases).toEqual([`address ${ADDRS[0]} timed out after ${ADDRESS_OPEN_MS}ms`]);
+  });
+
+  it('gives a lone address the whole connect deadline', () => {
+    const h = harness(undefined, ['wss://only.example/']);
+    h.conn.connect();
+    expect(live(h.timers).map((t) => t.ms)).toEqual([10_000]);
+  });
+
+  it('fails the attempt once every address has failed, and the backoff retries from the first', () => {
+    const h = harness(undefined, ADDRS.slice(0, 2));
+    h.conn.connect();
+    h.sockets[0]!.fireClose({ code: 1006 });
+    h.sockets[1]!.fireClose({ code: 1006 });
+    expect(h.statuses).toEqual(['connecting', 'offline']);
+    expect(h.diagnostics).toHaveLength(1);
+    expect(h.scheduled).toHaveLength(1);
+    h.scheduled[0]!.fn();
+    expect(h.dialed).toEqual([...ADDRS.slice(0, 2), ADDRS[0]]);
+  });
+
+  it('starts with the address that last worked', () => {
+    const memory: { preferred?: string } = {};
+    const h = harness(undefined, ADDRS, memory);
+    h.conn.connect();
+    h.sockets[0]!.fireClose({ code: 1006 });
+    h.sockets[1]!.open();
+    expect(memory.preferred).toBeUndefined();
+    h.sockets[1]!.deliver({ type: 'authResult', ok: true });
+    expect(memory.preferred).toBe(ADDRS[1]);
+    h.conn.reconnect();
+    expect(h.dialed.slice(2)).toEqual([ADDRS[1]]);
+    h.sockets[2]!.fireClose({ code: 1006 });
+    h.sockets[3]!.fireClose({ code: 1006 });
+    expect(h.dialed.slice(2)).toEqual([ADDRS[1], ADDRS[0], ADDRS[2]]);
+  });
+
+  it('does not prefer an address whose agent refused the auth', () => {
+    const memory: { preferred?: string } = {};
+    const h = harness(undefined, ADDRS, memory);
+    h.conn.connect();
+    h.sockets[0]!.open();
+    h.sockets[0]!.deliver({ type: 'authResult', ok: false });
+    expect(memory.preferred).toBeUndefined();
+  });
+
+  it.each([
+    ['a final refusal', { code: 4003, reason: REFUSAL.wrongAgentKey }, true],
+    ['a revocation', { code: 4003, reason: REFUSAL.revoked }, true],
+    ['a passing refusal', { code: 4003, reason: REFUSAL.tooManyEnrolments }, false],
+    ['a busy phone port', { code: 4429, reason: REFUSAL.tooManyPending }, false],
+    ['a full phone port', { code: 4429, reason: REFUSAL.tooManyConnections }, false],
+  ])('stops the walk at %s: the agent answered, and the next address leads to the same one', (_label, close, final) => {
+    const h = harness({ machine: 'dev', credential: 'none' }, ADDRS);
+    h.conn.connect();
+    h.sockets[0]!.fireClose(close);
+    expect(h.dialed).toEqual([ADDRS[0]]);
+    expect(h.statuses).toEqual(['connecting', 'offline']);
+    expect(h.diagnostics[0]!.refused).toBe(true);
+    expect(h.scheduled).toHaveLength(final ? 0 : 1);
+  });
+
+  it('ends the attempt on a drop after the session opened', () => {
+    const h = harness(undefined, ADDRS);
+    h.conn.connect();
+    h.sockets[0]!.open();
+    h.sockets[0]!.fireClose({ code: 1006 });
+    expect(h.dialed).toEqual([ADDRS[0]]);
+    expect(h.statuses).toEqual(['connecting', 'offline']);
+  });
+
+  it('keeps one chain when reconnect() lands mid-walk', () => {
+    const h = harness(undefined, ADDRS);
+    h.conn.connect();
+    h.sockets[0]!.fireClose({ code: 1006 });
+    expect(h.dialed).toHaveLength(2);
+    h.conn.reconnect();
+    expect(h.sockets[1]!.isClosed()).toBe(true);
+    // The superseded walk's socket closing, and its deadline, start nothing.
+    h.sockets[1]!.fireClose({ code: 1006 });
+    h.timers.forEach((t) => t.fn());
+    const live = h.sockets.filter((s) => !s.isClosed());
+    expect(live).toHaveLength(1);
+    expect(h.dialed).toEqual([ADDRS[0], ADDRS[1], ADDRS[0], ADDRS[1]]);
+  });
+});
+
+describe('MachineConnection address walk failures', () => {
+  it("ignores a late error from an address it has left, so the next one's close is worded on its own", () => {
+    const h = harness(undefined, ADDRS.slice(0, 2));
+    h.conn.connect();
+    h.sockets[0]!.fireClose({ code: 1006 });
+    h.sockets[0]!.fireError();
+    h.sockets[1]!.fireClose({ code: 1001 });
+    expect(h.diagnostics[0]!.message).toBe('connection failed (never opened)');
+  });
+
+  it('stops at a device-key failure: it is the phone, and every address would fail the same way', () => {
+    const h = harness(undefined, ADDRS);
+    h.conn.connect();
+    h.sockets[0]!.fireClose({ reason: 'device key unavailable: no IndexedDB' });
+    expect(h.dialed).toEqual([ADDRS[0]]);
+    expect(h.diagnostics[0]!.message).toBe('connection failed (device key unavailable: no IndexedDB)');
+  });
+
+  it('reports an earlier address whose far end said why, over a later one that only went silent', () => {
+    const h = harness(undefined, ADDRS.slice(0, 2));
+    h.conn.connect();
+    h.sockets[0]!.fireClose({ reason: 'agent key mismatch' });
+    expect(h.dialed).toEqual(ADDRS.slice(0, 2));
+    h.sockets[1]!.fireClose({ code: 1006 });
+    expect(h.diagnostics[0]!.message).toBe('connection failed (agent key mismatch)');
+  });
+
+  it('reports that earlier reason over a later address that timed out', () => {
+    const h = harness(undefined, ADDRS.slice(0, 2));
+    h.conn.connect();
+    h.sockets[0]!.fireClose({ reason: 'agent key mismatch' });
+    live(h.timers).at(-1)!.fn();
+    h.sockets[1]!.fireClose({ code: 1006 });
+    expect(h.diagnostics[0]!.message).toBe('connection failed (agent key mismatch)');
   });
 });

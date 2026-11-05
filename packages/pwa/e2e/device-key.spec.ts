@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { seedMachine, startFakeAgent, type FakeAgent } from './fake-agent';
 
 // Playwright's WebKit stores CryptoKeys in IndexedDB, which a real iPhone may refuse. These
-// tests make IndexedDB fail the way a browser can, and check that a relay machine still gets a
+// tests make IndexedDB fail the way a browser can, and check that a machine still gets a
 // device key, or at least says exactly why it has none.
 
 let agent: FakeAgent;
@@ -44,7 +44,7 @@ test('a browser that cannot store a CryptoKey still connects, on a stored key, a
   );
 });
 
-test('without IndexedDB, a relay machine refuses to connect and names the cause', async ({ page }) => {
+test('without IndexedDB, a machine refuses to connect and names the cause', async ({ page }) => {
   await page.addInitScript(() => {
     IDBFactory.prototype.open = () => {
       throw new DOMException('storage is disabled', 'InvalidStateError');
@@ -63,7 +63,7 @@ test('without IndexedDB, a relay machine refuses to connect and names the cause'
   expect(agent.received.filter((m) => m.type === 'auth')).toEqual([]);
 });
 
-test('an unreadable stored device key can be replaced from Settings, and the relay machine reconnects', async ({ page }) => {
+test('an unreadable stored device key can be replaced from Settings, and the machine reconnects', async ({ page }) => {
   await seed(page);
   await page.goto('/');
   await expect(page.getByText('demo', { exact: true })).toBeVisible();
@@ -75,7 +75,7 @@ test('an unreadable stored device key can be replaced from Settings, and the rel
   await page.evaluate(
     () =>
       new Promise<void>((resolve, reject) => {
-        const open = indexedDB.open('perch-device', 1);
+        const open = indexedDB.open('tarfa-device', 1);
         open.onsuccess = () => {
           const tx = open.result.transaction('identity', 'readwrite');
           tx.objectStore('identity').put({ x25519: {}, ed25519: {} }, 'device');

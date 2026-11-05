@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SettingsStore, isConnectable, isRelayMachine } from './settings-store';
+import { SettingsStore, isConnectable } from './settings-store';
 import { DEFAULT_PRESETS } from './dictation-presets';
 import type { StoragePort } from './ports/storage';
 import { generateAgentKeys } from '@perch/secure-channel';
@@ -69,19 +69,19 @@ describe('SettingsStore', () => {
 
   it('clamps an out-of-range or unparsable stored font size on read', () => {
     const storage = memStorage();
-    storage.write('perch.terminalFontSize', '999');
+    storage.write('tarfa.terminalFontSize', '999');
     expect(new SettingsStore(storage).terminalFontSize()).toBe(24);
-    storage.write('perch.terminalFontSize', '1');
+    storage.write('tarfa.terminalFontSize', '1');
     expect(new SettingsStore(storage).terminalFontSize()).toBe(8);
-    storage.write('perch.terminalFontSize', 'abc');
+    storage.write('tarfa.terminalFontSize', 'abc');
     expect(new SettingsStore(storage).terminalFontSize()).toBe(13);
   });
 
   it('adds and lists machines, persisting to storage', () => {
     const storage = memStorage();
     const store = new SettingsStore(storage);
-    store.add({ id: 'mac', name: 'MacBook', url: 'wss://mac.ts.net', token: 't1' });
-    store.add({ id: 'mini', name: 'Mini PC', url: 'wss://mini.ts.net', token: 't2' });
+    store.add({ id: 'mac', name: 'MacBook', addresses: ['wss://mac.ts.net/'], token: 't1', agentKey });
+    store.add({ id: 'mini', name: 'Mini PC', addresses: ['wss://mini.ts.net/'], token: 't2', agentKey });
     expect(store.list().map((m) => m.id)).toEqual(['mac', 'mini']);
     // a fresh store over the same storage sees the persisted machines
     expect(new SettingsStore(storage).list()).toHaveLength(2);
@@ -89,119 +89,98 @@ describe('SettingsStore', () => {
 
   it('replaces an existing machine with the same id on add', () => {
     const store = new SettingsStore(memStorage());
-    store.add({ id: 'mac', name: 'Old', url: 'wss://old', token: 't' });
-    store.add({ id: 'mac', name: 'New', url: 'wss://new', token: 't' });
+    store.add({ id: 'mac', name: 'Old', addresses: ['wss://old/'], token: 't', agentKey });
+    store.add({ id: 'mac', name: 'New', addresses: ['wss://new/'], token: 't', agentKey });
     expect(store.list()).toHaveLength(1);
     expect(store.list()[0]?.name).toBe('New');
   });
 
-  it('updates url and token of an existing machine, preserving id and name', () => {
+  it('updates the addresses and token of an existing machine, preserving id, name and key', () => {
     const store = new SettingsStore(memStorage());
-    store.add({ id: 'mac', name: 'MacBook', url: 'wss://old', token: 'old' });
-    store.update('mac', { url: 'wss://new', token: 'new' });
-    expect(store.list()).toEqual([{ id: 'mac', name: 'MacBook', url: 'wss://new', token: 'new' }]);
+    store.add({ id: 'mac', name: 'MacBook', addresses: ['wss://old/'], token: 'old', agentKey });
+    store.update('mac', { addresses: ['wss://a/', 'wss://b/x'], token: 'new' });
+    expect(store.list()).toEqual([{ id: 'mac', name: 'MacBook', addresses: ['wss://a/', 'wss://b/x'], token: 'new', agentKey }]);
   });
 
-  it('keeps the existing token when update omits it', () => {
+  it('keeps the existing token and agent key when update omits them', () => {
     const store = new SettingsStore(memStorage());
-    store.add({ id: 'mac', name: 'MacBook', url: 'wss://old', token: 'keepme' });
-    store.update('mac', { url: 'wss://new' });
-    expect(store.list()[0]).toEqual({ id: 'mac', name: 'MacBook', url: 'wss://new', token: 'keepme' });
+    store.add({ id: 'mac', name: 'MacBook', addresses: ['wss://old/'], token: 'keepme', agentKey });
+    store.update('mac', { addresses: ['wss://new/'] });
+    expect(store.list()[0]).toEqual({ id: 'mac', name: 'MacBook', addresses: ['wss://new/'], token: 'keepme', agentKey });
+    const other = generateAgentKeys().x25519.publicKey;
+    store.update('mac', { addresses: ['wss://new/'], agentKey: other });
+    expect(store.list()[0]?.agentKey).toBe(other);
   });
 
   it('leaves other machines untouched on update', () => {
     const store = new SettingsStore(memStorage());
-    store.add({ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't1' });
-    store.add({ id: 'mini', name: 'Mini', url: 'wss://mini', token: 't2' });
-    store.update('mac', { url: 'wss://mac2', token: 't1b' });
+    store.add({ id: 'mac', name: 'Mac', addresses: ['wss://mac/'], token: 't1', agentKey });
+    store.add({ id: 'mini', name: 'Mini', addresses: ['wss://mini/'], token: 't2', agentKey });
+    store.update('mac', { addresses: ['wss://mac2/'], token: 't1b' });
     expect(store.list()).toEqual([
-      { id: 'mac', name: 'Mac', url: 'wss://mac2', token: 't1b' },
-      { id: 'mini', name: 'Mini', url: 'wss://mini', token: 't2' },
+      { id: 'mac', name: 'Mac', addresses: ['wss://mac2/'], token: 't1b', agentKey },
+      { id: 'mini', name: 'Mini', addresses: ['wss://mini/'], token: 't2', agentKey },
     ]);
   });
 
   it('is a no-op when updating an unknown id', () => {
     const store = new SettingsStore(memStorage());
-    store.add({ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't' });
-    store.update('ghost', { url: 'wss://nope', token: 'x' });
-    expect(store.list()).toEqual([{ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't' }]);
+    store.add({ id: 'mac', name: 'Mac', addresses: ['wss://mac/'], token: 't', agentKey });
+    store.update('ghost', { addresses: ['wss://nope/'], token: 'x' });
+    expect(store.list()).toEqual([{ id: 'mac', name: 'Mac', addresses: ['wss://mac/'], token: 't', agentKey }]);
   });
 
   it('round-trips an optional default path through add and list', () => {
     const storage = memStorage();
     const store = new SettingsStore(storage);
-    store.add({ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't', defaultPath: '/home/u/ws' });
+    store.add({ id: 'mac', name: 'Mac', addresses: ['wss://mac/'], token: 't', agentKey, defaultPath: '/home/u/ws' });
     expect(new SettingsStore(storage).list()[0]?.defaultPath).toBe('/home/u/ws');
   });
 
   it('updates the default path of an existing machine', () => {
     const store = new SettingsStore(memStorage());
-    store.add({ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't', defaultPath: '/old' });
-    store.update('mac', { url: 'wss://mac', defaultPath: '/new' });
+    store.add({ id: 'mac', name: 'Mac', addresses: ['wss://mac/'], token: 't', agentKey, defaultPath: '/old' });
+    store.update('mac', { addresses: ['wss://mac/'], defaultPath: '/new' });
     expect(store.list()[0]?.defaultPath).toBe('/new');
   });
 
   it('clears the default path when update passes an empty string', () => {
     const store = new SettingsStore(memStorage());
-    store.add({ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't', defaultPath: '/old' });
-    store.update('mac', { url: 'wss://mac', defaultPath: '' });
+    store.add({ id: 'mac', name: 'Mac', addresses: ['wss://mac/'], token: 't', agentKey, defaultPath: '/old' });
+    store.update('mac', { addresses: ['wss://mac/'], defaultPath: '' });
     expect(store.list()[0]?.defaultPath).toBe('');
   });
 
-  it('round-trips a relay agent key, and update sets, keeps or clears it', () => {
-    const storage = memStorage();
-    const store = new SettingsStore(storage);
-    store.add({ id: 'mac', name: 'Mac', url: 'wss://relay/acct', token: 't', agentKey: 'k1' });
-    expect(new SettingsStore(storage).list()[0]?.agentKey).toBe('k1');
-    store.update('mac', { url: 'wss://relay/acct' });
-    expect(store.list()[0]?.agentKey).toBe('k1');
-    store.update('mac', { url: 'wss://relay/acct', agentKey: 'k2' });
-    expect(store.list()[0]?.agentKey).toBe('k2');
-    store.update('mac', { url: 'wss://mac', agentKey: '' });
-    expect(store.list()[0]).not.toHaveProperty('agentKey');
-  });
-
-  it('reads an entry stored with the old relay flag unchanged', () => {
-    const storage = memStorage();
-    const stored = { id: 'mac', name: 'Mac', url: 'wss://relay/acct', token: 't', relay: true, agentKey };
-    storage.write('perch.machines', JSON.stringify([stored]));
-    const [machine] = new SettingsStore(storage).list();
-    expect(machine).toEqual(stored);
-    expect(isConnectable(machine!)).toBe(true);
-  });
-
-  it('treats a machine as a relay machine exactly when it carries a valid agent key', () => {
-    expect(isRelayMachine({ agentKey })).toBe(true);
-    expect(isRelayMachine({})).toBe(false);
-    expect(isRelayMachine({ agentKey: '' })).toBe(false);
-    expect(isRelayMachine({ agentKey: 'k' })).toBe(false);
-    expect(isRelayMachine({ agentKey: agentKey.slice(0, 40) })).toBe(false);
-  });
-
-  it('connects only a switched-on relay entry, never an old direct one even if it is on', () => {
-    expect(isConnectable({ agentKey })).toBe(true);
-    expect(isConnectable({ agentKey, enabled: false })).toBe(false);
-    expect(isConnectable({})).toBe(false);
-    expect(isConnectable({ enabled: true })).toBe(false);
+  it('connects a switched-on entry with a valid agent key and at least one valid address', () => {
+    const addresses = ['wss://dev.example.ts.net:10000/abu'];
+    expect(isConnectable({ agentKey, addresses })).toBe(true);
+    expect(isConnectable({ agentKey, addresses, enabled: true })).toBe(true);
+    expect(isConnectable({ agentKey, addresses, enabled: false })).toBe(false);
+    expect(isConnectable({ agentKey: agentKey.slice(0, 40), addresses })).toBe(false);
+    expect(isConnectable({ agentKey: '', addresses })).toBe(false);
+    expect(isConnectable({ agentKey, addresses: [] })).toBe(false);
+    expect(isConnectable({ agentKey, addresses: ['https://dev.example/'] })).toBe(false);
+    // An entry shaped by an older build (a url, no addresses) is never connected.
+    expect(isConnectable({ agentKey } as never)).toBe(false);
   });
 
   it('removes a machine by id', () => {
     const store = new SettingsStore(memStorage());
-    store.add({ id: 'mac', name: 'M', url: 'wss://m', token: 't' });
+    store.add({ id: 'mac', name: 'M', addresses: ['wss://m/'], token: 't', agentKey });
     store.remove('mac');
     expect(store.list()).toEqual([]);
   });
 
   it('returns [] on corrupt storage', () => {
     const storage = memStorage();
-    storage.write('perch.machines', 'not json');
+    storage.write('tarfa.machines', 'not json');
     expect(new SettingsStore(storage).list()).toEqual([]);
   });
 
   it('round-trips the enabled flag through setEnabled', () => {
     const storage = memStorage();
     const store = new SettingsStore(storage);
-    store.add({ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't' });
+    store.add({ id: 'mac', name: 'Mac', addresses: ['wss://mac/'], token: 't', agentKey });
     store.setEnabled('mac', false);
     expect(new SettingsStore(storage).list()[0]?.enabled).toBe(false);
     store.setEnabled('mac', true);
@@ -210,16 +189,16 @@ describe('SettingsStore', () => {
 
   it('is a no-op when setEnabled targets an unknown id', () => {
     const store = new SettingsStore(memStorage());
-    store.add({ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't' });
+    store.add({ id: 'mac', name: 'Mac', addresses: ['wss://mac/'], token: 't', agentKey });
     store.setEnabled('ghost', false);
-    expect(store.list()).toEqual([{ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't' }]);
+    expect(store.list()).toEqual([{ id: 'mac', name: 'Mac', addresses: ['wss://mac/'], token: 't', agentKey }]);
   });
 
   it('preserves the enabled flag through an unrelated update', () => {
     const store = new SettingsStore(memStorage());
-    store.add({ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't' });
+    store.add({ id: 'mac', name: 'Mac', addresses: ['wss://mac/'], token: 't', agentKey });
     store.setEnabled('mac', false);
-    store.update('mac', { url: 'wss://mac2' });
+    store.update('mac', { addresses: ['wss://mac2/'] });
     expect(store.list()[0]?.enabled).toBe(false);
   });
 
@@ -285,7 +264,7 @@ describe('SettingsStore', () => {
 
   it('returns [] on a corrupt folder filter value', () => {
     const storage = memStorage();
-    storage.write('perch.folderFilter', 'not json');
+    storage.write('tarfa.folderFilter', 'not json');
     expect(new SettingsStore(storage).folderFilter()).toEqual([]);
   });
 
@@ -301,7 +280,7 @@ describe('SettingsStore', () => {
 
   it('returns [] on a corrupt hidden folders value', () => {
     const storage = memStorage();
-    storage.write('perch.folderHidden', 'not json');
+    storage.write('tarfa.folderHidden', 'not json');
     expect(new SettingsStore(storage).folderHidden()).toEqual([]);
   });
 
@@ -328,7 +307,7 @@ describe('SettingsStore', () => {
 
   it('falls back to show-only on an unrecognised filter mode', () => {
     const storage = memStorage();
-    storage.write('perch.folderFilterMode', 'sideways');
+    storage.write('tarfa.folderFilterMode', 'sideways');
     expect(new SettingsStore(storage).folderFilterMode()).toBe('only');
   });
 });

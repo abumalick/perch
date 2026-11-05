@@ -164,7 +164,7 @@ export async function replaceUnreadableDeviceIdentity(
 }
 
 // public/warm-device-key.js opens this database by name before the bundle runs.
-const DB = 'perch-device';
+const DB = 'tarfa-device';
 const STORE = 'identity';
 const KEY = 'device';
 

@@ -5,8 +5,8 @@ import type { DeviceSigner, StaticKey } from '@perch/secure-channel';
 export type KeyStorage = 'webcrypto' | 'noble';
 
 // This installed PWA's device identity, created on first use and kept for good. The X25519 key
-// is its Noise static key (the agent enrols and checks it); the Ed25519 key signs the relay's
-// challenges.
+// is its Noise static key (the agent enrols and checks it); the Ed25519 key signs the device
+// hello, proving the pair belongs together.
 export interface DeviceIdentity {
   x25519: StaticKey;
   x25519Public: string;

@@ -10,7 +10,7 @@ export const app: Messages['app'] = {
   },
   installFirst: {
     title: (name) => `Associez ${name} depuis l’app de l’écran d’accueil`,
-    lead: 'Perch s’ouvre depuis son icône sur l’écran d’accueil, et cette app garde ses propres données : une machine associée sur cette page n’y serait pas.',
+    lead: 'Tarfa s’ouvre depuis son icône sur l’écran d’accueil, et cette app garde ses propres données : une machine associée sur cette page n’y serait pas.',
     copied: 'Copié ✓',
     copyLink: 'Copier le lien d’association',
     copyByHand: 'Copiez-le à la main :',
@@ -19,7 +19,7 @@ export const app: Messages['app'] = {
     share: 'Partager',
     addToHomeScreen: 'Sur l’écran d’accueil',
     alreadyOnHomeScreen: '. Déjà sur votre écran d’accueil ? Passez cette étape.',
-    openPerch: 'Ouvrez Perch depuis son icône, touchez ',
+    openTarfa: 'Ouvrez Tarfa depuis son icône, touchez ',
     addMachine: 'Ajouter une machine',
     then: ', puis ',
     pastePairingLink: 'Coller le lien d’association',

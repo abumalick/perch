@@ -16,7 +16,7 @@ const buildId = process.env.PERCH_BUILD_ID ?? String(Date.now());
 // network.
 function emitVersionFile(label: string, id: string): Plugin {
   return {
-    name: 'perch-version-file',
+    name: 'tarfa-version-file',
     generateBundle() {
       this.emitFile({ type: 'asset', fileName: VERSION_FILE, source: buildVersionJson(label, id) });
     },
@@ -26,7 +26,7 @@ function emitVersionFile(label: string, id: string): Plugin {
 // The CSP goes in at build only: the dev server's module graph and HMR are not what ships.
 function contentSecurityPolicy(): Plugin {
   return {
-    name: 'perch-csp',
+    name: 'tarfa-csp',
     apply: 'build',
     transformIndexHtml: () => [
       { tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: CONTENT_SECURITY_POLICY }, injectTo: 'head-prepend' },
@@ -54,8 +54,8 @@ export default defineConfig({
         importScripts: ['share-target-sw.js'],
       },
       manifest: {
-        name: 'Perch',
-        short_name: 'Perch',
+        name: 'Tarfa',
+        short_name: 'Tarfa',
         theme_color: '#111111',
         background_color: '#111111',
         display: 'standalone',
@@ -66,7 +66,7 @@ export default defineConfig({
           { src: 'icon-192-maskable.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
           { src: 'icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
-        // Register Perch as an Android share target so "Share → Perch" from any app POSTs the
+        // Register Tarfa as an Android share target so "Share → Tarfa" from any app POSTs the
         // image to the SW helper (share-target-sw.js). Ignored by iOS WebKit (no Web Share Target).
         share_target: {
           action: '/share-target',

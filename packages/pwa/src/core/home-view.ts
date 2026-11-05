@@ -20,7 +20,7 @@ export function deriveHomeView(input: {
   graceElapsed: boolean;
   listsPending: boolean;
   anyReconnecting?: boolean;
-  // A machine the relay or agent refused with no retry due: its reason is shown at once.
+  // A machine the agent refused with no retry due: its reason is shown at once.
   anyRefusedForGood?: boolean;
 }): HomeView {
   if (input.enabledMachineCount === 0) return 'add-machine';

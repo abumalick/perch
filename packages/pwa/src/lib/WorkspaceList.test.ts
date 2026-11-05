@@ -18,7 +18,7 @@ function fakeStore(
   folderHidden: string[] = [],
   folderFilterMode: 'only' | 'hide' = 'only',
 ) {
-  const machines = entries.map((m) => ({ agentKey: AGENT_KEY, ...m }));
+  const machines = entries.map((m) => ({ agentKey: AGENT_KEY, addresses: ['wss://m/'], ...m }));
   const statuses: Record<string, string> = { mac: 'online' };
   return {
     workspaces,
@@ -150,9 +150,23 @@ describe('WorkspaceList', () => {
     const store = fakeStore([], [], null, 'unreachable');
     render(WorkspaceList, { props: { store: store as never } });
     expect(screen.getByTestId('home-unreachable')).toBeInTheDocument();
-    expect(screen.getByText(/connected to its relay/i)).toBeInTheDocument();
+    expect(screen.getByText(/each machine's agent is running/i)).toBeInTheDocument();
+    expect(screen.queryByText(/relay/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('local-network-hint')).not.toBeInTheDocument();
     await fireEvent.click(screen.getByTestId('reconnect-home'));
     expect(store.reconnectAll).toHaveBeenCalled();
+  });
+
+  // Chrome asks once before a page may open a tailnet address; a "Block" makes every such
+  // address fail like an unreachable one, and nothing else tells the owner.
+  it('on Android, says how to allow local network access', () => {
+    const ua = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (Linux; Android 15) Chrome/156.0');
+    try {
+      render(WorkspaceList, { props: { store: fakeStore([], [], null, 'unreachable') as never } });
+      expect(screen.getByTestId('local-network-hint')).toHaveTextContent('Site settings → Local network access');
+    } finally {
+      ua.mockRestore();
+    }
   });
 
   it('says why a machine refused this phone instead of blaming the network', () => {
@@ -160,7 +174,7 @@ describe('WorkspaceList', () => {
     store.refusals = [{ id: 'mac', message: 'This pairing code has expired — run `perch pair` on Mac for a new one' }];
     render(WorkspaceList, { props: { store: store as never } });
     expect(screen.getByTestId('home-refusal')).toHaveTextContent('This pairing code has expired');
-    expect(screen.queryByText(/connected to its relay/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/each machine's agent is running/i)).not.toBeInTheDocument();
   });
 
   it('renders workspaces and opens one on tap', async () => {
@@ -206,9 +220,9 @@ describe('WorkspaceList', () => {
     expect(screen.getByText('Mac')).toBeInTheDocument();
   });
 
-  it('does not count an old direct entry as another machine', () => {
+  it('does not count an entry it cannot connect as another machine', () => {
     const store = fakeStore([ws], [{ id: 'mac', name: 'Mac' }]);
-    store.machines.push({ id: 'old', name: 'Old box', agentKey: '' });
+    store.machines.push({ id: 'old', name: 'Old box', agentKey: '', addresses: ['wss://old/'] });
     render(WorkspaceList, { props: { store: store as never } });
     expect(screen.queryByText('Mac')).toBeNull();
   });

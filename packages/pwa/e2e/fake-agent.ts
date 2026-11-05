@@ -2,19 +2,16 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { audioMediaType, imageMediaType, pdfMediaType } from '@perch/contracts';
-import { REFUSAL, accountId, generateAgentKeys, generatePairingSecret } from '@perch/secure-channel';
-import { MemoryRegistry } from '@perch/relay/registry';
-import { startRelayServer } from '@perch/relay/server';
-import { startRelayLinks } from '@perch/agent/src/server/relay-wiring.ts';
-import { startDeviceGate } from '@perch/agent/src/server/device-gate-wiring.ts';
+import { REFUSAL, generateAgentKeys, generatePairingSecret } from '@perch/secure-channel';
 import { NoiseClientConnection, type NoiseClientConnectionOptions } from '@perch/agent/src/server/noise-client-connection.ts';
-import { frameSocketTransport } from '@perch/agent/src/infrastructure/ws-frame-socket.ts';
-import { createWsRelayTransport } from '@perch/agent/src/infrastructure/ws-relay-transport.ts';
+import { startDeviceGate } from '@perch/agent/src/server/device-gate-wiring.ts';
+import { startPhoneListener } from '@perch/agent/src/infrastructure/phone-listener.ts';
+import { PhoneAdmission } from '@perch/agent/src/application/phone-admission.ts';
+import { DiskReadLimiter } from '@perch/agent/src/application/disk-read-limiter.ts';
 import { FileDeviceStore } from '@perch/agent/src/infrastructure/file-device-store.ts';
 import { FilePairingStore } from '@perch/agent/src/infrastructure/file-pairing-store.ts';
 import { addPairing } from '@perch/agent/src/application/pairing.ts';
 import { revokeDevice } from '@perch/agent/src/application/device-roster.ts';
-import type { RelayTransport } from '@perch/agent/src/ports/relay-port.ts';
 import type { FrameSocket } from '@perch/agent/src/ports/frame-socket.ts';
 
 // The machine token a seeded entry carries (`machineEntry`), as the agent's PERCH_TOKEN.
@@ -64,8 +61,8 @@ interface Conn {
   onKeyAuthenticated: (listener: () => void) => void;
 }
 
-// The real agent's relay session: the IK handshake, the device gate over the roster and pairing
-// files, enrolment at `authResult`, refusals in band. Only the message switch below is fake.
+// The real agent's session: the IK handshake, the device gate over the roster and pairing files,
+// enrolment at `authResult`, refusals in band. Only the message switch below is fake.
 function noiseConn(conn: NoiseClientConnection): Conn {
   return {
     get keyCredential() {
@@ -80,26 +77,9 @@ function noiseConn(conn: NoiseClientConnection): Conn {
   };
 }
 
-// The production ws transport, watched: each `applied` the relay sends on the control socket.
-function watchedTransport(onApplied: () => void): RelayTransport<FrameSocket> {
-  const inner = frameSocketTransport(createWsRelayTransport());
-  return {
-    dial: (url, headers) => inner.dial(url, headers),
-    openControl(url, headers) {
-      const control = inner.openControl(url, headers);
-      control.onMessage((text) => {
-        if (text.includes('"applied"')) onApplied();
-      });
-      return control;
-    },
-  };
-}
-
 export interface FakeAgent {
-  // The relay in front of the agent.
+  // The agent's phone listener, and the address a machine entry for it holds.
   port: number;
-  // The agent's account on it, and the URL a machine entry for it holds.
-  account: string;
   url: string;
   // Records each `create` the agent received, so a spec can assert the command that was sent.
   created: Array<{ projectPath: string; command: string }>;
@@ -120,12 +100,12 @@ export interface FakeAgent {
   // What a media path is served as instead of its canned bytes, keyed by file name (mutable): lets
   // a spec play a hostile agent that answers a `.pdf` with another media type.
   mediaOverrides: Map<string, { type: string; bytes: Buffer }>;
-  // Phone upgrades the relay saw, refused ones included.
+  // Phone sockets the agent took into a session, refused ones included.
   upgrades: number;
   // Mints a pairing code, as `perch pair` does: live, or already expired or spent.
   newPairing: (state?: 'live' | 'expired' | 'used') => Promise<string>;
-  // Revokes every enrolled device, as `perch devices revoke` does from another process: the
-  // agent notices, closes their sessions and republishes, and resolves once the relay has it.
+  // Revokes every enrolled device, as `perch devices revoke` does from another process: resolves
+  // once the agent has noticed and closed their sessions.
   revokeAll: () => Promise<void>;
   // Holds every `workspaces` reply to `list` until the returned release is called, so a spec
   // can watch the home screen of a machine that is online but has not listed yet.
@@ -162,44 +142,30 @@ const DEFAULT_WORKSPACES: FakeWorkspace[] = [
 // A machine entry for this fake, as a pairing would store it; `seedMachine` writes it before the
 // page loads.
 export function machineEntry(agent: FakeAgent, overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return { id: 'test', name: 'Test', url: agent.url, token: TOKEN, relay: true, agentKey: agent.agentKey, ...overrides };
+  return { id: 'test', name: 'Test', addresses: [agent.url], token: TOKEN, agentKey: agent.agentKey, ...overrides };
 }
 
 export async function seedMachine(page: Page, agent: FakeAgent, overrides: Record<string, unknown> = {}): Promise<void> {
-  await page.addInitScript((m) => localStorage.setItem('perch.machines', JSON.stringify([m])), machineEntry(agent, overrides));
+  await page.addInitScript((m) => localStorage.setItem('tarfa.machines', JSON.stringify([m])), machineEntry(agent, overrides));
 }
 
-// The real relay path in front of a fake agent: the self-hosted relay server (`@perch/relay`) and
-// the agent's own relay side (RelayLink, the published policy, the device gate over roster and
-// pairing files in a scratch directory), so every spec runs the challenge, the device signature,
-// the enrolment proofs and the IK handshake in WebKit. Only the messages inside the session are
-// canned. A seeded entry enrols its fresh device key with the token on first connect.
+// A fake agent behind the real agent's phone path: its phone listener (upgrades on any path, the
+// admission bounds) and its device gate over roster and pairing files in a scratch directory,
+// each socket served by the agent's own NoiseClientConnection, so every spec runs the IK handshake, the
+// device hello and enrolment in WebKit. Only the messages inside the session are canned. A seeded
+// entry enrols its fresh device key with the token on first connect.
 export async function startFakeAgent(
   workspacesOverride?: FakeWorkspace[],
   browserSessionsOverride?: Array<{ name: string }>,
 ): Promise<FakeAgent> {
   const keys = generateAgentKeys();
-  const account = accountId(keys.ed25519.publicKey);
   await mkdir('.tmp', { recursive: true });
   const home = await mkdtemp(join('.tmp', 'fake-agent-'));
   const store = new FileDeviceStore(join(home, 'devices.json'));
   const pairings = new FilePairingStore(join(home, 'pairing.json'));
   let upgrades = 0;
   let claudeVoice = false;
-  const relay = await startRelayServer({
-    port: 0,
-    host: '127.0.0.1',
-    registry: new MemoryRegistry({ accounts: { [account]: { key: keys.ed25519.publicKey, addedAt: new Date().toISOString() } } }),
-    // Every test is a fresh browser, so a new device key asking to enrol.
-    limits: { maxEnrolments: 10_000 },
-    trace: (line) => {
-      if (line.startsWith('relay client upgrade')) upgrades += 1;
-    },
-  });
-  let appliedWaiters: Array<() => void> = [];
-  const nextApplied = () => new Promise<void>((resolve) => appliedWaiters.push(resolve));
-  const firstApplied = nextApplied();
-  const relayClients = new Set<NoiseClientConnection>();
+  const sessions = new Set<NoiseClientConnection>();
   {
     const browserReceived: Array<{ session: string; message: Record<string, unknown> }> = [];
     // Each connection's open browser streams: stream id → session name.
@@ -492,37 +458,31 @@ export async function startFakeAgent(
     };
     const server = {
       acceptPhoneSocket(socket: FrameSocket, staticPrivate: Uint8Array, options: NoiseClientConnectionOptions) {
+        upgrades += 1;
         const conn = new NoiseClientConnection(socket, staticPrivate, options);
-        relayClients.add(conn);
-        conn.onClose(() => relayClients.delete(conn));
+        sessions.add(conn);
+        conn.onClose(() => sessions.delete(conn));
         serve(noiseConn(conn));
       },
       refuseRevokedDevices(isRevoked: (x25519: string) => boolean) {
-        for (const conn of relayClients) if (conn.device && isRevoked(conn.device)) conn.refuse('device revoked');
+        for (const conn of sessions) if (conn.device && isRevoked(conn.device)) conn.refuse(REFUSAL.revoked);
       },
     };
     const gate = startDeviceGate({ keys, token: TOKEN, server, store, pairings, log: () => undefined, rosterPollMs: 60_000 });
-    const relays = startRelayLinks({
-      config: { relayUrls: [`ws://127.0.0.1:${relay.port}`] },
-      keys,
+    const listener = await startPhoneListener({
+      port: 0,
       gate,
       server,
-      store,
-      transport: watchedTransport(() => {
-        const waiters = appliedWaiters;
-        appliedWaiters = [];
-        waiters.forEach((w) => w());
-      }),
+      admission: new PhoneAdmission({ now: () => Date.now() }),
+      // Every test is a fresh browser, so a new device key the agent must read the roster for;
+      // the production limit (10 a minute) would answer a whole spec file busy.
+      limiter: new DiskReadLimiter(() => Date.now(), 4, 10_000),
       log: () => undefined,
-      // Every test is a fresh browser, so a new device key asking to enrol (as the relay's limit above).
-      enrolmentChecksPerMinute: 10_000,
     });
-    // Up once the relay holds the agent's policy: from then on it gates phones by device key.
-    await firstApplied;
+    const port = listener.port;
     return {
-      port: relay.port,
-      account,
-      url: `ws://127.0.0.1:${relay.port}/${account}`,
+      port,
+      url: `ws://127.0.0.1:${port}/`,
       get upgrades() {
         return upgrades;
       },
@@ -558,9 +518,7 @@ export async function startFakeAgent(
       },
       revokeAll: async () => {
         await store.update((roster) => roster.devices.reduce((r, d) => revokeDevice(r, d.id, new Date()).roster, roster));
-        const applied = nextApplied();
         await gate.pollRoster();
-        await applied;
       },
       holdList: () => {
         heldLists = [];
@@ -578,9 +536,8 @@ export async function startFakeAgent(
         browserHolders.clear();
       },
       close: async () => {
-        relays.stop();
         gate.stop();
-        await relay.close();
+        await listener.close();
         await rm(home, { recursive: true, force: true });
       },
     };

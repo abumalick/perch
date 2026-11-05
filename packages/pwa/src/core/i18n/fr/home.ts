@@ -13,14 +13,16 @@ export const home: Messages['home'] = {
   sharedPreview: 'Aperçu partagé',
   sharedReady: '1 fichier prêt — ouvrez une session pour le joindre',
   noMachines: 'Aucune machine pour l’instant',
-  noMachinesSub: 'Connectez une machine qui exécute l’agent Perch pour commencer.',
+  noMachinesSub: 'Connectez une machine qui exécute l’agent Tarfa pour commencer.',
   addMachine: '⚙ Ajouter une machine',
   connecting: 'Connexion à vos machines…',
   reconnecting: 'Reconnexion…',
   cantConnect: 'Connexion impossible',
   cantReach: 'Vos machines sont injoignables',
   cantReachSub:
-    'Vérifiez que ce téléphone est en ligne et que l’agent de chaque machine tourne et est connecté à son relais, puis reconnectez.',
+    'Vérifiez que ce téléphone est en ligne et que l’agent de chaque machine tourne, puis reconnectez.',
+  localNetworkHint:
+    'Si Chrome a demandé à trouver des appareils sur votre réseau local, autorisez-le : Paramètres du site → Accès au réseau local.',
   reconnect: 'Reconnecter',
   noWorkspaces: 'Aucun espace de travail pour l’instant',
   noWorkspacesSub: 'Lancez une session Claude sur l’une de vos machines.',

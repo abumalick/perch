@@ -7,7 +7,7 @@ async function share(init: { referrer?: string; site?: string }): Promise<{ stor
   const stored: string[] = [];
   let handler: ((event: unknown) => void) | null = null;
   const scope = { addEventListener: (_type: string, fn: (event: unknown) => void) => (handler = fn) };
-  const caches = { open: async () => ({ put: async (key: string) => void stored.push(key) }) };
+  const caches = { open: async (name: string) => ({ put: async (key: string) => void stored.push(`${name}:${key}`) }) };
   const source = readFileSync(join(__dirname, '../../public/share-target-sw.js'), 'utf8');
   // Node's Response.redirect wants an absolute URL; a worker resolves a relative one.
   const FakeResponse = class {
@@ -28,8 +28,8 @@ async function share(init: { referrer?: string; site?: string }): Promise<{ stor
 
 describe('share-target-sw.js', () => {
   it('stashes a share the OS started: no referrer', async () => {
-    expect(await share({})).toEqual({ stored: ['/shared-file'], location: expect.stringContaining('/?shared=1') });
-    expect((await share({ site: 'none' })).stored).toEqual(['/shared-file']);
+    expect(await share({})).toEqual({ stored: ['tarfa-shared:/shared-file'], location: expect.stringContaining('/?shared=1') });
+    expect((await share({ site: 'none' })).stored).toEqual(['tarfa-shared:/shared-file']);
   });
 
   it('drops a POST another site sent', async () => {

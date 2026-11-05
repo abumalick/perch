@@ -12,7 +12,7 @@ const KEY = generateAgentKeys().x25519.publicKey;
 
 function fakeStore(overrides: Record<string, unknown> = {}) {
   return {
-    machines: [{ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't', agentKey: KEY }] as Record<string, unknown>[],
+    machines: [{ id: 'mac', name: 'Mac', addresses: ['wss://mac'], token: 't', agentKey: KEY }] as Record<string, unknown>[],
     statuses: {} as Record<string, string>,
     lastConnectionError: {} as Record<string, { message: string; code?: number; at: number }>,
     addMachine: vi.fn(),
@@ -56,18 +56,17 @@ describe('Settings — machines list', () => {
     expect(within(mac.closest('ul')!).queryByRole('button', { name: /remove|delete/i })).toBeNull();
   });
 
-  it('shows which relay each machine goes through', () => {
+  it("shows each machine's first address, and how many more it has", () => {
     const store = fakeStore({
       machines: [
-        { id: 'a', name: 'Cloud box', url: 'wss://relay.example.com/acct', token: 't', agentKey: KEY },
-        { id: 'b', name: 'Home box', url: 'wss://box.example.ts.net:8451/acct', token: 't', agentKey: KEY },
+        { id: 'a', name: 'Cloud box', addresses: ['wss://cloud.example.com/'], token: 't', agentKey: KEY },
+        { id: 'b', name: 'Home box', addresses: ['wss://box.example.ts.net:10000/abu', 'wss://box.example.ts.net:8443/abu'], token: 't', agentKey: KEY },
       ],
     });
     render(Settings, { props: { store: store as never } });
-    expect(screen.getByRole('button', { name: /^Cloud box/ })).toHaveTextContent('relay.example.com');
-    expect(screen.getByRole('button', { name: /^Home box/ })).toHaveTextContent('box.example.ts.net:8451');
-    const [cloudHost] = screen.getAllByTestId('relay-host');
-    expect(cloudHost?.parentElement).toHaveTextContent(/^Cloud box\s*relay\.example\.com$/);
+    const [cloudHost, homeHost] = screen.getAllByTestId('machine-host');
+    expect(cloudHost?.parentElement).toHaveTextContent(/^Cloud box\s*cloud\.example\.com$/);
+    expect(homeHost).toHaveTextContent(/^box\.example\.ts\.net:10000 \+1$/);
   });
 
   it('opens the machine detail on tap, and comes back', async () => {
@@ -92,7 +91,7 @@ describe('Settings — machines list', () => {
 
   it('shows a switched-off machine as Off, with no error', () => {
     const store = fakeStore({
-      machines: [{ id: 'mac', name: 'Mac', url: 'wss://mac', agentKey: KEY, enabled: false }],
+      machines: [{ id: 'mac', name: 'Mac', addresses: ['wss://mac'], agentKey: KEY, enabled: false }],
       statuses: { mac: 'offline' },
       lastConnectionError: { mac: { message: 'old error', code: 1006, at: Date.now() } },
     });
@@ -105,10 +104,10 @@ describe('Settings — machines list', () => {
   it('shows why an offline machine is not connected', () => {
     const store = fakeStore({
       statuses: { mac: 'offline' },
-      lastConnectionError: { mac: { message: 'relay unreachable', code: 1006, at: Date.now() } },
+      lastConnectionError: { mac: { message: 'machine unreachable', code: 1006, at: Date.now() } },
     });
     render(Settings, { props: { store: store as never } });
-    expect(screen.getByTestId('diagnostic')).toHaveTextContent('relay unreachable (code 1006)');
+    expect(screen.getByTestId('diagnostic')).toHaveTextContent('machine unreachable (code 1006)');
   });
 
   it('hides an old error once the machine is online', () => {
@@ -120,24 +119,6 @@ describe('Settings — machines list', () => {
     expect(screen.queryByTestId('diagnostic')).toBeNull();
   });
 
-  it.each([
-    ['switched on', { enabled: true }],
-    ['switched off', { enabled: false }],
-  ])('shows an old direct entry %s as unsupported, removable only after confirming', async (_label, flag) => {
-    const store = fakeStore({
-      machines: [{ id: 'old', name: 'Old box', url: 'wss://old', token: 't', ...flag }],
-      statuses: { old: 'offline' },
-      lastConnectionError: { old: { message: 'old direct entry', at: Date.now() } },
-    });
-    render(Settings, { props: { store: store as never } });
-    expect(screen.getByTestId('legacy-entry')).toHaveTextContent('Old direct entry — no longer supported; pair this machine again');
-    expect(screen.queryByRole('switch')).toBeNull();
-    expect(screen.queryByTestId('diagnostic')).toBeNull();
-    await fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    expect(store.removeMachine).not.toHaveBeenCalled();
-    await fireEvent.click(screen.getByRole('button', { name: 'Remove Old box' }));
-    expect(store.removeMachine).toHaveBeenCalledWith('old');
-  });
 });
 
 describe('Settings — adding a machine', () => {

@@ -3,6 +3,7 @@
   import type { PerchStore } from '../store.svelte';
   import type { MachineConfig } from '../core/settings-store';
   import { parseAgentKey } from '../core/relay-key';
+  import { parseAddressLines } from '../core/machine-addresses';
   import StatusDot from './StatusDot.svelte';
   import ConfirmRemove from './ConfirmRemove.svelte';
   import { STATUS_LABEL, describeConnectionError } from './machine-status';
@@ -20,7 +21,8 @@
 
   // The form edits a copy taken when the page opens; untrack marks these as initial values.
   const initial = untrack(() => machine);
-  let url = $state(initial.url);
+  let addresses = $state((initial.addresses ?? []).join('\n'));
+  let addressError = $state('');
   let token = $state('');
   let defaultPath = $state(initial.defaultPath ?? '');
   let agentKey = $state(initial.agentKey ?? '');
@@ -35,7 +37,13 @@
 
   function save(event: SubmitEvent): void {
     event.preventDefault();
-    if (!url) return;
+    const parsed = parseAddressLines(addresses);
+    // An entry with no address it can dial could never connect again.
+    if (!parsed) {
+      addressError = msg().settings.addressesInvalid;
+      advancedOpen = true;
+      return;
+    }
     const key = agentKey.trim();
     // An entry without a valid key could never connect again, so the key cannot be cleared.
     if (!parseAgentKey(key)) {
@@ -44,7 +52,7 @@
       return;
     }
     store.updateMachine(machine.id, {
-      url,
+      addresses: parsed,
       token: token || undefined,
       defaultPath: defaultPath || undefined,
       // Sent only when changed.
@@ -93,7 +101,12 @@
 
     <details class="card advanced" bind:open={advancedOpen}>
       <summary>{msg().settings.advanced}</summary>
-      <label>{msg().settings.relayUrl} <input data-testid="edit-url" bind:value={url} autocapitalize="off" spellcheck="false" /></label>
+      <label>
+        {msg().settings.addresses}
+        <textarea data-testid="edit-addresses" bind:value={addresses} rows="3" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
+      </label>
+      <p class="hint">{msg().settings.addressesHint}</p>
+      {#if addressError}<p class="diag" role="alert">{addressError}</p>{/if}
       <label>
         {msg().settings.token}
         <input data-testid="edit-token" bind:value={token} type="password" placeholder={msg().settings.tokenKeep} />
@@ -149,7 +162,9 @@
   details[open] summary::before { transform: rotate(90deg); }
   label { display: block; margin: 0.6rem 0 0; font-size: 0.85rem; color: var(--text-dim); }
   .card > label:first-child { margin-top: 0; }
-  input { display: block; width: 100%; min-height: 44px; box-sizing: border-box; margin-top: 0.3rem; }
+  input,
+  textarea { display: block; width: 100%; min-height: 44px; box-sizing: border-box; margin-top: 0.3rem; }
+  textarea { font: inherit; resize: vertical; }
   .hint { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--text-dim); }
   .diag { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--danger); word-break: break-word; }
   button { touch-action: manipulation; }

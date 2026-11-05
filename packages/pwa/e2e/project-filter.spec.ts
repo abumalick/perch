@@ -107,7 +107,7 @@ test.describe('a selection on a folder the tree has folded away', () => {
 
   test('it keeps its own row, and the clear button lifts it from the closed control', async ({ page }) => {
     await seed(page, folded);
-    await page.addInitScript(() => localStorage.setItem('perch.folderFilter', JSON.stringify(['bar'])));
+    await page.addInitScript(() => localStorage.setItem('tarfa.folderFilter', JSON.stringify(['bar'])));
     await page.goto('/');
     const rowName = (name: string) => page.locator('li .name', { hasText: name });
     const filter = page.locator('summary[aria-label="Filter by project"]');

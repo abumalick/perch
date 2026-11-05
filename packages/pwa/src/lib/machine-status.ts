@@ -30,7 +30,6 @@ function wordDiagnostic(message: string): string {
     [english.timedOut]: words.timedOut,
     [english.dropped]: words.dropped,
     [english.authRejected]: words.authRejected,
-    [english.legacyEntry]: words.legacyEntry,
     [english.networkError]: words.networkError,
     [english.neverOpened]: words.neverOpened,
     [english.secureChannel]: words.secureChannel,

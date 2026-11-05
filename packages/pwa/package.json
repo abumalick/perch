@@ -25,7 +25,6 @@
   },
   "devDependencies": {
     "@perch/agent": "workspace:*",
-    "@perch/relay": "workspace:*",
     "@playwright/test": "^1.49.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@testing-library/jest-dom": "^6.6.0",
@@ -39,6 +38,7 @@
     "vite-plugin-pwa": "^0.21.0",
     "vitest": "^3.0.0",
     "workbox-window": "^7.3.0",
+    "wrangler": "4.136.1",
     "ws": "^8.18.0"
   }
 }

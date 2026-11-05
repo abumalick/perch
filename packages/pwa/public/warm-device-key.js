@@ -5,7 +5,7 @@
 // database (and its object store) itself. The name is DB in src/adapters/device-keys.ts.
 (function () {
   try {
-    var req = indexedDB.open('perch-device');
+    var req = indexedDB.open('tarfa-device');
     req.onupgradeneeded = function () {
       req.transaction.abort();
     };

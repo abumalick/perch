@@ -8,8 +8,8 @@ afterEach(() => setLanguage('en'));
 
 describe('describeConnectionError', () => {
   it('shows the diagnostic as the connection recorded it, in English', () => {
-    expect(describeConnectionError({ message: 'connection failed (likely network error — relay unreachable)', code: 1006, at })).toBe(
-      'connection failed (likely network error — relay unreachable) (code 1006) · 0s ago',
+    expect(describeConnectionError({ message: 'connection failed (likely network error — machine unreachable)', code: 1006, at })).toBe(
+      'connection failed (likely network error — machine unreachable) (code 1006) · 0s ago',
     );
   });
 
@@ -17,16 +17,13 @@ describe('describeConnectionError', () => {
     setLanguage('fr');
     const fr = (message: string) => describeConnectionError({ message, at }).split(' · ')[0];
     expect(fr('connection timed out')).toBe('délai de connexion dépassé');
-    expect(fr('connection failed (likely network error — relay unreachable)')).toBe('échec de la connexion (probablement une erreur réseau — relais injoignable)');
+    expect(fr('connection failed (likely network error — machine unreachable)')).toBe('échec de la connexion (probablement une erreur réseau — machine injoignable)');
     expect(fr('connection failed (never opened)')).toBe('échec de la connexion (jamais ouverte)');
     expect(fr('connection failed (secure channel failed)')).toBe('échec de la connexion (échec du canal sécurisé)');
     expect(fr('connection failed (relay challenge timed out)')).toBe('échec de la connexion (relay challenge timed out)');
     expect(fr('closed by agent — wrong agent key')).toBe('fermée par l’agent — wrong agent key');
     expect(fr('opened then dropped')).toBe('ouverte puis perdue');
     expect(fr('auth rejected')).toBe('authentification refusée');
-    expect(fr('old direct entry — no longer supported; pair this machine again')).toBe(
-      'ancienne entrée directe — plus prise en charge ; associez à nouveau cette machine',
-    );
     expect(fr('something new')).toBe('something new');
   });
 

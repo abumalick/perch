@@ -1,11 +1,13 @@
 # Perch — agent guide
 
 Perch is a mobile-first PWA to view and interact with Claude Code terminal sessions
-(tmux workspaces) running on multiple machines, from an iPhone. An **agent** runs on each
-machine (e.g. a Mac and a Linux box) and dials out to one or more **relays**; the **PWA**
-reaches each agent only through a relay, in an end-to-end Noise session keyed by the phone's
-device key, and streams its terminals. Each agent also has a loopback phone port that phones
-will reach directly once it is published (Runtime section); no agent listens off loopback.
+(tmux workspaces) running on multiple machines, from an iPhone. Its public name is **Tarfa**:
+the PWA is branded Tarfa and served from tarfa.app; the code, CLI and config are still named
+Perch until the rename's second phase. An **agent** runs on each machine (e.g. a Mac and a Linux
+box) with a loopback phone port, which its operator publishes (`tailscale serve`, Funnel, a
+proxy); the **PWA** connects to that address directly, in an end-to-end Noise session keyed by
+the phone's device key, and streams its terminals. Agents of machines not yet moved off them
+also dial out to **relays** (relay section); no agent listens off loopback.
 
 ## Golden rules
 - **All code, docs, comments, and commits in English.**
@@ -32,7 +34,7 @@ will reach directly once it is published (Runtime section); no agent listens off
   `server/`.
 - `packages/relay` (`@perch/relay`), `packages/relay-cf`, `packages/secure-channel` — the
   relay core and its two hosts, and the Noise session both ends run (see the relay section).
-- `packages/pwa` (`@perch/pwa`) — Svelte 5 (runes) PWA. xterm.js terminal, vite-plugin-pwa
+- `packages/pwa` (`@perch/pwa`) — Svelte 5 (runes) PWA, launched as Tarfa. xterm.js terminal, vite-plugin-pwa
   (auto-update), Playwright e2e. Core logic (connection manager, aggregator, store) is in
   `src/core` + `src/adapters` and unit-tested with a fake socket; `src/lib` is the UI.
 - **The PWA speaks English and French.** Every string a user reads goes in
@@ -40,7 +42,7 @@ will reach directly once it is published (Runtime section); no agent listens off
   typecheck fails on a missing entry) and is read with `msg()` from `src/i18n.svelte.ts` at the
   point of use, never in a module-level constant, which would freeze the language at load.
   The language follows the phone (`navigator.languages`), unless Settings → Language pins one
-  (`perch.language`); `main.ts` applies it before the pairing prompt. Not translated: what the
+  (`tarfa.language`); `main.ts` applies it before the pairing prompt. Not translated: what the
   agent sends, commands inside messages, key caps, model and provider names, the default
   dictation presets, and anything that only reaches a log. Connection diagnostics stay English
   at the source (the connection log keeps them) and are worded at display
@@ -66,8 +68,10 @@ Build each feature in its own git worktree; full runbook in `docs/WORKTREES.md`.
   **4173 is the standing deploy**; give each checkout its own:
   `E2E_PORT=4175 pnpm --filter @perch/pwa e2e` (build first — `vite preview` serves the gitignored `dist/`).
 - **Test a worktree build on the phone:** `pnpm serve:build .worktrees/<feature>` points the
-  live deploy at it (installed PWA auto-updates in ~60s; the home header shows the worktree
-  slug as a badge); `pnpm serve:restore` flips back to main.
+  staging PWA on the tailnet at it (installed PWA auto-updates in ~60s; the home header shows the
+  worktree slug as a badge); `pnpm serve:restore` flips back to main. From a public origin,
+  `deploy/pwa-deploy.sh --dev` puts a checkout on a throwaway `tarfa-dev` Worker instead
+  (`--dev --delete` afterwards).
 - **Protocol changes need the worktree's agent too:** the PWA and agent share the zod wire
   protocol, so testing a protocol change on-device requires running the worktree's agent or
   the deployed (main) agent silently drops the new/changed messages. `pnpm serve:agent
@@ -137,8 +141,49 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     since a second Linux user's agent left on the default would otherwise crash-loop.
   - Every accepted `authResult` names `agent: { protocol: PROTOCOL_VERSION }` (contracts), so a
     PWA can tell an agent too old for it.
-- The PWA is built and served on the always-on machine via `deploy/run-pwa.sh` +
-  `tailscale serve`, and added to the iPhone home screen.
+- **The PWA connects to each agent directly, trying its addresses in order.** No gate, no
+  challenge, no device parameters: the phone opens the address and starts the IK handshake
+  (`adapters/noise-socket.ts`). Things not to "simplify":
+  - **One entry per machine, known by its agent key** (`core/settings-store.ts`: `addresses`,
+    1–4, stored normalized by `core/machine-addresses.ts`, so `wss://host` and `wss://host/` are
+    one address). A pairing link naming a known key replaces that entry's addresses (after the
+    same confirmation, which names every host); a link naming an address another key's entry
+    holds is refused (`pairedMachine`), since it could point that entry elsewhere. IK pins the
+    key, so a forged link can only redirect, never impersonate.
+  - **One attempt walks the addresses inside the single connect chain** (`MachineConnection`,
+    with the `generation` token as before), starting with the one that last reached `online` in
+    this app session. The connection manager keeps that memory: a machine-list change rebuilds
+    every connection. **Only a silent failure hands over to the next address** (no route, a
+    refused upgrade, no open within `ADDRESS_OPEN_MS`, 6 s); a close the agent made, a refusal
+    or a drop after the session opened, decides the attempt, so a final refusal (wrong agent
+    key, revoked) never falls through to another address and redials. The last address keeps
+    what is left of the 10 s connect deadline, so a lone address waits as long as before.
+    Measured on a Galaxy Tab: ws-open 70–130 ms over the tailnet, 0.75–0.95 s over Funnel.
+  - **Each connection-log phase names its address** (the connection manager appends it), and a
+    hand-over is its own `address` phase. The relay phases (`challenge`, `admitted`,
+    `challenge-fallback`) are gone.
+  - **Android Chrome asks once before a page may open a tailnet address** (Local Network
+    Access). While the prompt is up the socket hangs, and a "Block" makes the address fail like
+    an unreachable one, with nothing on the socket to tell them apart, so the unreachable view
+    adds an Android-only hint (Site settings → Local network access).
+  - **The phone port's refusals are busy, never final**: `4429` with "too many pending" or "too
+    many connections" redials on the backoff. Relay-only refusals are no longer worded.
+- **The PWA is served from tarfa.app**, a static-assets Worker (`packages/pwa/wrangler.jsonc`)
+  deployed only by `deploy/pwa-deploy.sh` from a clean main that matches its upstream, after a
+  frozen install. It is done only once `https://tarfa.app/version.json` names the build just
+  made (its id is the commit plus the build time). `env.production` is the Worker `tarfa` on the
+  custom domain alone (no workers.dev host, no preview URLs; a test keeps it so); the top level
+  is a local Worker of its own, so a bare `wrangler deploy` never reaches production.
+  `--dev` deploys any checkout to a throwaway `tarfa-dev` Worker on workers.dev for an
+  on-device test (badge `tarfa-dev`), and `--dev --delete` removes it afterwards. Both, and
+  `--dry-run`, build into `.tmp/pwa-deploy-dist`, never main's `dist`, which the staging PWA
+  serves; `--dry-run` does not combine with `--dev`. The account is
+  `CLOUDFLARE_ACCOUNT_ID` in main's gitignored `deploy/pwa-deploy.env` (or `--env-file`).
+  **Its storage keys are `tarfa.*`** (localStorage), `tarfa-device` (IndexedDB) and
+  `tarfa-shared` (Cache Storage): it reads nothing an older build stored and needs no migration.
+- The tailnet origin is the **staging PWA** for worktree tests: it is built and served on the
+  always-on machine via `deploy/run-pwa.sh` + `tailscale serve`, from the same code. It is a
+  separate origin, so a separate install and pairing on each phone.
   - **The host running `run-pwa.sh`:** it keeps a `vite preview`
     process serving the `deploy/pwa-live` symlink (defaults to `packages/pwa/dist/`), fronted
     by `tailscale serve` on :8443. The preview stays up and serves whatever the symlink points
@@ -177,7 +222,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   keyless one is disabled in the menu, and with no key at all the mic is not rendered.
   Things not to "simplify":
   - **The defaults live in code until the user edits the list** (`DEFAULT_PRESETS`, nothing
-    seeded into `perch.dictationPresets`), so an update can replace a model id OpenRouter has
+    seeded into `tarfa.dictationPresets`), so an update can replace a model id OpenRouter has
     retired for everyone who never customised. Nothing personal ships: the default prompt
     cleans up in the language spoken, and a translation preset is the user's own.
   - **An OpenRouter reply is typed as one line.** A newline reaching the pty submits the line
@@ -261,8 +306,8 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   each stamped with the WS close `code`,
   `navigator.onLine`, and `document.visibilityState` — the three signals that separate
   iOS-backgrounding from network loss from a tailnet link drop. Events buffer in a durable
-  localStorage ring (`core/connection-log.ts`, key `perch.connlog`) that survives an app kill,
-  and flush **per-machine** inside the relay session after a reconnect (`clientLog` →
+  localStorage ring (`core/connection-log.ts`, key `tarfa.connlog`) that survives an app kill,
+  and flush **per-machine** inside the session after a reconnect (`clientLog` →
   `clientLogAck`; `core/connection-log-flush.ts`, driven from
   `store.setStatus`/`setConnectionError` and `App.svelte`'s visibility/online handlers via
   `store.logConnectivity`). The flush rides the *new* session, so the events about why the old
@@ -510,14 +555,16 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   that has **never** connected this session. **The `reconnecting` view falls through to
   `unreachable` after a longer grace** (`RECONNECT_GRACE_MS` = 25s, an adaptive duration on the
   single existing grace timer keyed off `reachedOnce`; `anyReconnecting` is gated on
-  `!graceElapsed`) so a genuine extended outage surfaces the relay hint + button instead of
+  `!graceElapsed`) so a genuine extended outage surfaces the network hint + button instead of
   an eternal spinner. `deriveHomeView`'s `anyReconnecting` is otherwise stable within the window
   so it doesn't flicker with the backoff `connecting`↔`offline` cycle. The home button
   passes `reconnectAll(true)` → logs `manual-reconnect` (vs `auto-reconnect` for refocus). This
   came from on-device logs: the old 4s-grace flip to "Can't reach" made the user tap Reconnect,
   and each tap aborted an about-to-succeed connect, making recovery *slower*.
 
-- **The relay — reaching a machine without the tailnet, end-to-end encrypted.** Runbook and
+- **The relay — for machines still on relays, until the relay code is deleted.** The Tarfa
+  PWA no longer speaks to relays (direct section above); what follows is the agent's and the
+  relays' side, and the older PWAs that machines on relays still use. Runbook and
   threat model: `docs/relay-cf-runbook.md`. **Exactly two supported hosts over one core:** the
   Cloudflare Worker (`packages/relay-cf`, the default to start with) and the self-hosted Node
   relay (`packages/relay`, the `perch-relay` service). How a self-hosted relay is reached is
@@ -528,10 +575,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   carrying the phone's own device key, so the relay forwards ciphertext only. Things not to "simplify":
   - **A machine entry is connectable only with a valid 32-byte agent key, and never connects in
     plaintext.** Without one it gets no socket at all, and Settings refuses to save an entry
-    with its key cleared. (A stored `relay: true` from older builds is read and ignored.)
-    **An old direct entry (no key) left in storage is never connected and never silently deleted:**
-    Settings shows it as "Old direct entry — no longer supported; pair this machine again" with
-    only Delete, and the home screen ignores it. The PWA has no plaintext socket left to give it.
+    with its key cleared.
   - **The chunk flag is the AEAD's associated data.** Outside it, the relay could merge or
     cut messages undetected. Any change to framing or the handshake is a wire-format change:
     bump the prologue, and ship the agent and PWA together (`serve:agent` + `serve:build`).
@@ -731,48 +775,21 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     agent closes it with 4003 "wrong agent key", and the PWA words it as final. "Agent key
     mismatch" is for an answer the pinned key did not make, which the real agent never sends.
   - **The challenge comes on the phone's own socket (the gate); the fetch is the fallback.**
-    The PWA upgrades with `?challenge=1`; the relay accepts at once, files the socket as a
+    An older PWA upgrades with `?challenge=1`; the relay accepts at once, files the socket as a
     `gate` (nobody's partner), sends a challenge text frame, takes exactly one text reply
     carrying what the query would have (`relay-gate.ts`), runs the unchanged `admitDevice`, and
-    sends `ready` once the socket is paired; the phone starts IK only then. That spares a TLS
-    connection per connect. Things not to "simplify": **a gate is held unauthenticated, so it is
-    bounded** (5 s deadline, 4408; 8 waiting per account, and the ninth closes the *oldest*
-    waiting one, never the newcomer, or holding 8 idle sockets would lock the owner out; a phone
-    whose gate is closed before `ready` with 4429/4408 goes on over the fetched challenge, so a
-    stranger opening gates fast enough to evict it costs the owner speed, not access);
-    **anything but one well-formed text reply closes it** (4400), and nothing from it is ever
-    forwarded; **the nonce is not bound to the gate** (the MAC and spent set carry replay, as for
-    a fetched one), so a Durable Object that lost a gate's memory just closes it (4401). Socket
-    labels live in the DO attachment (tags are fixed at accept, and a gate becomes a client), with
-    the tags as fallback for sockets accepted by older code. **The fetch flow stays on every
-    relay**, for older PWAs and for the PWA's fallback: a relay from before the gate answers
-    `4401 device key required` before any challenge (remembered per relay for the app session,
-    `legacyRelays`) or, with no policy yet, dials the socket to the agent and nothing arrives
-    (fallback after `GATE_WAIT_MS`, not remembered). `device key required` after a challenge
-    stays final. The phase `challenge-fallback` in the connection log shows a fallback.
-  - **A challenge that cannot be had fails the attempt, and the backoff retries it.** Every
-    relay hands out challenges and refuses an upgrade without device parameters with a *final*
-    "device key required", so connecting without them after a brief network error parked the
-    entry until a tap. `fetchRelayChallenge` rejects with `ChallengeError` (network error, a
-    non-200 — which carries no CORS headers, so the browser reports it as a network error too —
-    or no nonce), and the attempt closes as "relay challenge failed: …". The one cost: a relay
-    that no longer knows the account answers its challenge 404, so that entry now retries with
-    "relay challenge failed" instead of showing the final "does not know this machine".
-    **A challenge fetch that hangs fails the attempt too.** On Android Chrome,
-    after a long sleep, the first attempt's fetch hung until the 10 s connect deadline on every
-    wake (the close said so: code 1000 comes only from a socket closed before the WebSocket
-    existed). Why it hangs is not proven; a pooled connection dead since the sleep fits. It is aborted
-    after 5 s (`fetchRelayChallenge`) and rejects with `ChallengeTimeoutError` ("relay challenge
-    timed out"). Never map a failed challenge to "no device parameters": a gated relay refuses
-    that for good. **The e2e cannot catch a regression here:** it runs WebKit only, with no
-    Android and no sleep, so the wake-after-sleep path is covered by `fetchRelayChallenge`'s unit
-    tests alone and needs an on-device check when it changes.
-    Each relay connect also logs its phases to the connection log (`device-key` once the device key is loaded, `ws-open`, `challenge`,
-    `admitted`, `handshake`, `list` when the workspaces arrive, with ms since the attempt began;
-    plus one app-global `boot` with the ms from launch to the first connect; a `close` carries its attempt number and
-    backoff), and the self-hosted relay prints when a phone's challenge, upgrade and the agent's
-    dial arrive, so a slow connect can be placed (at most 30 such lines a minute, so a flood
-    cannot fill the journal).
+    sends `ready` once the socket is paired; the phone starts IK only then. Things not to
+    "simplify": **a gate is held unauthenticated, so it is bounded** (5 s deadline, 4408; 8
+    waiting per account, and the ninth closes the *oldest* waiting one, never the newcomer, or
+    holding 8 idle sockets would lock the owner out); **anything but one well-formed text reply
+    closes it** (4400), and nothing from it is ever forwarded; **the nonce is not bound to the
+    gate** (the MAC and spent set carry replay, as for a fetched one), so a Durable Object that
+    lost a gate's memory just closes it (4401). Socket labels live in the DO attachment (tags are
+    fixed at accept, and a gate becomes a client), with the tags as fallback for sockets accepted
+    by older code. **The fetch flow (`?role=challenge`) stays on every relay** for the PWAs that
+    use it. The self-hosted relay prints when a phone's challenge, upgrade and the agent's dial
+    arrive, so a slow connect can be placed (at most 30 such lines a minute, so a flood cannot
+    fill the journal).
   - **Machines join; phones pair.** Runbook: "Connecting a machine and pairing a phone".
     `PERCH_JOIN_KEY=<join key> pnpm perch connect <relay>` registers the machine (`role=join`), adds the
     relay to main's `agent.env` (backed up first), restarts the agent and prints a QR code;
@@ -824,13 +841,15 @@ See `docs/DEPLOY.md` for the full runbook. In short:
       pairs anyway, so `perch pair`/`connect` refuse such a value up front instead. It sets a new
       entry's `defaultPath` and fills an existing entry only when that has none: a re-scan is a
       retry, and the owner's Settings value wins, like the entry's name.
-    - **A pairing link never re-pins an entry.** A code for a relay URL the phone already has
-      an entry for, naming another agent key, is refused (`pairedMachine`): accepting it would
-      point the entry's token at a key the link's maker may hold. A link opened from outside the
-      app is confirmed first, showing the relay host and the machine key's fingerprint that
-      `perch pair` prints beside the code, and a pending pairing secret is sent in preference to
-      a token. A link must name a `wss:` relay (`ws:` on loopback only, for the e2e), and a full
-      link only this app's own origin (`readPairingLink`).
+    - **A pairing link carries up to four addresses and never re-pins an entry.**
+      `#pair?u=<address>&u=…&k=<agent key>&s=<secret>&n=<name>&p=<path>` (`pairing-link.ts`):
+      `u` repeats 1–4 times in the order the phone tries them, each `wss:` (`ws:` on loopback
+      only, for the e2e) with the path `/` or one segment (a relay account, or a `tailscale
+      serve --set-path` slug); a fifth or any invalid one nulls the whole link. A link naming an
+      address another key's entry holds is refused (`pairedMachine`, direct section). A link
+      opened from outside the app is confirmed first, showing every host and the machine key's
+      fingerprint that `perch pair` prints beside the code, and a pending pairing secret is sent
+      in preference to a token. A full link must name this app's own origin (`readPairingLink`).
     - **A pairing link tapped inside the app is paired by the running app**
       (`store.openPairingLink`, from the terminal's link handlers and a capture-phase click
       listener), never opened: on Android it opened another page context, which added the
@@ -869,41 +888,41 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     client without a device key once a policy is published, and drops an older agent's
     `anonymous` field unread; `PERCH_RELAY_ALLOW_NK` is ignored with a startup warning.
 
-## CRITICAL: why the PWA is still served from the tailnet
-The PWA was first put on the tailnet so that it could open WebSockets to tailnet agents: browsers
-block a **public-origin page from connecting to a private/tailnet `100.x` address**:
-- Chromium: Local Network Access (the PNA successor) gates public→local behind a user
-  permission; as of Chrome 147 this also covers WebSockets. The
-  `Access-Control-Allow-Private-Network` header is a dead path.
-- **iOS Safari (all iOS browsers are WebKit): there is no web-facing local-network
-  permission at all — the connection fails silently with no workaround.**
+## CRITICAL: the PWA's origin and what it can reach
+The PWA was first served from the tailnet because browsers once blocked a **public-origin page
+from opening a WebSocket to a tailnet `100.x` address**. Measured on 2026-11-05 from a public
+origin, that no longer holds:
 
-No agent is reached that way any more: phones go through relays. What still holds:
-- **A self-hosted relay published on the tailnet** (the maintainer's home relay,
-  `wss://<machine>.<tailnet>.ts.net:8451`) is a `100.x` address, so the same wall applies to it:
-  a PWA on a public origin could not reach it. Its challenge fetch and its WebSocket both need a
-  tailnet origin.
-- **The origin protects the device key.** Where IndexedDB will not keep a `CryptoKey`, the key is
-  stored as raw bytes readable by any script on the PWA's origin, and an enrolled key is the
-  phone's whole credential; whoever serves the PWA can also read everything. The tailnet origin
-  is what keeps that to the maintainer. Moving origins also means a new device key (a new
-  origin has empty storage), so every phone pairs again.
-- **Pairing links name the PWA's origin** (`PERCH_PWA_ORIGIN`), so they follow it.
-- **A device that is off the tailnet never updates, and nothing says so.** It keeps running its
-  cached service-worker build and still connects through a public relay, so the app looks
-  healthy while `sw.js` cannot be fetched. Killing and relaunching the app does not help. When
-  one device misses a deploy that another one picked up (a new field missing, an old badge in the
-  header), ask first whether Tailscale is up on it. Only then look further: the update banner,
+| Device | Tailscale | Tailnet address (`serve`) | Funnel address |
+|---|---|---|---|
+| iPhone, Safari, iOS 26.6 | on | works: open 0.7 s, RTT 3 ms | works, and resolves to the tailnet |
+| Android Chrome 156 | on | works after a one-time local-network prompt: open 1.5 s | works, via the tailnet |
+| Android Firefox 160 | on | works, open 5.4 s | works, via the tailnet |
+| iPhone / Android Chrome | off | fails (expected) | works: open 0.8–1.2 s, RTT ~170 ms, ~0.2 MB/s |
+
+So the PWA is on a public origin, tarfa.app, and what follows from that:
+- **One hostname serves both paths.** With MagicDNS on, the phone resolves the node's `ts.net`
+  name to its `100.x` address; off the tailnet, public DNS resolves it to Funnel's ingress. A
+  machine whose `serve` entry is also Funneled needs a single address; several addresses are for
+  the other cases (serve and Funnel on different ports, a LAN or proxy address).
+- **Funnel moves about 0.2 MB/s.** Terminal traffic is fine; a several-MB media preview takes
+  tens of seconds over it (3 MB: 22 s on a Galaxy Tab, against 1.7 s over the tailnet).
+- **The origin holds every phone's device key.** Where IndexedDB will not keep a `CryptoKey`,
+  the key is stored as raw bytes readable by any script on the origin, and an enrolled key is the
+  phone's whole credential; whoever serves the PWA can also read everything it shows.
+  **tarfa.app is the maintainer's origin**: whoever does not trust it serves their own copy
+  (`deploy/pwa-deploy.sh --env-file` for their own Cloudflare account, or any static host) and
+  points their pairing links at it (`perch pair --pwa`). Moving origins means a new device key
+  (a new origin has empty storage), so every phone pairs again there.
+- **Pairing links name the PWA's origin** (`PERCH_PWA_ORIGIN`, default `https://tarfa.app`), so
+  they follow it.
+- **A device that cannot fetch the PWA's origin never updates, and nothing says so.** It keeps
+  running its cached service-worker build, which can still connect, so the app looks healthy
+  while `sw.js` cannot be fetched (on the tailnet staging origin, a device with Tailscale off).
+  When one device misses a deploy another picked up (a new field missing, an old badge in the
+  header), ask first whether it can reach the origin. Only then look further: the update banner,
   `chrome://serviceworker-internals` → Unregister, or adb. Never suggest "clear site data": it
   deletes the device key, and the device has to pair again.
-
-What no longer needs the tailnet: the Cloudflare Worker relay is public and reachable from any
-origin, so a PWA served elsewhere would work against it. **Where people without a tailnet load
-the PWA from is an open question**, not settled here: it needs an origin they trust with their
-device key (see the relay runbook's threat model). Someone with a Cloudflare account of their
-own serves their own copy from a static-assets Worker there, next to their own relay (runbook, "A relay and
-PWA in your own Cloudflare account"); that answers it for them, not for the maintainer. Until it is answered, keep the maintainer's
-PWA on the tailnet, and do not move it to a public origin to "simplify" deployment.
 
 ## Gotchas already fixed (don't regress)
 - **A cold launch's path to the first connect carries only what connecting needs.** Measured on
@@ -1137,7 +1156,7 @@ PWA on the tailnet, and do not move it to a public origin to "simplify" deployme
   unless an app declares that exact host, while an `intent://` URL renders a blank page inside the
   WebAPK (measured on-device against every variant: `package`, `component`, `action`, fallback,
   anchor, `location.href`, `window.open`). So the Android-only Settings toggle "Open links with
-  the share sheet" (`perch.shareLinks`, off by default) sends terminal links to
+  the share sheet" (`tarfa.shareLinks`, off by default) sends terminal links to
   `navigator.share({ url })`, where LinkSheet's share target takes them. Don't go back to
   intent URLs; a one-tap handoff needs a native shell.
 - **A dropdown inside the keyboard bar must be `position: fixed`, not `absolute`.** The bar

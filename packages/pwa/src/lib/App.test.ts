@@ -48,7 +48,7 @@ describe('App', () => {
     const store = fakeStore('list');
     render(App, { props: { store: store as never } });
     expect(store.start).toHaveBeenCalled();
-    expect(screen.getByText('Perch')).toBeInTheDocument();
+    expect(screen.getByText('Tarfa')).toBeInTheDocument();
   });
 
   it('renders the settings view', () => {
@@ -67,7 +67,7 @@ describe('App', () => {
     const store = fakeStore('settings');
     render(App, { props: { store: store as never } });
     expect(screen.getByText(/machines/i)).toBeInTheDocument();
-    expect(screen.queryByText('Perch')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tarfa')).not.toBeInTheDocument();
   });
 
   it('wide layout shows the workspace sidebar beside the active view', () => {
@@ -75,7 +75,7 @@ describe('App', () => {
     const store = fakeStore('settings');
     render(App, { props: { store: store as never } });
     // Sidebar (workspace list header) and the right-pane active view render together.
-    expect(screen.getByText('Perch')).toBeInTheDocument();
+    expect(screen.getByText('Tarfa')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
   });
 
@@ -83,7 +83,7 @@ describe('App', () => {
     stubWide();
     const store = fakeStore('list');
     render(App, { props: { store: store as never } });
-    expect(screen.getByText('Perch')).toBeInTheDocument();
+    expect(screen.getByText('Tarfa')).toBeInTheDocument();
     expect(screen.getByText(/select a workspace/i)).toBeInTheDocument();
   });
 
@@ -112,7 +112,7 @@ describe('App', () => {
   it('re-reads the machine entries when another page context of the app changes them, or on return', () => {
     const store = fakeStore('list');
     render(App, { props: { store: store as never } });
-    window.dispatchEvent(new StorageEvent('storage', { key: 'perch.machines' }));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'tarfa.machines' }));
     expect(store.refreshMachines).toHaveBeenCalledTimes(1);
     document.dispatchEvent(new Event('visibilitychange'));
     expect(store.refreshMachines).toHaveBeenCalledTimes(2);

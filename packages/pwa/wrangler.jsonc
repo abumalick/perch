@@ -1,0 +1,28 @@
+// The PWA as a static-assets Worker: no script, just dist/. Deployed only by deploy/pwa-deploy.sh.
+//
+// The top level is a local Worker of its own (no host): a bare `wrangler deploy` from any checkout
+// never reaches production. Production is env.production, the Worker `tarfa` on the tarfa.app
+// custom domain alone (no workers.dev host, no preview URLs). env.dev is `tarfa-dev`, on demand,
+// on its workers.dev host, for an on-device test of a checkout; delete it afterwards
+// (`deploy/pwa-deploy.sh --dev --delete`). The account comes from CLOUDFLARE_ACCOUNT_ID.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "tarfa-local",
+  "compatibility_date": "2026-09-01",
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
+  "workers_dev": false,
+  "preview_urls": false,
+  "env": {
+    "production": {
+      "name": "tarfa",
+      "routes": [{ "pattern": "tarfa.app", "custom_domain": true }],
+      "workers_dev": false,
+      "preview_urls": false
+    },
+    "dev": {
+      "name": "tarfa-dev",
+      "workers_dev": true,
+      "preview_urls": false
+    }
+  }
+}

@@ -14,8 +14,8 @@ describe('CONTENT_SECURITY_POLICY', () => {
     expect(directive('object-src')).toEqual(["'none'"]);
   });
 
-  // Relays live on any host, and dictation calls ElevenLabs straight from the browser.
-  it('lets the app reach any relay and the speech-to-text API', () => {
+  // Agents live on any host, and dictation calls ElevenLabs straight from the browser.
+  it('lets the app reach any agent and the speech-to-text API', () => {
     expect(directive('connect-src')).toEqual(expect.arrayContaining(['https:', 'wss:']));
     expect(new URL(SCRIBE_ENDPOINT).protocol).toBe('https:');
   });

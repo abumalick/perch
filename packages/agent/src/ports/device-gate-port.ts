@@ -1,8 +1,8 @@
-import type { AgentRefusal } from '@perch/secure-channel';
+import type { Refusal } from '@perch/secure-channel';
 import type { DeviceStanding, EnrolmentMode } from '../application/device-roster';
 
 // `fresh`: spent just now, rather than presented again by the device that spent it.
-export type Redemption = { redeemed: true; fresh: boolean } | { redeemed: false; reason?: AgentRefusal };
+export type Redemption = { redeemed: true; fresh: boolean } | { redeemed: false; reason?: Refusal };
 
 // The agent's own record of which phones it accepts.
 export interface DeviceGate {

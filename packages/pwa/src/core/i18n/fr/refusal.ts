@@ -5,7 +5,6 @@ export const refusal: Messages['refusal'] = {
   badToken: (machine) => `${machine} a refusé le jeton — vérifiez le jeton de cette entrée`,
   codeExpired: (newCode) => `Ce code d’association a expiré — ${newCode}`,
   codeUsed: (newCode) => `Ce code d’association a déjà servi — ${newCode}`,
-  proofInvalid: (newCode) => `Association refusée : le code n’est pas valable pour cette machine — ${newCode}`,
   enrolmentRefused: (newCode) =>
     `Association refusée : le code a expiré, a déjà servi ou n’est pas valable pour cette machine — ${newCode}`,
   wrongAgentKey: (machine) => `La clé de l’agent de cette entrée n’est pas celle de ${machine} — associez à nouveau cette machine`,
@@ -16,11 +15,7 @@ export const refusal: Messages['refusal'] = {
   enrolmentClosed: (machine) =>
     `L’inscription est fermée sur ${machine} — lancez-y \`perch devices enrolment off\` pour autoriser l’association`,
   notEnrolled: (machine) => `Ce téléphone n’est pas inscrit sur ${machine} — lancez-y \`perch pair\` pour l’associer à nouveau`,
-  agentSignature: (machine) =>
-    `${machine} n’a pas pu vérifier la clé de l’appareil de ce téléphone — lancez-y \`perch pair\` pour un nouveau code`,
-  tooManyEnrolments: (machine) => `Trop de téléphones demandent à s’associer à ${machine} en ce moment — nouvel essai`,
   busy: (machine) => `${machine} est saturée : trop de téléphones s’y connectent`,
-  internal: (machine) => `${machine} a échoué (erreur interne) — nouvel essai`,
   other: (machine, detail) => `${machine} a refusé ce téléphone (${detail})`,
   code: (code) => `code ${code}`,
 };

@@ -3,7 +3,6 @@ import {
   SecureSession,
   b64url,
   encodeDeviceHello,
-  signDeviceHello,
   handshakeFrame,
   readHandshakeFrame,
 } from '@perch/secure-channel';
@@ -11,7 +10,7 @@ import type { CloseInfo, Socket, SocketFactory } from '../core/ports/socket';
 import type { FrameSocketFactory, FrameSocket } from '../core/ports/frame-socket';
 import { DeviceKeyError, type DeviceIdentity } from '../core/ports/device-identity';
 import { describeError } from '../core/describe-error';
-import { parseAgentKey } from '../core/relay-key';
+import { parseAgentKey } from '../core/agent-key';
 
 const deviceKeyUnavailable = (err: unknown) => `device key unavailable: ${describeError(err)}`;
 // The handshake reports a failing static key as its own error, with the device key's as the cause.
@@ -103,12 +102,11 @@ export function noiseSocketFactory(inner: FrameSocketFactory, agentKey: string, 
       function handshake(): void {
         queue = queue.then(async () => {
           try {
-            // The hello proves the device's Ed25519 key is this phone's own, over this handshake.
-            const hello = async (hash: Uint8Array) =>
+            // `sig` names the device's Ed25519 key, which the agent's roster keeps; nothing checks it.
+            const hello = async () =>
               encodeDeviceHello({
                 sig: identity.ed25519Public,
                 name: options.deviceName,
-                proof: await signDeviceHello(identity.sign, b64url.decode(identity.x25519Public), hash),
                 // Only with no credential to present: the agent must see a token or pairing code
                 // (to refuse or burn it) before telling the phone it may forget it.
                 ...(options.token === '' ? { push: true as const } : {}),

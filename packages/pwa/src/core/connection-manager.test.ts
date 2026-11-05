@@ -75,12 +75,12 @@ function harness() {
 const mac = { id: 'mac', name: 'Mac', addresses: ['wss://mac'], token: 't1', agentKey };
 const mini = { id: 'mini', name: 'Mini', addresses: ['wss://mini'], token: 't2', agentKey };
 
-describe('ConnectionManager relay machines', () => {
-  it('connects a relay machine through the secure factory for its key', () => {
+describe('ConnectionManager keyed machines', () => {
+  it('connects a machine through the secure factory for its key', () => {
     const h = harness();
-    h.manager.setMachines([{ ...mini, addresses: ['wss://relay/acct'] }]);
+    h.manager.setMachines([{ ...mini, addresses: ['wss://box.example/abu'] }]);
     expect(h.secureFor).toEqual([`${agentKey} ${mini.token}`]);
-    expect(Object.keys(h.sockets)).toEqual(['wss://relay/acct']);
+    expect(Object.keys(h.sockets)).toEqual(['wss://box.example/abu']);
   });
 
   it('reports the phases of a connect under the machine and the address they belong to', () => {
@@ -159,10 +159,10 @@ describe('ConnectionManager relay machines', () => {
   it("words a refusal with the entry's name and what it connects with", () => {
     const h = harness();
     h.manager.setMachines([{ ...mini, token: '', pairing: 'S'.repeat(43) }, mac]);
-    h.secureFakes[0]!.fireClose({ code: 4403, reason: 'enrolment proof invalid' });
-    h.secureFakes[1]!.fireClose({ code: 4403, reason: 'enrolment proof invalid' });
+    h.secureFakes[0]!.fireClose({ code: 4403, reason: 'enrolment refused' });
+    h.secureFakes[1]!.fireClose({ code: 4403, reason: 'enrolment refused' });
     expect(h.diagnostics).toEqual([
-      ['mini', 'Pairing refused: the code is not valid for this machine — run `perch pair` on Mini for a new one'],
+      ['mini', 'Pairing refused: the code has expired, was already used, or is not valid for this machine — run `perch pair` on Mini for a new one'],
       ['mac', 'Mac refused the token — check the token in this entry'],
     ]);
   });

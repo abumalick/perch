@@ -1,8 +1,8 @@
-// The encrypted session on the wire. Each relay frame is one flag byte and one Noise message.
+// The encrypted session on the wire. Each frame is one flag byte and one Noise message.
 // Noise caps a message at 65 535 bytes, so a larger plaintext (a big terminal burst, an
 // attached file) is split into chunks flagged `more` and reassembled up to a cap. The flag is
-// the chunk's associated data: it travels in the clear but is authenticated, so the relay
-// cannot merge two messages or cut one short by flipping it.
+// the chunk's associated data: it travels in the clear but is authenticated, so nothing on the path
+// can merge two messages or cut one short by flipping it.
 import { concatBytes } from '@noble/hashes/utils.js';
 import type { CipherState } from './noise';
 

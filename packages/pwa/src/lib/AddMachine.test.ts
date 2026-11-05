@@ -24,13 +24,13 @@ describe('AddMachine', () => {
   it('adds a machine with its addresses and the agent key it pins, and returns to settings', async () => {
     const store = fakeStore();
     render(AddMachine, { props: { store: store as never } });
-    await fillRequired('Mini PC', 'wss://relay/acct');
+    await fillRequired('Mini PC', 'wss://box.example/abu');
     await fireEvent.input(screen.getByLabelText(/agent key/i), { target: { value: ` ${KEY} ` } });
     await fireEvent.click(screen.getByRole('button', { name: /add machine/i }));
     expect(store.addMachine).toHaveBeenCalledWith({
       id: 'mini-pc',
       name: 'Mini PC',
-      addresses: ['wss://relay/acct'],
+      addresses: ['wss://box.example/abu'],
       token: 'sek',
       agentKey: KEY,
     });
@@ -40,7 +40,7 @@ describe('AddMachine', () => {
   it('adds a machine with an optional default path', async () => {
     const store = fakeStore();
     render(AddMachine, { props: { store: store as never } });
-    await fillRequired('Mini PC', 'wss://relay/acct');
+    await fillRequired('Mini PC', 'wss://box.example/abu');
     await fireEvent.input(screen.getByLabelText(/agent key/i), { target: { value: KEY } });
     await fireEvent.input(screen.getByLabelText(/default path/i), { target: { value: '/home/u/ws' } });
     await fireEvent.click(screen.getByRole('button', { name: /add machine/i }));
@@ -53,14 +53,14 @@ describe('AddMachine', () => {
   ])('refuses a machine with %s agent key, and says why', async (_label, key) => {
     const store = fakeStore();
     render(AddMachine, { props: { store: store as never } });
-    await fillRequired('Dev', 'wss://relay/acct');
+    await fillRequired('Dev', 'wss://box.example/abu');
     await fireEvent.input(screen.getByLabelText(/agent key/i), { target: { value: key } });
     await fireEvent.click(screen.getByRole('button', { name: /add machine/i }));
     expect(store.addMachine).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent(/agent key/i);
   });
 
-  it('offers no way to add a machine outside the relay', () => {
+  it('asks for the agent key, with no way to add a machine without one', () => {
     render(AddMachine, { props: { store: fakeStore() as never } });
     expect(screen.queryByRole('checkbox')).toBeNull();
     expect(screen.getByLabelText(/agent key/i)).toBeInTheDocument();

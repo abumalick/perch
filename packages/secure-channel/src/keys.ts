@@ -1,13 +1,13 @@
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
-import { sha256 } from '@noble/hashes/sha2.js';
 
 interface KeyPair {
   publicKey: string;
   privateKey: string;
 }
 
-// The agent's relay identity. X25519 is its Noise static key (the phone pins the public half);
-// Ed25519 signs its relay upgrades (the relay holds the public half). Both base64url.
+// The agent's identity. X25519 is its Noise static key (the phone pins the public half). The
+// Ed25519 pair once signed its relay upgrades and is kept only as part of the key file's format.
+// Both base64url.
 export interface AgentKeys {
   x25519: KeyPair;
   ed25519: KeyPair;
@@ -26,17 +26,12 @@ export const b64url = {
   },
 };
 
-// A phone's device identity has the same shape: X25519 for its Noise static key, Ed25519 to sign
-// relay challenges. The PWA keeps its own in WebCrypto; this raw form is for Node clients.
+// A phone's device identity has the same shape: X25519 for its Noise static key, and an Ed25519
+// key its hello names. The PWA keeps its own in WebCrypto; this raw form is for Node clients.
 export type DeviceKeys = AgentKeys;
 
 export function generateDeviceKeys(): DeviceKeys {
   return generateAgentKeys();
-}
-
-export function ed25519Signer(privateKey: string): (message: Uint8Array) => Promise<Uint8Array> {
-  const priv = b64url.decode(privateKey);
-  return async (message) => ed25519.sign(message, priv);
 }
 
 export function generateAgentKeys(): AgentKeys {
@@ -48,8 +43,15 @@ export function generateAgentKeys(): AgentKeys {
   };
 }
 
-// Derived from the signing key, so the relay can route by it without a registry, and nobody can
-// claim an account id without the key it was derived from. Public, not a secret.
-export function accountId(ed25519PublicKey: string): string {
-  return b64url.encode(sha256(b64url.decode(ed25519PublicKey)).subarray(0, 16));
+// Signs with a key the caller may not be able to read (a non-extractable WebCrypto key).
+export type DeviceSigner = (message: Uint8Array<ArrayBuffer>) => Promise<Uint8Array>;
+
+// 32 bytes of base64url naming a point on the curve outside its small-order subgroup.
+export function isEd25519PublicKey(key: string): boolean {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(key)) return false;
+  try {
+    return !ed25519.Point.fromBytes(b64url.decode(key)).isSmallOrder();
+  } catch {
+    return false;
+  }
 }

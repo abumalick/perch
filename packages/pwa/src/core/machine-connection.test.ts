@@ -86,7 +86,7 @@ function harness(refusalContext?: RefusalContext, addresses = ['wss://m1.ts.net'
 const authOf = (socket: ReturnType<typeof fakeSocket>) => socket.sent.map((d) => JSON.parse(d) as { type: string; token?: string }).find((m) => m.type === 'auth');
 
 // Once the device key is enrolled the token and the pairing secret are dead weight, and sending
-// them on every connect hands them to whoever holds the agent's relay key.
+// them on every connect hands them to whoever holds the agent's key.
 describe('MachineConnection credentials', () => {
   const tokened: RefusalContext = { machine: 'dev box', credential: 'token' };
 
@@ -116,7 +116,7 @@ describe('MachineConnection credentials', () => {
     expect(authOf(h.sockets[1]!)).toEqual({ type: 'auth', token: 'secret' });
   });
 
-  // The close reason travels outside the session, so the relay can forge it: the token is only
+  // The close reason travels outside the session, so whatever sits on the path can forge it: the token is only
   // held back for the next attempt, and forgotten for good once the agent itself says, inside
   // the session, that the key is enrolled.
   it('redials without the token when it is refused as not needed, and forgets it once enrolment is confirmed', () => {
@@ -170,7 +170,7 @@ describe('MachineConnection credentials', () => {
 describe('MachineConnection refusals', () => {
   const paired: RefusalContext = { machine: 'dev box', credential: 'pairing' };
 
-  it('says what the relay refused, without the code, and waits for the owner instead of redialing', () => {
+  it('says what the agent refused, without the code, and waits for the owner instead of redialing', () => {
     const h = harness(paired);
     h.conn.connect();
     h.sockets[0]!.fireClose({ code: 4403, reason: 'pairing code expired' });
@@ -193,8 +193,8 @@ describe('MachineConnection refusals', () => {
   it('keeps redialing through a refusal that can pass', () => {
     const h = harness(paired);
     h.conn.connect();
-    h.sockets[0]!.fireClose({ code: 4429, reason: 'too many enrolment attempts' });
-    expect(h.diagnostics[0]).toMatchObject({ message: 'Too many phones are asking to pair with dev box right now — retrying', refused: true });
+    h.sockets[0]!.fireClose({ code: 4429, reason: 'too many pending clients' });
+    expect(h.diagnostics[0]).toMatchObject({ message: 'dev box is busy: too many phones are connecting to it', refused: true });
     expect(h.scheduled).toHaveLength(1);
   });
 
@@ -207,7 +207,7 @@ describe('MachineConnection refusals', () => {
     expect(h.statuses.at(-1)).toBe('connecting');
   });
 
-  it.each(['relay challenge timed out', 'relay challenge failed: network error'])('reads nothing into a challenge that could not be had (%s), and redials', (reason) => {
+  it.each(['never opened', 'network error'])('reads nothing into a close with no code (%s), and redials', (reason) => {
     const h = harness(paired);
     h.conn.connect();
     h.sockets[0]!.fireClose({ code: undefined, reason });
@@ -758,7 +758,7 @@ describe('MachineConnection address walk', () => {
   it.each([
     ['a final refusal', { code: 4003, reason: REFUSAL.wrongAgentKey }, true],
     ['a revocation', { code: 4003, reason: REFUSAL.revoked }, true],
-    ['a passing refusal', { code: 4003, reason: REFUSAL.tooManyEnrolments }, false],
+    ['a passing refusal', { code: 4003, reason: REFUSAL.tokenNotNeeded }, false],
     ['a busy phone port', { code: 4429, reason: REFUSAL.tooManyPending }, false],
     ['a full phone port', { code: 4429, reason: REFUSAL.tooManyConnections }, false],
   ])('stops the walk at %s: the agent answered, and the next address leads to the same one', (_label, close, final) => {

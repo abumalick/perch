@@ -40,8 +40,6 @@ import {
   IkInitiator,
   b64url,
   encodeDeviceHello,
-  ed25519Signer,
-  signDeviceHello,
   generateAgentKeys,
   generateDeviceKeys,
   handshakeFrame,
@@ -63,12 +61,7 @@ async function noiseClient(url: string, agentPublicKey: string, device: DeviceKe
   await new Promise((r) => socket.once('open', r));
   const reply = new Promise<Buffer>((r) => socket.once('message', (data: Buffer) => r(data)));
   const initiator = new IkInitiator(rawStaticKey(b64url.decode(device.x25519.privateKey)), b64url.decode(agentPublicKey));
-  const hello = async (hash: Uint8Array) =>
-    encodeDeviceHello({
-      sig: device.ed25519.publicKey,
-      name: 'test phone',
-      proof: await signDeviceHello(ed25519Signer(device.ed25519.privateKey), b64url.decode(device.x25519.publicKey), hash),
-    });
+  const hello = async () => encodeDeviceHello({ sig: device.ed25519.publicKey, name: 'test phone' });
   socket.send(handshakeFrame(await initiator.writeMessage1(hello), 'ik'));
   await initiator.readMessage2(readHandshakeFrame(new Uint8Array(await reply), 'ik'));
   const split = () => initiator.split();

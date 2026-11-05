@@ -17,14 +17,12 @@ import {
   REFUSAL,
   SecureSession,
   b64url,
-  ed25519Signer,
   encodeDeviceHello,
   generateAgentKeys,
   generateDeviceKeys,
   handshakeFrame,
   rawStaticKey,
   readHandshakeFrame,
-  signDeviceHello,
   type AgentKeys,
   type DeviceKeys,
 } from '@perch/secure-channel';
@@ -177,6 +175,10 @@ interface Phone {
   close(): void;
 }
 
+// What a PWA from before direct connections puts in its hello: an Ed25519 signature for a relay
+// (86 base64url characters). The agent no longer reads it.
+const OLD_RELAY_PROOF = 'A'.repeat(86);
+
 // What the PWA does on a direct entry: open the socket, run IK against the agent's key. `hello`
 // 'proof' builds the hello as a PWA from before direct connections did, signed for a relay.
 async function phone(stack: Stack, device: DeviceKeys, path = '/', hello: 'plain' | 'proof' = 'plain'): Promise<Phone> {
@@ -218,7 +220,7 @@ async function phone(stack: Stack, device: DeviceKeys, path = '/', hello: 'plain
           sig: device.ed25519.publicKey,
           name: 'integration phone',
           ...(hello === 'proof'
-            ? { proof: await signDeviceHello(ed25519Signer(device.ed25519.privateKey), b64url.decode(device.x25519.publicKey), hash) }
+            ? { proof: OLD_RELAY_PROOF }
             : {}),
         }),
       )

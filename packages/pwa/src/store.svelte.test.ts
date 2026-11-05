@@ -104,7 +104,7 @@ const mac = { id: 'mac', name: 'Mac', addresses: ['wss://mac'], token: 't', agen
 
 describe('PerchStore pairing', () => {
   const link = pairingLink('https://pwa.example', {
-    urls: ['wss://relay.example/acct'],
+    urls: ['wss://box.example/abu'],
     agentKey: generateAgentKeys().x25519.publicKey,
     secret: 'S'.repeat(43),
     name: 'dev',
@@ -115,7 +115,7 @@ describe('PerchStore pairing', () => {
     store.start();
     store.goSettings();
     expect(store.pairFromLink(`  ${link}\n`)).toEqual({ name: 'dev' });
-    expect(store.machines).toEqual([expect.objectContaining({ name: 'dev', addresses: ['wss://relay.example/acct'], token: '', pairing: 'S'.repeat(43) })]);
+    expect(store.machines).toEqual([expect.objectContaining({ name: 'dev', addresses: ['wss://box.example/abu'], token: '', pairing: 'S'.repeat(43) })]);
     expect(store.view).toBe('list');
   });
 
@@ -147,7 +147,7 @@ describe('PerchStore pairing', () => {
     const { store } = build([], undefined, undefined, undefined, { confirm: (m) => (asked.push(m), true) });
     store.start();
     expect(store.openPairingLink(link)).toBe(true);
-    expect(asked).toEqual([expect.stringContaining('Pair with dev through relay.example?')]);
+    expect(asked).toEqual([expect.stringContaining('Pair with dev through box.example?')]);
     expect(store.machines).toEqual([expect.objectContaining({ name: 'dev', pairing: 'S'.repeat(43) })]);
   });
 
@@ -185,7 +185,7 @@ describe('PerchStore pairing', () => {
 
   it('says why a tapped pairing link was refused', () => {
     const alerts: string[] = [];
-    const other = { id: 'x', name: 'dev', addresses: ['wss://relay.example/acct'], token: '', agentKey: generateAgentKeys().x25519.publicKey };
+    const other = { id: 'x', name: 'dev', addresses: ['wss://box.example/abu'], token: '', agentKey: generateAgentKeys().x25519.publicKey };
     const { store } = build([other], undefined, undefined, undefined, { confirm: () => true, alert: (m) => alerts.push(m) });
     store.start();
     expect(store.openPairingLink(link)).toBe(true);
@@ -200,7 +200,7 @@ describe('PerchStore pairing', () => {
     const before = store.machines;
     store.refreshMachines();
     expect(store.machines).toBe(before);
-    const added = { id: 'dev', name: 'dev', addresses: ['wss://relay.example/acct'], token: '', agentKey: generateAgentKeys().x25519.publicKey };
+    const added = { id: 'dev', name: 'dev', addresses: ['wss://box.example/abu'], token: '', agentKey: generateAgentKeys().x25519.publicKey };
     storage.write('tarfa.machines', JSON.stringify([mac, added]));
     store.refreshMachines();
     expect(store.machines.map((m) => m.id)).toEqual(['mac', 'dev']);
@@ -210,8 +210,8 @@ describe('PerchStore pairing', () => {
     const { store, sockets } = build();
     store.start();
     store.pairFromLink(link);
-    sockets['wss://relay.example/acct']!.open();
-    sockets['wss://relay.example/acct']!.deliver({ type: 'authResult', ok: true, credential: 'pairing', enrolled: true });
+    sockets['wss://box.example/abu']!.open();
+    sockets['wss://box.example/abu']!.deliver({ type: 'authResult', ok: true, credential: 'pairing', enrolled: true });
     expect(store.machines[0]!.pairing).toBeUndefined();
     expect(JSON.stringify(store.machines)).not.toContain('S'.repeat(43));
   });
@@ -221,8 +221,8 @@ describe('PerchStore pairing', () => {
     const { store, sockets } = build();
     store.start();
     store.pairFromLink(link);
-    sockets['wss://relay.example/acct']!.open();
-    sockets['wss://relay.example/acct']!.deliver({ type: 'authResult', ok: true, credential: 'pairing', enrolled: false });
+    sockets['wss://box.example/abu']!.open();
+    sockets['wss://box.example/abu']!.deliver({ type: 'authResult', ok: true, credential: 'pairing', enrolled: false });
     expect(store.machines[0]!.pairing).toBe('S'.repeat(43));
   });
 });
@@ -1898,7 +1898,7 @@ describe('PerchStore home view', () => {
     store.start();
     store.setStatus('mac', 'online');
     store.setStatus('mac', 'offline');
-    store.setConnectionError('mac', { message: 'mac is not connected to the relay', code: 4503, at: 1000, refused: true, retryInMs: 1000 });
+    store.setConnectionError('mac', { message: 'mac refused this phone (busy)', code: 4503, at: 1000, refused: true, retryInMs: 1000 });
     expect(store.homeView).toBe('reconnecting');
   });
 
@@ -1997,12 +1997,12 @@ describe('PerchStore connection logging', () => {
     expect(lg.pushed.filter((e) => e.kind === 'boot')).toEqual([{ machineId: null, kind: 'boot', extra: { reason: '413ms' } }]);
   });
 
-  it('records a phase of a relay connect with its detail', () => {
+  it('records a phase of a connect with its detail', () => {
     const lg = fakeLog();
     const { store } = build([mac], undefined, undefined, lg);
     store.start();
-    store.logPhase('mac', 'challenge', 'timeout 5000ms');
-    expect(lg.pushed).toEqual([{ machineId: 'mac', kind: 'challenge', extra: { reason: 'timeout 5000ms' } }]);
+    store.logPhase('mac', 'address', 'wss://box.example/abu');
+    expect(lg.pushed).toEqual([{ machineId: 'mac', kind: 'address', extra: { reason: 'wss://box.example/abu' } }]);
   });
 
   it('logConnectivity records an app-global event and flushes online machines only', () => {
@@ -2080,13 +2080,13 @@ describe('PerchStore reconnect UX', () => {
   });
 });
 
-describe('PerchStore relay machines carry the side channels inside the session', () => {
+describe('PerchStore machines carry the side channels inside the session', () => {
   const key = 'A'.repeat(42) + 'Q';
-  const relayMac = { ...mac, addresses: ['wss://relay.example/acct'], agentKey: key };
+  const keyedMac = { ...mac, addresses: ['wss://box.example/abu'], agentKey: key };
   const ws = { machineId: 'mac', id: 'perch-a', name: 'a', projectPath: '/home/u/proj', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'idle' as const };
   const settle = () => new Promise((r) => setTimeout(r, 0));
 
-  function buildRelay(extra: Partial<ConstructorParameters<typeof PerchStore>[0]> = {}) {
+  function buildKeyed(extra: Partial<ConstructorParameters<typeof PerchStore>[0]> = {}) {
     const sent: Array<Record<string, unknown>> = [];
     let deliver: (m: unknown) => void = () => undefined;
     let open: () => void = () => undefined;
@@ -2101,7 +2101,7 @@ describe('PerchStore relay machines carry the side channels inside the session',
       return socket;
     };
     const aggregator = new WorkspaceAggregator();
-    const settings = new SettingsStore(memStorage([relayMac]));
+    const settings = new SettingsStore(memStorage([keyedMac]));
     const manager = new ConnectionManager({
       secureSocketFactory: () => socketFactory,
       aggregator,
@@ -2118,7 +2118,7 @@ describe('PerchStore relay machines carry the side channels inside the session',
   }
 
   it('loads a media preview in chunks inside the session', async () => {
-    const { store, deliver, bySent } = buildRelay();
+    const { store, deliver, bySent } = buildKeyed();
     store.open(ws);
     store.openFile('/home/u/proj/a.png');
     const [request] = bySent('readMedia');
@@ -2132,7 +2132,7 @@ describe('PerchStore relay machines carry the side channels inside the session',
   });
 
   it('shows the too-large state for a file over its cap', async () => {
-    const { store, deliver, bySent } = buildRelay();
+    const { store, deliver, bySent } = buildKeyed();
     store.open(ws);
     store.openFile('/home/u/proj/a.png');
     deliver({ type: 'media', id: bySent('readMedia')[0]!.id, result: 'too-large' });
@@ -2144,7 +2144,7 @@ describe('PerchStore relay machines carry the side channels inside the session',
     ['forbidden', 'may not read it'],
     ['not-found', 'not found'],
   ] as const)('says why the agent refused a preview (%s)', async (result, words) => {
-    const { store, deliver, bySent } = buildRelay();
+    const { store, deliver, bySent } = buildKeyed();
     store.open(ws);
     store.openFile('/home/u/proj/a.png');
     deliver({ type: 'media', id: bySent('readMedia')[0]!.id, result });
@@ -2154,7 +2154,7 @@ describe('PerchStore relay machines carry the side channels inside the session',
   });
 
   it('cancels a transfer when the viewer moves to another file or closes', () => {
-    const { store, bySent } = buildRelay();
+    const { store, bySent } = buildKeyed();
     store.open(ws);
     store.openFile('/home/u/proj/a.png');
     store.openFile('/home/u/proj/b.png');
@@ -2163,7 +2163,7 @@ describe('PerchStore relay machines carry the side channels inside the session',
   });
 
   it('opens the browser view as a stream inside the session', async () => {
-    const { store, deliver, bySent } = buildRelay();
+    const { store, deliver, bySent } = buildKeyed();
     deliver({ type: 'browserSessions', sessions: [{ name: 'perch-a' }] });
     expect(store.supportsBrowser('mac')).toBe(true);
     store.openBrowserView('mac', 'perch-a');
@@ -2187,7 +2187,7 @@ describe('PerchStore relay machines carry the side channels inside the session',
       markFlushed: vi.fn(),
       snapshot: () => [],
     };
-    const { deliver, bySent } = buildRelay({ connectionLog });
+    const { deliver, bySent } = buildKeyed({ connectionLog });
     deliver({ type: 'clientLogAck', id: bySent('clientLog')[0]!.id, ok: false });
     await settle();
     expect(connectionLog.markFlushed).not.toHaveBeenCalled();
@@ -2205,7 +2205,7 @@ describe('PerchStore relay machines carry the side channels inside the session',
       },
       snapshot: () => [],
     };
-    const { deliver, bySent } = buildRelay({ connectionLog, logMeta: { shell: 'pwa' } });
+    const { deliver, bySent } = buildKeyed({ connectionLog, logMeta: { shell: 'pwa' } });
     const [batch] = bySent('clientLog');
     expect(batch).toMatchObject({ batch: { shell: 'pwa', events: [{ seq: 4 }] } });
     deliver({ type: 'clientLogAck', id: batch!.id, ok: true });
@@ -2246,10 +2246,10 @@ describe('PerchStore device key', () => {
   });
 
   it('replaces an unreadable device key and reconnects the machines it connects', async () => {
-    const relay = { id: 'r', name: 'R', addresses: ['ws://127.0.0.1:8/acct'], token: 't', agentKey };
+    const keyed = { id: 'r', name: 'R', addresses: ['ws://127.0.0.1:8/acct'], token: 't', agentKey };
     const off = { id: 'd', name: 'D', addresses: ['ws://127.0.0.1:9/'], token: 't', agentKey, enabled: false };
     const replace = vi.fn(async () => fresh);
-    const store = make(unreadable, replace, [relay, off]);
+    const store = make(unreadable, replace, [keyed, off]);
     store.start();
     await settle();
     store.reconnected.mockClear();

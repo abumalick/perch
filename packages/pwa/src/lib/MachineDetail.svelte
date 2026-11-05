@@ -2,7 +2,7 @@
   import { untrack } from 'svelte';
   import type { PerchStore } from '../store.svelte';
   import type { MachineConfig } from '../core/settings-store';
-  import { parseAgentKey } from '../core/relay-key';
+  import { parseAgentKey } from '../core/agent-key';
   import { parseAddressLines } from '../core/machine-addresses';
   import StatusDot from './StatusDot.svelte';
   import ConfirmRemove from './ConfirmRemove.svelte';

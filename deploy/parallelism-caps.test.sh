@@ -43,9 +43,7 @@ check_cap "pwa vitest" "$root/packages/pwa/vite.config.ts" maxWorkers 4
 
 # Light (zod/pure domain) but defaults to one fork per core just the same.
 check_cap "contracts vitest" "$root/packages/contracts/vitest.config.ts" maxWorkers 4
-check_cap "relay vitest" "$root/packages/relay/vitest.config.ts" maxWorkers 4
 check_cap "secure-channel vitest" "$root/packages/secure-channel/vitest.config.ts" maxWorkers 4
-check_cap "relay-cf vitest" "$root/packages/relay-cf/vitest.config.ts" maxWorkers 4
 
 # Each Playwright worker is a full WebKit browser.
 check_cap "e2e playwright" "$root/packages/pwa/playwright.config.ts" workers 2

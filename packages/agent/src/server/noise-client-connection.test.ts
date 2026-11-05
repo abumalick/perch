@@ -5,9 +5,7 @@ import {
   SecureSession,
   b64url,
   deviceFingerprint,
-  ed25519Signer,
   encodeDeviceHello,
-  signDeviceHello,
   generateAgentKeys,
   generateDeviceKeys,
   handshakeFrame,
@@ -18,7 +16,7 @@ import {
 import type { FrameSocket } from '../ports/frame-socket';
 import type { DeviceStanding, EnrolmentMode } from '../application/device-roster';
 import { DeviceGateBusy, type DeviceGate, type Redemption } from '../ports/device-gate-port';
-import type { AgentRefusal } from '@perch/secure-channel';
+import type { Refusal } from '@perch/secure-channel';
 import { NoiseClientConnection } from './noise-client-connection';
 
 class FakeFrameSocket implements FrameSocket {
@@ -56,7 +54,7 @@ class FakeGate implements DeviceGate {
   enrolledVia: Array<'pairing' | 'token'> = [];
   pairings = new Set<string>();
   // Secrets this gate knows are dead, and why.
-  dead = new Map<string, AgentRefusal>();
+  dead = new Map<string, Refusal>();
   redeemed: string[] = [];
   burned: Array<{ secret: string; device: string }> = [];
   async redeemPairing(secret: string, _device: string): Promise<Redemption> {
@@ -117,6 +115,10 @@ function setup() {
   return { socket, conn, received, timers, gate, logs, authenticated, pushes, budget };
 }
 
+// What a PWA from before direct connections puts in its hello: an Ed25519 signature for a relay
+// (86 base64url characters). The agent no longer reads it.
+const OLD_RELAY_PROOF = 'A'.repeat(86);
+
 // Plays a phone with a device key: an IK handshake, then its end of the session. `proof` builds the
 // hello as a PWA from before direct connections did, signed for a relay.
 async function ikHandshake(
@@ -131,7 +133,7 @@ async function ikHandshake(
       name: 'test phone',
       ...(hello.push ? { push: true } : {}),
       ...(hello.proof
-        ? { proof: await signDeviceHello(ed25519Signer(device.ed25519.privateKey), b64url.decode(device.x25519.publicKey), hash) }
+        ? { proof: OLD_RELAY_PROOF }
         : {}),
     });
   socket.deliver(handshakeFrame(await initiator.writeMessage1(payload), 'ik'));

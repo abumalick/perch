@@ -109,8 +109,8 @@ export interface TransportPair {
 class HandshakeError extends Error {}
 
 // Message 1 was sealed for another responder key: the phone pinned another agent's key. Nothing
-// else fails that first decryption except a frame altered on the way, which the relay could also
-// do by closing the socket.
+// else fails that first decryption except a frame altered on the way, which whatever sits on the
+// path could also do by closing the socket.
 export class WrongStaticKeyError extends HandshakeError {}
 
 // The one encoding of an X25519 key that key generation produces: top bit clear, value below

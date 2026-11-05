@@ -41,6 +41,9 @@ import { connectBrowserUpstream } from './infrastructure/ws-browser-stream-socke
 import { WsServer } from './server/ws-server';
 import { startRelayLinks } from './server/relay-wiring';
 import { startDeviceGate } from './server/device-gate-wiring';
+import { startPhoneListener } from './infrastructure/phone-listener';
+import { PhoneAdmission } from './application/phone-admission';
+import { DiskReadLimiter } from './application/disk-read-limiter';
 import { wsRelayTransport } from './infrastructure/ws-relay-transport';
 import { frameSocketTransport } from './infrastructure/ws-frame-socket';
 import { loadOrCreateRelayKeys } from './infrastructure/relay-key-file';
@@ -166,6 +169,24 @@ async function main(): Promise<void> {
     log,
     rosterPollMs: ROSTER_POLL_MS,
   });
+  // A port another agent on this machine already holds (a second Linux user left on the default)
+  // must not take the relays down with it: the agent goes on without its phone port.
+  try {
+    const phones = await startPhoneListener({
+      port: config.phonePort,
+      gate,
+      server,
+      admission: new PhoneAdmission({ now: () => Date.now() }),
+      limiter: new DiskReadLimiter(() => Date.now()),
+      log,
+    });
+    log(`perch agent: phones on 127.0.0.1:${phones.port}`);
+    if (config.phoneAddresses.length > 0) log(`perch agent: phone addresses ${config.phoneAddresses.join(', ')}`);
+  } catch (err) {
+    process.stderr.write(
+      `perch agent: no phone port: 127.0.0.1:${config.phonePort} ${err instanceof Error ? err.message : String(err)}; set PERCH_PHONE_PORT in deploy/agent.env\n`,
+    );
+  }
   if (config.relayUrls.length > 0) {
     const relays = startRelayLinks({
       config,

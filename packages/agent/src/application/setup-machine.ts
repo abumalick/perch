@@ -78,6 +78,9 @@ export const DEFAULT_PWA_ORIGIN = 'https://tarfa.app';
 export const FUNNEL_PORTS = [443, 8443, 10000];
 const SLUG = /^[\w-]{1,64}$/;
 const SHELL_SAFE = /^[\w./@+-]+$/;
+// WHATWG URL takes `$ ( ) ` ; in a host, so a URL that parses is not yet one bash may read.
+const ADDRESS = /^wss:\/\/[A-Za-z0-9.-]+(:\d{1,5})?(\/[\w-]{0,64})?$/;
+const PWA_ORIGIN = /^https?:\/\/[A-Za-z0-9.-]+(:\d{1,5})?\/?$/;
 const FUNNEL_PORTS_CAP = 'https://tailscale.com/cap/funnel-ports?ports=';
 
 export function planSetup(flags: SetupFlags, state: SetupState): { steps: SetupStep[]; checks: string[] } | { error: string } {
@@ -325,13 +328,13 @@ export function parseSetupFlags(argv: string[]): SetupFlags | { error: string } 
   if (tailscale !== 'serve' && tailscale !== 'funnel' && tailscale !== 'none') return { error: '--tailscale takes serve, funnel or none' };
   const tailscalePort = single.has('--tailscale-port') ? portNumber(single.get('--tailscale-port')!) : undefined;
   if (tailscalePort === null) return { error: '--tailscale-port must be a port number' };
-  const bad = addresses.find((a) => !isMachineUrl(a) || !a.startsWith('wss://'));
+  const bad = addresses.find((a) => !isMachineUrl(a) || !ADDRESS.test(a));
   if (bad) return { error: `--address must be wss://<host>[:port][/<slug>] (got ${bad})` };
   let pwa: string | undefined;
   if (single.has('--pwa')) {
     try {
+      if (!PWA_ORIGIN.test(single.get('--pwa')!)) throw new Error();
       const url = new URL(single.get('--pwa')!);
-      if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error();
       pwa = url.origin;
     } catch {
       return { error: `--pwa must be the http(s) origin phones open the app at (got ${single.get('--pwa')})` };

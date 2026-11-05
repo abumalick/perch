@@ -63,6 +63,12 @@ check pre-push <<<"refs/heads/main ${tip} refs/heads/main ${tip}" || { cat "${SB
 # A new branch (no remote tip) is checked against everything no remote holds yet.
 zero=0000000000000000000000000000000000000000
 check pre-push <<<"refs/heads/main ${tip} refs/heads/new ${zero}" && fail "a new branch carrying the word in its history must fail"
+# Commits another remote holds are still new to the one pushed to: a private remote's history
+# must not reach a public one unchecked.
+git -C "${SB}/repo" update-ref refs/remotes/archive/main "${tip}"
+check pre-push origin <<<"refs/heads/main ${tip} refs/heads/new ${zero}" && fail "commits on another remote must still be checked for the one pushed to"
+check pre-push archive <<<"refs/heads/main ${tip} refs/heads/new ${zero}" || { cat "${SB}/out"; fail "commits the pushed-to remote already holds are not checked again"; }
+git -C "${SB}/repo" update-ref -d refs/remotes/archive/main
 check pre-push <<<"(delete) ${zero} refs/heads/gone ${tip}" || { cat "${SB}/out"; fail "deleting a remote branch publishes nothing"; }
 # A commit that only removes the word publishes nothing new.
 check pre-push <<<"refs/heads/main ${tip} refs/heads/main $(git -C "${SB}/repo" rev-parse HEAD~1)" || { cat "${SB}/out"; fail "a commit removing the word must pass"; }

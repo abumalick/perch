@@ -4,3 +4,6 @@ allowBuilds:
   esbuild: true
   node-pty: true
   workerd: true
+# A release must be a day old before an install resolves to it: a hijacked package version is
+# usually caught and pulled within hours, before it can reach the PWA bundle.
+minimumReleaseAge: 1440

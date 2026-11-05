@@ -14,10 +14,13 @@
 # use (a malformed ERE) fails the check.
 #
 # Arg 1 is the hook running it: `pre-push` reads git's ref lines on stdin, and
-# `pre-merge-commit` checks HEAD..MERGE_HEAD.
+# `pre-merge-commit` checks HEAD..MERGE_HEAD. For `pre-push`, arg 2 is the remote pushed to
+# (git's own first hook argument): a new branch is checked for every commit that remote does
+# not hold yet, whatever other remotes (a private archive) hold.
 set -euo pipefail
 
 HOOK="${1:-}"
+REMOTE="${2:-}"
 REPO="$(git rev-parse --show-toplevel)"
 WORDS="${PERCH_LEAK_WORDS:-${HOME}/.perch/leak-words.txt}"
 ZERO='0000000000000000000000000000000000000000'
@@ -87,7 +90,11 @@ case "${HOOK}" in
     while read -r _local_ref local_sha _remote_ref remote_sha; do
       [ "${local_sha}" = "${ZERO}" ] && continue
       if [ "${remote_sha}" = "${ZERO}" ]; then
-        search_range "${local_sha}" --not --remotes
+        if [ -n "${REMOTE}" ]; then
+          search_range "${local_sha}" --not --remotes="${REMOTE}"
+        else
+          search_range "${local_sha}"
+        fi
       else
         search_range "${remote_sha}..${local_sha}"
       fi

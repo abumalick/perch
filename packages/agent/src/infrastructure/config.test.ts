@@ -5,6 +5,10 @@ const base = { PERCH_MACHINE_ID: 'mini', PERCH_TOKEN: 'secret' };
 const relayed = { ...base, PERCH_RELAY_URLS: 'wss://relay.example.com' };
 
 describe('loadConfig', () => {
+  it('takes PERCH_PWA_ORIGIN over the tarfa.app default', () => {
+    expect(loadConfig({ ...base, PERCH_PWA_ORIGIN: 'https://self.example' }, '/home/u').pwaOrigin).toBe('https://self.example');
+  });
+
   it('applies defaults from the home directory', () => {
     const cfg = loadConfig(base, '/home/u');
     expect(cfg).toEqual({
@@ -12,6 +16,7 @@ describe('loadConfig', () => {
       token: 'secret',
       port: 8787,
       projectRoots: ['/home/u/workspace'],
+      pwaOrigin: 'https://tarfa.app',
       recentStorePath: '/home/u/.perch/recent.json',
       statusStorePath: '/home/u/.perch/status.json',
       hiddenFoldersPath: '/home/u/.perch/hidden-folders.json',

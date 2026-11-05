@@ -16,6 +16,35 @@ come, so the relays remain the way in. Both listeners bind `127.0.0.1` only: the
 - Verify node-pty: `mise exec -- pnpm --filter @perch/agent test` should pass (real tmux/node-pty). On Ubuntu, `node-pty` prebuilds + the spawn-helper postinstall work without extra build tools.
 - `deploy/run-agent.sh` and `run-pwa.sh` self-locate `mise`, so launchd/systemd units don't need mise on their PATH.
 
+## In one command: `perch setup`
+Steps 1, 2 and 4 below, plus a Tailscale address for phones, are one non-interactive command
+run from the checkout (`pnpm perch setup --help` lists every flag and the Tailscale primer):
+```sh
+pnpm perch setup --machine-id dev --project-roots ~/workspace --default-path ~/workspace \
+  --tailscale funnel --slug me --pair            # add --dry-run first to see the plan
+```
+It writes `deploy/agent.env` (backed up first, `600`; a `PERCH_TOKEN` only if there is none),
+creates the agent key, writes `~/.perch/devices.json` with token enrolment **off** before the
+service first starts (a missing roster would let the token enrol phones on a public port),
+installs the systemd user unit with linger or the launchd agent, runs `install-hooks`, adds one
+`tailscale serve` (or `funnel`) handler for the phone port, restarts the agent only if anything
+changed and checks the phone port answers. Rerun with the same flags, it changes nothing. It
+never replaces an agent key, a token, an installed unit that already runs this checkout's
+`deploy/run-agent.sh` with `KillMode=process`, or a `tailscale serve` entry pointing elsewhere.
+An existing `PERCH_PWA_ORIGIN` is kept unless `--pwa` names another (the default is
+`https://tarfa.app`). Where Tailscale needs root, it prints `sudo tailscale set --operator=$USER`
+and exits 1. The address it derives, `wss://<node>.<tailnet>.ts.net:<port>/<slug>`, goes first in
+`PERCH_PHONE_ADDRESSES`, then any `--address`; `perch pair` then mints links with all of them, in
+order, and `perch pair --relay <url>` still pairs through a relay.
+
+Several agents on one node share a Tailscale port under their own `--slug`, each with its own
+`--phone-port` (`setup` refuses a phone port another process holds). The node has one Tailscale
+operator, so a second Linux user runs
+`perch setup … --phone-port 8798 --tailscale none --slug <name> --address wss://<node>.<tailnet>.ts.net/<name>`,
+which prints the `tailscale serve --bg --https=443 --set-path=/<name> http://127.0.0.1:8798`
+line for the operator. `tailscale serve` replaces whatever `x-forwarded-for` a client sends with
+the tailnet peer's address, so the per-address caps see the real client.
+
 ## 1. Configure each agent
 ```sh
 install -m 600 deploy/agent.env.example deploy/agent.env

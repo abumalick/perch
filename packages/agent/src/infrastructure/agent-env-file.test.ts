@@ -20,7 +20,16 @@ describe('agentEnvFile', () => {
     await chmod(path, 0o664);
     const backup = await agentEnvFile(path).write('PERCH_TOKEN=t\nPERCH_RELAY_URLS=wss://relay.example\n');
     expect((await stat(path)).mode & 0o777).toBe(0o600);
-    expect((await stat(backup)).mode & 0o777).toBe(0o600);
+    expect((await stat(backup!)).mode & 0o777).toBe(0o600);
     expect(await readdir(dir)).toHaveLength(2);
+  });
+
+  it('creates a missing agent.env, owner-only, with no backup', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'perch-agent-env-'));
+    dirs.push(dir);
+    const path = join(dir, 'agent.env');
+    expect(await agentEnvFile(path).write('PERCH_TOKEN=t\n')).toBeNull();
+    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    expect(await readdir(dir)).toEqual(['agent.env']);
   });
 });

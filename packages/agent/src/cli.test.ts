@@ -279,9 +279,31 @@ describe('perch pair / connect (arguments and agent.env)', () => {
   it('asks which relay when there are several, and takes --relay and --pwa', async () => {
     const { home, env } = await machine(`${base}PERCH_RELAY_URLS=wss://a.example,wss://b.example\n`);
     await expect(run(['pair'], env, home)).rejects.toThrow(/--relay/);
-    await expect(run(['pair', '--relay', 'wss://b.example'], env, home)).rejects.toThrow(/--pwa/);
+    expect(await run(['pair', '--relay', 'wss://b.example'], env, home)).toContain('https://tarfa.app/#pair?');
     const out = await run(['pair', '--relay', 'wss://b.example', '--pwa', 'https://pwa.example/ignored/path'], env, home);
     expect(out).toContain('https://pwa.example/#pair?');
+  });
+
+  it('mints a link with every PERCH_PHONE_ADDRESSES address, in order', async () => {
+    const { home, env } = await machine(
+      'PERCH_MACHINE_ID=dev\nPERCH_TOKEN=t\nPERCH_DEFAULT_PATH=/home/u/workspace\nPERCH_RELAY_URLS=wss://relay.example\n' +
+        'PERCH_PHONE_ADDRESSES=wss://dev.example.ts.net:10000/abu,wss://dev.example.ts.net:8443/abu\n',
+    );
+    const out = await run(['pair'], env, home);
+    const link = out.split('\n').find((line) => line.startsWith('https://'))!;
+    const { agentKey, secret } = parsePairingLink(link)!;
+    expect(link).toBe(
+      `https://tarfa.app/#pair?u=wss://dev.example.ts.net:10000/abu&u=wss://dev.example.ts.net:8443/abu&k=${agentKey}&s=${secret}&n=dev&p=/home/u/workspace`,
+    );
+    // A relay still pairs when named, for machines not yet moved.
+    expect(parsePairingLink((await run(['pair', '--relay', 'wss://relay.example'], env, home)).split('\n').find((l) => l.startsWith('https://'))!)!.urls).toEqual([
+      expect.stringMatching(/^wss:\/\/relay\.example\/[\w-]+$/),
+    ]);
+  });
+
+  it('refuses a PERCH_PHONE_ADDRESSES address a phone would refuse', async () => {
+    const { home, env } = await machine(`${base}PERCH_PHONE_ADDRESSES=ws://dev.example.ts.net/abu\n`);
+    await expect(run(['pair'], env, home)).rejects.toThrow(/PERCH_PHONE_ADDRESSES/);
   });
 
   it('refuses a connect without a well-formed join key', async () => {
@@ -289,6 +311,108 @@ describe('perch pair / connect (arguments and agent.env)', () => {
     await expect(run(['connect', 'wss://relay.example'], env, home)).rejects.toThrow(/usage/);
     await expect(run(['connect', 'wss://relay.example', '--key', 'nope'], env, home)).rejects.toThrow(/join key/);
     await expect(run(['connect', 'wss://relay.example'], { ...env, PERCH_JOIN_KEY: 'nope' }, home)).rejects.toThrow(/join key/);
+  });
+});
+
+describe('perch setup (fake service and Tailscale)', () => {
+  const HOST = 'dev.example.ts.net';
+  async function machine(envText: string | null = null) {
+    const root = await mkdtemp(join(tmpdir(), 'perch-setup-'));
+    tmpDirs.push(root);
+    const repo = join(root, 'repo');
+    const home = join(root, 'home');
+    await mkdir(join(repo, 'deploy'), { recursive: true });
+    await mkdir(home);
+    await writeFile(join(repo, 'deploy', 'perch-agent.service'), '[Service]\nExecStart=/usr/bin/env bash REPO_PATH/deploy/run-agent.sh\nKillMode=process\n');
+    const envPath = join(repo, 'deploy', 'agent.env');
+    if (envText !== null) await writeFile(envPath, envText, { mode: 0o600 });
+    const calls: string[] = [];
+    let unit: string | null = null;
+    let served: Record<string, unknown> = {};
+    const io: CliIo = {
+      setup: {
+        service: {
+          kind: 'systemd',
+          template: () => readFile(join(repo, 'deploy', 'perch-agent.service'), 'utf8'),
+          installed: async () => unit,
+          enabled: async () => unit !== null,
+          install: async (text) => {
+            // The roster must be on disk before the service can first start.
+            calls.push(`install-unit roster=${await readFile(join(home, '.perch', 'devices.json'), 'utf8').then(() => 'present', () => 'absent')}`);
+            unit = text;
+            return ['enabled'];
+          },
+        },
+        tailscale: {
+          status: async () => ({
+            BackendState: 'Running',
+            CurrentTailnet: { MagicDNSEnabled: true },
+            CertDomains: [HOST],
+            Self: { DNSName: `${HOST}.`, CapMap: { funnel: null, 'https://tailscale.com/cap/funnel-ports?ports=443,8443,10000': null } },
+          }),
+          serveStatus: async () => served,
+          serve: async (entry) => {
+            calls.push(`serve ${entry.port}${entry.path} ${entry.target} funnel=${entry.funnel}`);
+            const hostPort = `${HOST}:${entry.port}`;
+            served = { TCP: { [entry.port]: { HTTPS: true } }, Web: { [hostPort]: { Handlers: { [entry.path]: { Proxy: entry.target } } } }, AllowFunnel: { [hostPort]: entry.funnel } };
+          },
+        },
+        portOwner: async () => 'free',
+        restart: { restart: async () => (calls.push('restart'), 'restarted') },
+        checkListener: async () => (calls.push('check'), true),
+      },
+    };
+    return { repo, home, env: { PERCH_AGENT_ENV: envPath }, envPath, calls, io };
+  }
+  const FLAGS = ['--machine-id', 'dev', '--project-roots', '/home/u/workspace', '--tailscale', 'funnel', '--slug', 'abu'];
+
+  it('sets a fresh machine up, then changes nothing when rerun', async () => {
+    const m = await machine();
+    const out = await run(['setup', ...FLAGS], m.env, m.home, m.io);
+    expect(out).toContain('the phone port answers');
+    expect(m.calls).toEqual(['install-unit roster=present', 'serve 10000/abu http://127.0.0.1:8797 funnel=true', 'restart', 'check']);
+    const values = Object.fromEntries((await readFile(m.envPath, 'utf8')).trim().split('\n').map((l) => l.split(/=(.*)/s).slice(0, 2)));
+    expect(values).toMatchObject({ PERCH_MACHINE_ID: 'dev', PERCH_PHONE_ADDRESSES: `wss://${HOST}:10000/abu`, PERCH_PWA_ORIGIN: 'https://tarfa.app' });
+    expect(values.PERCH_TOKEN).toMatch(/^[0-9a-f]{64}$/);
+    expect(enrolmentMode(await new FileDeviceStore(join(m.home, '.perch', 'devices.json')).read())).toBe('off');
+    expect(JSON.parse(await readFile(join(m.home, '.perch', 'relay-key.json'), 'utf8'))).toHaveProperty('x25519');
+    expect(await readFile(join(m.home, '.claude', 'settings.json'), 'utf8')).toContain('perch-hook.sh');
+
+    m.calls.length = 0;
+    const env = await readFile(m.envPath, 'utf8');
+    expect(await run(['setup', ...FLAGS], m.env, m.home, m.io)).toMatch(/already set up/);
+    expect(m.calls).toEqual(['check']);
+    expect(await readFile(m.envPath, 'utf8')).toBe(env);
+  });
+
+  it('prints a pairing link with --pair', async () => {
+    const m = await machine();
+    const out = await run(['setup', ...FLAGS, '--pair'], m.env, m.home, m.io);
+    const link = out.split('\n').find((line) => line.startsWith('https://tarfa.app/#pair?'))!;
+    expect(parsePairingLink(link)!.urls).toEqual([`wss://${HOST}:10000/abu`]);
+  });
+
+  it('changes nothing on a dry run', async () => {
+    const m = await machine('PERCH_TOKEN=keep\n');
+    const out = await run(['setup', ...FLAGS, '--dry-run'], m.env, m.home, m.io);
+    expect(out).toContain('tailscale: Funnel allowed on port 10000');
+    expect(out).toContain('tailscale funnel --bg --https=10000 --set-path=/abu http://127.0.0.1:8797');
+    expect(m.calls).toEqual([]);
+    expect(await readFile(m.envPath, 'utf8')).toBe('PERCH_TOKEN=keep\n');
+    await expect(readFile(join(m.home, '.perch', 'devices.json'))).rejects.toThrow();
+  });
+
+  it('explains itself with --help: Funnel, slugs and the second user', async () => {
+    const m = await machine();
+    const help = await run(['setup', '--help'], m.env, m.home, m.io);
+    expect(help).toContain('funnel');
+    expect(help).toContain('--slug');
+    expect(help).toContain('sudo tailscale set --operator=$USER');
+  });
+
+  it('answers an unknown flag with the usage and exit code 2', async () => {
+    const m = await machine();
+    await expect(run(['setup', ...FLAGS, '--relay', 'x'], m.env, m.home, m.io)).rejects.toMatchObject({ exitCode: 2, message: expect.stringContaining('usage: perch setup') });
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DiskReadLimiter, limitedDevices } from './disk-read-limiter';
 import { EMPTY_ROSTER, type DeviceRoster } from './device-roster';
-import type { DeviceGate } from '../ports/device-gate-port';
+import { DeviceGateBusy, type DeviceGate } from '../ports/device-gate-port';
 
 function clock() {
   let t = 0;
@@ -86,7 +86,7 @@ describe('limitedDevices', () => {
     const limiter = new DiskReadLimiter(clock().now, 4, 1);
     const devices = limitedDevices(inner, limiter, () => null);
     expect(await devices.check('stranger')).toEqual({ standing: 'unknown', enrolment: 'on' });
-    await expect(devices.check('stranger')).rejects.toThrow();
+    await expect(devices.check('stranger')).rejects.toBeInstanceOf(DeviceGateBusy);
     expect(inner.checks).toBe(1);
   });
 
@@ -95,7 +95,7 @@ describe('limitedDevices', () => {
     const limiter = new DiskReadLimiter(clock().now, 4, 1);
     const devices = limitedDevices(inner, limiter, () => null);
     expect(await devices.redeemPairing('s', 'k')).toEqual({ redeemed: true, fresh: true });
-    await expect(devices.redeemPairing('s', 'k')).rejects.toThrow();
+    await expect(devices.redeemPairing('s', 'k')).rejects.toBeInstanceOf(DeviceGateBusy);
     expect(inner.redeems).toBe(1);
   });
 });

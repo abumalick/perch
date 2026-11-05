@@ -308,6 +308,20 @@ describe('phones on the phone port', () => {
       expect(sockets[1]!.socket.readyState).toBe(WebSocket.OPEN);
     });
 
+    it('never evicts an authenticated phone, however many strangers come after it', async () => {
+      const device = await enrolled(stack);
+      const conn = await phone(stack, device);
+      cleanups.push(() => conn.close());
+      conn.send({ type: 'auth', token: '' });
+      await conn.next('authResult');
+      const strangers: Opened[] = [];
+      for (let i = 0; i < 40; i++) strangers.push(await open(stack.url));
+      cleanups.push(() => strangers.forEach((s) => s.socket.terminate()));
+      await strangers[7]!.closed;
+      conn.send({ type: 'list' });
+      expect(await conn.next('workspaces')).toMatchObject({ workspaces: [] });
+    });
+
     it('refuses a ninth unauthenticated socket from one forwarded address, in band', async () => {
       const sockets: Opened[] = [];
       for (let i = 0; i < 8; i++) sockets.push(await open(stack.url, { 'x-forwarded-for': '203.0.113.7' }));

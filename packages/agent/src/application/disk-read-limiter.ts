@@ -1,4 +1,4 @@
-import type { DeviceGate } from '../ports/device-gate-port';
+import { DeviceGateBusy, type DeviceGate } from '../ports/device-gate-port';
 import { enrolmentMode, standingOf, type DeviceRoster } from './device-roster';
 
 const WINDOW_MS = 60_000;
@@ -32,22 +32,15 @@ export class DiskReadLimiter {
   }
 }
 
-class DiskReadLimited extends Error {
-  constructor() {
-    super('disk reads limited');
-  }
-}
-
 async function limited<T>(limiter: DiskReadLimiter, read: () => Promise<T>): Promise<T> {
   const result = await limiter.run(read);
-  if (result === 'limited') throw new DiskReadLimited();
+  if (result === 'limited') throw new DeviceGateBusy();
   return result;
 }
 
 // The device gate a direct socket uses. A key enrolled as of the last roster read (`roster`) is
 // answered from it, so the owner's phones never wait on the limiter; any other check, and every
-// pairing secret spent, goes through it. A limited read fails as an unreadable roster does, which
-// the connection already answers.
+// pairing secret spent, goes through it. A limited read fails with DeviceGateBusy.
 export function limitedDevices(devices: DeviceGate, limiter: DiskReadLimiter, roster: () => DeviceRoster | null): DeviceGate {
   return {
     check: async (x25519) => {

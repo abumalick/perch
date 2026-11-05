@@ -41,18 +41,24 @@ export function startDeviceGate(deps: DeviceGateDeps): AgentDeviceGate {
   const { keys, server, store, log } = deps;
   const account = accountId(keys.ed25519.publicKey);
   const listeners: Array<() => void> = [];
+  let last: DeviceRoster | null = null;
   const changed = () => listeners.forEach((l) => l());
+  // After this agent's own write, so a phone it just enrolled is known at its next connect
+  // rather than the next poll.
+  const wrote = () => {
+    changed();
+    store.read().then((roster) => (last = roster), () => undefined);
+  };
   const devices = new RosterDevices({
     store,
     pairings: deps.pairings,
     now: () => new Date(),
     account,
     enrolKey: enrolKey(deps.token, account),
-    onChange: changed,
+    onChange: wrote,
   });
   const pushBudget = new PushBudget(() => Date.now());
   const refusalLog = new LimitedLog(log, () => Date.now());
-  let last: DeviceRoster | null = null;
   // `perch devices` edits the roster from another process: close the sessions of devices it
   // revoked, and tell the relays.
   const monitor = new RosterMonitor(

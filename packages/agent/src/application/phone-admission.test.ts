@@ -19,6 +19,14 @@ describe('clientAddress', () => {
     expect(clientAddress('100.1.1.1', '9.9.9.9')).toBe('100.1.1.1');
   });
 
+  it('counts an IPv6 client by its /64, which one subscriber holds whole', () => {
+    expect(clientAddress('127.0.0.1', '2001:db8:1:2:aaaa::1')).toBe('2001:db8:1:2::/64');
+    expect(clientAddress('127.0.0.1', '2001:db8:1:2:bbbb:cccc:dddd:eeee')).toBe('2001:db8:1:2::/64');
+    expect(clientAddress('127.0.0.1', '2001:db8::1')).toBe('2001:db8:0:0::/64');
+    expect(clientAddress('127.0.0.1', '::ffff:203.0.113.7')).toBe('203.0.113.7');
+    expect(clientAddress('127.0.0.1', '203.0.113.7')).toBe('203.0.113.7');
+  });
+
   it('names no client for a loopback peer without the header', () => {
     expect(clientAddress('127.0.0.1', undefined)).toBeNull();
     expect(clientAddress('127.0.0.1', ' , ')).toBeNull();

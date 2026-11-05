@@ -74,23 +74,22 @@ export function startPhoneListener(opts: PhoneListenerOptions): Promise<PhoneLis
     });
   });
 
-  const heartbeat = setInterval(() => {
-    for (const ws of wss.clients) {
-      if (!alive.get(ws)) {
-        ws.terminate();
-        continue;
-      }
-      alive.set(ws, false);
-      ws.ping();
-    }
-  }, opts.heartbeatMs ?? HEARTBEAT_MS);
-  heartbeat.unref();
-
   return new Promise((resolve, reject) => {
     http.once('error', reject);
     http.listen(opts.port, LOOPBACK, () => {
       http.off('error', reject);
       http.on('error', (err) => opts.log(`phone port: ${err.message}`));
+      const heartbeat = setInterval(() => {
+        for (const ws of wss.clients) {
+          if (!alive.get(ws)) {
+            ws.terminate();
+            continue;
+          }
+          alive.set(ws, false);
+          ws.ping();
+        }
+      }, opts.heartbeatMs ?? HEARTBEAT_MS);
+      heartbeat.unref();
       const address = http.address();
       resolve({
         port: typeof address === 'object' && address ? address.port : opts.port,

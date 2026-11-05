@@ -4,7 +4,8 @@ Perch is a mobile-first PWA to view and interact with Claude Code terminal sessi
 (tmux workspaces) running on multiple machines, from an iPhone. An **agent** runs on each
 machine (e.g. a Mac and a Linux box) and dials out to one or more **relays**; the **PWA**
 reaches each agent only through a relay, in an end-to-end Noise session keyed by the phone's
-device key, and streams its terminals. No agent listens on a phone-facing port.
+device key, and streams its terminals. Each agent also has a loopback phone port that phones
+will reach directly once it is published (Runtime section); no agent listens off loopback.
 
 ## Golden rules
 - **All code, docs, comments, and commits in English.**
@@ -104,9 +105,11 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     sockets a minute per address. A session leaves every count once authenticated (a pushed
     session only at its first frame, as on the relay path). Refusals are in band, `4429`.
   - **The client address is `x-forwarded-for`'s last hop, believed only from a loopback peer**;
-    a loopback peer naming nobody counts against the total only.
+    a loopback peer naming nobody counts against the total only. IPv6 counts by its /64.
   - **Roster and pairing-file reads a stranger can cause are limited** (`DiskReadLimiter`, 4 at
-    once, 10 a minute; a limited read fails as an unreadable roster). An enrolled key is answered
+    once, 10 a minute). A limited read closes the socket as busy (`4429` "too many pending", which
+    the phone retries), never as a verdict on its code: an unread pairing code may still be live,
+    and must not fall through to the token check. An enrolled key is answered
     from the roster the monitor last read, so the owner's phones never wait on it.
   - **A taken phone port does not stop the agent:** it logs `no phone port` and keeps its relays,
     since a second Linux user's agent left on the default would otherwise crash-loop.

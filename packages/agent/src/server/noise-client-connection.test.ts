@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  IN_BAND_REFUSAL,
   IkInitiator,
   SecureSession,
   b64url,
@@ -16,7 +17,7 @@ import {
 } from '@perch/secure-channel';
 import type { FrameSocket } from '../ports/frame-socket';
 import type { DeviceStanding, EnrolmentMode } from '../application/device-roster';
-import type { DeviceGate, Redemption } from '../ports/device-gate-port';
+import { DeviceGateBusy, type DeviceGate, type Redemption } from '../ports/device-gate-port';
 import type { AgentRefusal } from '@perch/secure-channel';
 import { NoiseClientConnection } from './noise-client-connection';
 
@@ -393,6 +394,27 @@ describe('NoiseClientConnection with device keys (IK)', () => {
     const phone = await ikHandshake(socket, device, { proof: false });
     deliver(socket, phone, { type: 'auth', token: '' });
     expect(received).toEqual([{ type: 'auth', token: '' }]);
+  });
+
+  it('tells a phone the machine is busy, without answering, when its roster check is turned away', async () => {
+    const { socket, gate } = setup();
+    gate.check = () => Promise.reject(new DeviceGateBusy());
+    const attempt = ikHandshake(socket).catch(() => undefined);
+    await settled(socket);
+    expect(socket.sent).toEqual([]);
+    expect(socket.closedWith).toEqual({ code: IN_BAND_REFUSAL + 429, reason: REFUSAL.tooManyPending });
+    await attempt;
+  });
+
+  it('tells a phone the machine is busy when spending its pairing code is turned away, never that the code failed', async () => {
+    const { socket, received, gate } = setup();
+    gate.enrolment = 'off';
+    gate.redeemPairing = () => Promise.reject(new DeviceGateBusy());
+    const phone = await ikHandshake(socket);
+    deliver(socket, phone, { type: 'auth', token: 's'.repeat(43) });
+    await flush();
+    expect(received).toEqual([]);
+    expect(socket.closedWith).toEqual({ code: IN_BAND_REFUSAL + 429, reason: REFUSAL.tooManyPending });
   });
 
   it('refuses a revoked device before answering the handshake', async () => {

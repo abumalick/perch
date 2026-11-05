@@ -2,8 +2,10 @@ const WINDOW_MS = 60_000;
 export const UNAUTHENTICATED_PER_ADDRESS = 8;
 export const UNAUTHENTICATED_TOTAL = 32;
 export const HANDSHAKES_PER_MINUTE = 20;
-// Past this many addresses in the rate table, the ones idle for a minute are swept.
+// Past this many addresses in the rate table, the ones idle for a minute are swept, at most once
+// a second so an address flood does not make every admit walk the table.
 const SWEEP_AT = 1024;
+const SWEEP_EVERY_MS = 1000;
 
 const LOOPBACK = /^(127\.\d+\.\d+\.\d+|::1|::ffff:127\.\d+\.\d+\.\d+)$/;
 
@@ -12,9 +14,26 @@ const LOOPBACK = /^(127\.\d+\.\d+\.\d+|::1|::ffff:127\.\d+\.\d+\.\d+)$/;
 // x-forwarded-for, its last hop being the one that proxy saw. A loopback peer naming nobody is
 // null: one address shared by every client behind it, which a per-address cap would lock out.
 export function clientAddress(peer: string, forwardedFor: string | undefined): string | null {
-  if (!LOOPBACK.test(peer)) return peer;
+  if (!LOOPBACK.test(peer)) return subscriber(peer);
   const last = (forwardedFor ?? '').split(',').map((hop) => hop.trim()).filter(Boolean).at(-1);
-  return last ?? null;
+  return last === undefined ? null : subscriber(last);
+}
+
+// An IPv6 client is counted by its /64: a single subscriber is handed one whole, so counting
+// each address would give one client endless fresh ones.
+function subscriber(address: string): string {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
+  if (mapped) return mapped[1]!;
+  if (!address.includes(':') || address.includes('.')) return address;
+  const [head, tail, ...rest] = address.split('::');
+  if (rest.length > 0) return address;
+  const front = head ? head.split(':') : [];
+  const back = tail ? tail.split(':') : [];
+  const missing = 8 - front.length - back.length;
+  if (tail === undefined ? front.length !== 8 : missing < 1) return address;
+  const groups = [...front, ...Array<string>(missing).fill('0'), ...back];
+  if (!groups.every((g) => /^[0-9a-f]{1,4}$/i.test(g))) return address;
+  return `${groups.slice(0, 4).map((g) => Number.parseInt(g, 16).toString(16)).join(':')}::/64`;
 }
 
 export type Admission = { ok: true; release: () => void; authenticated: () => void } | { ok: false; reason: 'address' | 'rate' };
@@ -33,6 +52,7 @@ export class PhoneAdmission {
   private readonly pending = new Set<Entry>();
   private readonly perAddressCount = new Map<string, number>();
   private readonly opened = new Map<string, number[]>();
+  private lastSweep = -Infinity;
   private readonly perAddress: number;
   private readonly total: number;
   private readonly handshakesPerMinute: number;
@@ -49,7 +69,7 @@ export class PhoneAdmission {
     if (address !== null) {
       if ((this.perAddressCount.get(address) ?? 0) >= this.perAddress) return { ok: false, reason: 'address' };
       const now = this.now();
-      if (this.opened.size > SWEEP_AT) this.sweep(now);
+      if (this.opened.size > SWEEP_AT && now - this.lastSweep >= SWEEP_EVERY_MS) this.sweep(now);
       const recent = (this.opened.get(address) ?? []).filter((t) => now - t < WINDOW_MS);
       if (recent.length >= this.handshakesPerMinute) {
         this.opened.set(address, recent);
@@ -78,6 +98,7 @@ export class PhoneAdmission {
   }
 
   private sweep(now: number): void {
+    this.lastSweep = now;
     for (const [address, times] of this.opened) {
       if (times.every((t) => now - t >= WINDOW_MS)) this.opened.delete(address);
     }

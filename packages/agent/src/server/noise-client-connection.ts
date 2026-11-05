@@ -1,6 +1,7 @@
 import { PROTOCOL_VERSION, type AgentMessage } from '@perch/contracts';
 import {
   DEVICE_REFUSED,
+  IN_BAND_REFUSAL,
   REFUSAL,
   IkResponder,
   WrongStaticKeyError,
@@ -17,11 +18,12 @@ import {
   type DeviceHello,
 } from '@perch/secure-channel';
 import type { DeviceStanding, EnrolmentMode } from '../application/device-roster';
-import type { DeviceGate, Redemption } from '../ports/device-gate-port';
+import { DeviceGateBusy, type DeviceGate, type Redemption } from '../ports/device-gate-port';
 import type { ClientConnection } from '../ports/client-connection';
 import type { FrameSocket } from '../ports/frame-socket';
 
 const SECURE_CHANNEL_FAILED = 4002;
+const BUSY = IN_BAND_REFUSAL + 429;
 // Until the handler has accepted the token, a socket would otherwise hold one of the relay's few
 // pair slots until an idle timeout.
 const AUTH_TIMEOUT_MS = 10_000;
@@ -218,7 +220,7 @@ export class NoiseClientConnection implements ClientConnection {
     this.state = { kind: 'checking' };
     Promise.all([this.options.devices.check(key), verifyDeviceHello(hello, responder.remoteStatic(), responder.payloadHash())]).then(
       ([{ standing, enrolment }, proven]) => this.admit(responder, hello, key, standing, enrolment, proven),
-      () => this.fail('device roster unreadable'),
+      (err) => (err instanceof DeviceGateBusy ? this.fail(REFUSAL.tooManyPending, BUSY) : this.fail('device roster unreadable')),
     );
   }
 
@@ -354,7 +356,11 @@ export class NoiseClientConnection implements ClientConnection {
     };
     const failed = () => resume({ redeemed: false });
     if (this.state.kind === 'enrolling') {
-      this.options.devices.redeemPairing(secret, key).then(resume, failed);
+      // Turned away unread, the code may still be live: not a verdict on it, nor a reason to try
+      // it as a token.
+      this.options.devices
+        .redeemPairing(secret, key)
+        .then(resume, (err) => (err instanceof DeviceGateBusy ? this.fail(REFUSAL.tooManyPending, BUSY) : failed()));
     } else {
       // An enrolled device is served whatever became of the code: its key is its credential.
       this.options.devices.burnPairing(secret, key).then(

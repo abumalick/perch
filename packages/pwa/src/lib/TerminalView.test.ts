@@ -90,7 +90,7 @@ function fakeStore(
   machines: { id: string; name: string; defaultPath?: string }[] = [{ id: 'mac', name: 'Mac' }],
 ) {
   return {
-    machines: machines.map((m) => ({ agentKey: AGENT_KEY, ...m })),
+    machines: machines.map((m) => ({ agentKey: AGENT_KEY, addresses: ['wss://m/'], ...m })),
     active: { machineId: 'mac', id: 'perch-a', name: 'api', projectPath: '/home/u/workspace/perch', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'idle' as const },
     terminalState: 'live' as const,
     autoFocus,

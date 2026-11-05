@@ -24,9 +24,6 @@ describe('describeConnectionError', () => {
     expect(fr('closed by agent — wrong agent key')).toBe('fermée par l’agent — wrong agent key');
     expect(fr('opened then dropped')).toBe('ouverte puis perdue');
     expect(fr('auth rejected')).toBe('authentification refusée');
-    expect(fr('old direct entry — no longer supported; pair this machine again')).toBe(
-      'ancienne entrée directe — plus prise en charge ; associez à nouveau cette machine',
-    );
     expect(fr('something new')).toBe('something new');
   });
 

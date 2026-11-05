@@ -1,16 +1,18 @@
 <script lang="ts">
   import type { PerchStore } from '../store.svelte';
   import { parseAgentKey } from '../core/relay-key';
+  import { parseAddressLines } from '../core/machine-addresses';
   import { msg } from '../i18n.svelte';
 
   let { store }: { store: PerchStore } = $props();
 
   let name = $state('');
-  let url = $state('');
+  let addresses = $state('');
   let token = $state('');
   let defaultPath = $state('');
   let agentKey = $state('');
   let keyError = $state('');
+  let addressError = $state('');
 
   function slug(value: string): string {
     return value.trim().toLowerCase().replace(/\s+/g, '-');
@@ -18,15 +20,15 @@
 
   function add(event: SubmitEvent): void {
     event.preventDefault();
-    if (!name || !url || !token) return;
-    if (!parseAgentKey(agentKey)) {
-      keyError = msg().settings.agentKeyRequired;
-      return;
-    }
+    if (!name || !token) return;
+    const parsed = parseAddressLines(addresses);
+    addressError = parsed ? '' : msg().settings.addressesInvalid;
+    keyError = parseAgentKey(agentKey) ? '' : msg().settings.agentKeyRequired;
+    if (!parsed || keyError) return;
     store.addMachine({
       id: slug(name),
       name,
-      url,
+      addresses: parsed,
       token,
       defaultPath: defaultPath || undefined,
       agentKey: agentKey.trim(),
@@ -43,7 +45,12 @@
 
   <form onsubmit={add}>
     <label>{msg().settings.name} <input bind:value={name} /></label>
-    <label>{msg().settings.url} <input bind:value={url} placeholder="wss://relay.example.com/account" /></label>
+    <label>
+      {msg().settings.addresses}
+      <textarea bind:value={addresses} rows="3" placeholder="wss://machine.example.ts.net:10000/" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
+    </label>
+    <p class="hint">{msg().settings.addressesHint}</p>
+    {#if addressError}<p class="error" role="alert">{addressError}</p>{/if}
     <label>{msg().settings.token} <input bind:value={token} type="password" /></label>
     <label>{msg().settings.defaultPath} <input bind:value={defaultPath} placeholder="/home/u/workspace" /></label>
     <label>
@@ -59,7 +66,10 @@
   header { display: flex; align-items: center; gap: 0.5rem; }
   header h2 { margin: 0; font-size: 1rem; font-weight: 600; }
   label { display: block; margin: 0.5rem 0; }
-  input { width: 100%; min-height: 44px; box-sizing: border-box; }
+  input,
+  textarea { width: 100%; min-height: 44px; box-sizing: border-box; }
+  textarea { font: inherit; resize: vertical; }
+  .hint { margin: 0.25rem 0; font-size: 0.8rem; color: var(--text-dim); }
   .error { color: var(--danger, #c0392b); font-size: 0.85rem; margin: 0.25rem 0; }
   button.icon {
     flex: 0 0 auto;

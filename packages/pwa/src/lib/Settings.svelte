@@ -6,12 +6,10 @@
   import { trackDimensions, type Dimensions } from './viewport';
   import StatusDot from './StatusDot.svelte';
   import { inputLog, type InputLogRecord } from '../core/terminal-input-log';
-  import { isRelayMachine } from '../core/settings-store';
-  import { relayHost } from '../core/relay-host';
+  import { addressHost } from '../core/machine-addresses';
   import PairMachine from './PairMachine.svelte';
   import MachineDetail from './MachineDetail.svelte';
   import DictationPresets from './DictationPresets.svelte';
-  import ConfirmRemove from './ConfirmRemove.svelte';
   import { STATUS_LABEL, describeConnectionError } from './machine-status';
   import { isAndroid } from './android-input';
   import { msg } from '../i18n.svelte';
@@ -54,7 +52,6 @@
   // Closes by itself if the entry goes away underneath (removed from another page context).
   const openMachine = $derived(store.machines.find((m) => m.id === openId) ?? null);
 
-  let removing = $state<MachineConfig | null>(null);
 
   let addOpen = $state(false);
   const showAdd = $derived(addOpen || store.machines.length === 0);
@@ -104,25 +101,15 @@
     <p class="group">{msg().settings.machines}</p>
     <ul class="card list">
       {#each store.machines as machine (machine.id)}
+        {@const { shown, err } = statusOf(machine)}
         <li>
-          {#if !isRelayMachine(machine)}
-            <div class="row legacy">
-              <StatusDot status="off" />
-              <span class="text">
-                <span class="name">{machine.name}</span>
-                <span class="sub" data-testid="legacy-entry">{msg().settings.legacyEntry}</span>
-              </span>
-              <button type="button" class="small danger" onclick={() => (removing = machine)}>{msg().settings.delete}</button>
-            </div>
-          {:else}
-            {@const { shown, err } = statusOf(machine)}
             <div class="row">
               <button type="button" class="open" onclick={() => (openId = machine.id)}>
                 <span class="dot" aria-hidden="true"><StatusDot status={shown} /></span>
                 <span class="text">
                   <span class="title">
                     <span class="name">{machine.name}</span>
-                    <span class="host" data-testid="relay-host">{relayHost(machine.url)}</span>
+                    <span class="host" data-testid="machine-host">{addressHost(machine.addresses?.[0] ?? '')}{#if (machine.addresses?.length ?? 0) > 1}{' '}+{machine.addresses.length - 1}{/if}</span>
                   </span>
                   {#if err}
                     <span class="sub diag" data-testid="diagnostic">{describeConnectionError(err)}</span>
@@ -143,7 +130,6 @@
                 <span class="knob"></span>
               </button>
             </div>
-          {/if}
         </li>
       {/each}
       <li>
@@ -262,18 +248,6 @@
   </section>
 {/if}
 
-{#if removing}
-  {@const machine = removing}
-  <ConfirmRemove
-    name={machine.name}
-    onConfirm={() => {
-      store.removeMachine(machine.id);
-      removing = null;
-    }}
-    onCancel={() => (removing = null)}
-  />
-{/if}
-
 <style>
   header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; }
   h2 { margin: 0; font-size: 1.15rem; }
@@ -305,7 +279,6 @@
   .host { font-size: 0.8rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .sub { font-size: 0.8rem; color: var(--text-dim); word-break: break-word; }
   .sub.diag { color: var(--danger); }
-  .legacy { padding: 0.6rem 0.9rem !important; }
   button { touch-action: manipulation; }
   .open {
     display: flex;
@@ -362,7 +335,6 @@
     white-space: nowrap;
   }
   .small:disabled { opacity: 0.5; }
-  .small.danger { border-color: var(--danger); background: transparent; color: var(--danger); min-height: 36px; }
   .wide { display: block; width: 100%; margin-top: 0.6rem; }
   .switch {
     flex: 0 0 auto;

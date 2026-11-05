@@ -2,8 +2,7 @@ import type { AgentMessage, ClientMessage } from '@perch/contracts';
 import { MachineConnection, type ConnectionDiagnostic, type ConnectionStatus } from './machine-connection';
 import type { SocketFactory } from './ports/socket';
 import type { WorkspaceAggregator } from './workspace-aggregator';
-import { en } from './i18n/en';
-import { isConnectable, isRelayMachine, type MachineConfig } from './settings-store';
+import { isConnectable, type MachineConfig } from './settings-store';
 import type { RefusalContext } from './refusal';
 
 export interface ConnectionManagerDeps {
@@ -63,15 +62,11 @@ export class ConnectionManager {
       }
     }
     for (const config of configs) {
-      if (!isRelayMachine(config)) {
-        this.notConnecting(config.id, en.status.diagnostic.legacyEntry);
-        continue;
-      }
-      if (config.enabled === false) continue;
+      if (!isConnectable(config)) continue;
       this.connections.get(config.id)?.close();
       this.configs.set(config.id, config);
       const conn = new MachineConnection({
-        url: config.url,
+        url: config.addresses[0]!,
         token: credential(config),
         socketFactory: (url) => this.socketFactoryFor(this.configs.get(config.id) ?? config)(url),
         onCredentialsSpent: (scope) => {
@@ -105,12 +100,6 @@ export class ConnectionManager {
       this.connections.set(config.id, conn);
       conn.connect();
     }
-  }
-
-  private notConnecting(machineId: string, message: string): void {
-    this.deps.aggregator.setMachineOffline(machineId);
-    this.deps.onStatus(machineId, 'offline');
-    this.deps.onDiagnostic?.(machineId, { message, at: this.now() });
   }
 
   // A machine is never reached in plaintext, which would hand its token to the relay: without a

@@ -162,7 +162,7 @@ const DEFAULT_WORKSPACES: FakeWorkspace[] = [
 // A machine entry for this fake, as a pairing would store it; `seedMachine` writes it before the
 // page loads.
 export function machineEntry(agent: FakeAgent, overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return { id: 'test', name: 'Test', url: agent.url, token: TOKEN, relay: true, agentKey: agent.agentKey, ...overrides };
+  return { id: 'test', name: 'Test', addresses: [agent.url], token: TOKEN, agentKey: agent.agentKey, ...overrides };
 }
 
 export async function seedMachine(page: Page, agent: FakeAgent, overrides: Record<string, unknown> = {}): Promise<void> {

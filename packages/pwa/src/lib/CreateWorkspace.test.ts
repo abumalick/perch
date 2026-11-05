@@ -6,8 +6,8 @@ import CreateWorkspace from './CreateWorkspace.svelte';
 function fakeStore(lastMachineId: string | null = null, over: Record<string, unknown> = {}) {
   return {
     machines: [
-      { id: 'mac', name: 'Mac', url: 'wss://mac', token: 't' },
-      { id: 'pc', name: 'PC', url: 'wss://pc', token: 't' },
+      { id: 'mac', name: 'Mac', addresses: ['wss://mac'], token: 't' },
+      { id: 'pc', name: 'PC', addresses: ['wss://pc'], token: 't' },
     ],
     statuses: { mac: 'online', pc: 'online' } as Record<string, string>,
     recentPaths: {
@@ -25,7 +25,7 @@ function fakeStore(lastMachineId: string | null = null, over: Record<string, unk
 
 function fakeStoreWithDefault(over: Record<string, unknown> = {}) {
   return {
-    machines: [{ id: 'box', name: 'Box', url: 'wss://box', token: 't', defaultPath: '/home/u/workspace' }],
+    machines: [{ id: 'box', name: 'Box', addresses: ['wss://box'], token: 't', defaultPath: '/home/u/workspace' }],
     statuses: { box: 'online' } as Record<string, string>,
     recentPaths: { box: [] as string[] },
     // The agent's reported roots that drive the Browse picker.
@@ -46,7 +46,7 @@ function fakeStoreWithDefault(over: Record<string, unknown> = {}) {
 
 function fakeStoreNoRoots() {
   return {
-    machines: [{ id: 'mac', name: 'Mac', url: 'wss://mac', token: 't' }],
+    machines: [{ id: 'mac', name: 'Mac', addresses: ['wss://mac'], token: 't' }],
     statuses: { mac: 'online' } as Record<string, string>,
     recentPaths: { mac: [] as string[] },
     machineRoots: {} as Record<string, string[]>,
@@ -64,7 +64,7 @@ function fakeStoreNoRoots() {
 
 function fakeStoreWithDefaultAndRecents() {
   return {
-    machines: [{ id: 'box', name: 'Box', url: 'wss://box', token: 't', defaultPath: '/home/u/workspace' }],
+    machines: [{ id: 'box', name: 'Box', addresses: ['wss://box'], token: 't', defaultPath: '/home/u/workspace' }],
     statuses: { box: 'online' } as Record<string, string>,
     recentPaths: { box: ['/home/u/workspace/scratch', '/other/place'] },
     machineRoots: {} as Record<string, string[]>,
@@ -128,8 +128,8 @@ describe('CreateWorkspace', () => {
   it('orders machine pills alphabetically regardless of config order, ignoring last-used for ordering', () => {
     const store = fakeStore(null, {
       machines: [
-        { id: 'zeta', name: 'Zeta', url: 'wss://zeta', token: 't' },
-        { id: 'alpha', name: 'Alpha', url: 'wss://alpha', token: 't' },
+        { id: 'zeta', name: 'Zeta', addresses: ['wss://zeta'], token: 't' },
+        { id: 'alpha', name: 'Alpha', addresses: ['wss://alpha'], token: 't' },
       ],
       statuses: { zeta: 'online', alpha: 'online' },
       recentPaths: {},
@@ -144,9 +144,9 @@ describe('CreateWorkspace', () => {
   it('excludes offline and disabled machines from the pills', () => {
     const store = fakeStore(null, {
       machines: [
-        { id: 'mac', name: 'Mac', url: 'wss://mac', token: 't' },
-        { id: 'pc', name: 'PC', url: 'wss://pc', token: 't', enabled: false },
-        { id: 'other', name: 'Other', url: 'wss://other', token: 't' },
+        { id: 'mac', name: 'Mac', addresses: ['wss://mac'], token: 't' },
+        { id: 'pc', name: 'PC', addresses: ['wss://pc'], token: 't', enabled: false },
+        { id: 'other', name: 'Other', addresses: ['wss://other'], token: 't' },
       ],
       statuses: { mac: 'online', pc: 'online', other: 'offline' },
       recentPaths: {},
@@ -160,8 +160,8 @@ describe('CreateWorkspace', () => {
   it('falls back to the alphabetically-first connected machine when the last-used one is not connected', () => {
     const store = fakeStore('pc', {
       machines: [
-        { id: 'mac', name: 'Mac', url: 'wss://mac', token: 't' },
-        { id: 'pc', name: 'PC', url: 'wss://pc', token: 't' },
+        { id: 'mac', name: 'Mac', addresses: ['wss://mac'], token: 't' },
+        { id: 'pc', name: 'PC', addresses: ['wss://pc'], token: 't' },
       ],
       statuses: { mac: 'online', pc: 'offline' },
       recentPaths: {},

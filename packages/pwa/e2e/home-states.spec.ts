@@ -31,7 +31,7 @@ test('when machines are unreachable, shows the relay hint and the reconnect scre
   // A machine pointed at a dead port never opens, so it lands in the unreachable state once
   // the connect grace period elapses.
   await seedMachines(page, [
-    { id: 'dead', name: 'Dead', url: 'ws://127.0.0.1:59999/acct', token: 'secret', agentKey: generateAgentKeys().x25519.publicKey },
+    { id: 'dead', name: 'Dead', addresses: ['ws://127.0.0.1:59999/acct'], token: 'secret', agentKey: generateAgentKeys().x25519.publicKey },
   ]);
   await page.goto('/');
 

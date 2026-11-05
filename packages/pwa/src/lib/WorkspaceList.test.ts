@@ -18,7 +18,7 @@ function fakeStore(
   folderHidden: string[] = [],
   folderFilterMode: 'only' | 'hide' = 'only',
 ) {
-  const machines = entries.map((m) => ({ agentKey: AGENT_KEY, ...m }));
+  const machines = entries.map((m) => ({ agentKey: AGENT_KEY, addresses: ['wss://m/'], ...m }));
   const statuses: Record<string, string> = { mac: 'online' };
   return {
     workspaces,
@@ -206,9 +206,9 @@ describe('WorkspaceList', () => {
     expect(screen.getByText('Mac')).toBeInTheDocument();
   });
 
-  it('does not count an old direct entry as another machine', () => {
+  it('does not count an entry it cannot connect as another machine', () => {
     const store = fakeStore([ws], [{ id: 'mac', name: 'Mac' }]);
-    store.machines.push({ id: 'old', name: 'Old box', agentKey: '' });
+    store.machines.push({ id: 'old', name: 'Old box', agentKey: '', addresses: ['wss://old/'] });
     render(WorkspaceList, { props: { store: store as never } });
     expect(screen.queryByText('Mac')).toBeNull();
   });

@@ -31,7 +31,6 @@ export const status: Messages['status'] = {
     closedByAgent: (reason) => `fermée par l’agent — ${reason}`,
     dropped: 'ouverte puis perdue',
     authRejected: 'authentification refusée',
-    legacyEntry: 'ancienne entrée directe — plus prise en charge ; associez à nouveau cette machine',
     networkError: 'probablement une erreur réseau — relais injoignable',
     neverOpened: 'jamais ouverte',
     secureChannel: 'échec du canal sécurisé',

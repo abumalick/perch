@@ -1,30 +1,32 @@
 import { deviceFingerprint, parsePairingLink, type PairingLink } from '@perch/secure-channel';
 import type { MachineConfig } from './settings-store';
+import { addressHost, normalizeAddress } from './machine-addresses';
 import { msg } from '../i18n.svelte';
 
 export type Paired = { ok: true; machine: MachineConfig } | { ok: false; reason: string };
 
-// The relay entry a pairing link makes. A link for an entry the phone already has, with the same
-// agent key, updates it rather than adding a second one, so scanning again after a failed attempt
-// (an expired code) retries in place. A link naming another agent key for that entry is refused:
-// taking it would re-pin the entry to a key whoever made the link may hold, and hand them the
-// entry's token on the next connect. An existing entry keeps its own name and default path; the
-// link's path only fills one it lacks.
+// The entry a pairing link makes. The phone keeps one entry per machine, known by its agent key:
+// a link naming a key the phone already has updates that entry (its addresses become the link's,
+// in the link's order), so scanning again after a failed attempt (an expired code) or after the
+// machine moved retries in place. A link naming an address that another key's entry holds is
+// refused: taking it would point that entry's address at a key whoever made the link may hold. An
+// existing entry keeps its own name and default path; the link's path only fills one it lacks.
 export function pairedMachine(machines: MachineConfig[], link: PairingLink, newId: () => string): Paired {
-  const existing = machines.find((m) => m.url === link.urls[0]);
-  if (existing && existing.agentKey?.trim() !== link.agentKey) {
-    return { ok: false, reason: msg().pairing.otherKey(existing.name) };
-  }
+  const addresses = link.urls.map((url) => normalizeAddress(url)!);
+  const taken = machines.find((m) => m.agentKey?.trim() !== link.agentKey && m.addresses?.some((a) => addresses.includes(normalizeAddress(a) ?? a)));
+  if (taken) return { ok: false, reason: msg().pairing.otherKey(taken.name) };
+  const existing = machines.find((m) => m.agentKey?.trim() === link.agentKey);
   const defaultPath = existing?.defaultPath || link.defaultPath;
   const path = defaultPath ? { defaultPath } : {};
-  if (existing) return { ok: true, machine: { ...existing, ...path, pairing: link.secret, enabled: true } };
-  return { ok: true, machine: { id: newId(), name: link.name, url: link.urls[0]!, token: '', agentKey: link.agentKey, ...path, pairing: link.secret } };
+  if (existing) return { ok: true, machine: { ...existing, addresses, ...path, pairing: link.secret, enabled: true } };
+  return { ok: true, machine: { id: newId(), name: link.name, addresses, token: '', agentKey: link.agentKey, ...path, pairing: link.secret } };
 }
 
-// What the owner is asked before a pairing link adds anything: any page can open such a link. The
-// machine key's fingerprint is the one `perch pair` prints beside the code, to compare by eye.
+// What the owner is asked before a pairing link adds anything: any page can open such a link. It
+// names every host the entry will dial, and the machine key's fingerprint that `perch pair` prints
+// beside the code, to compare by eye.
 export function pairingQuestion(link: PairingLink): string {
-  return msg().pairing.question(link.name, new URL(link.urls[0]!).host, deviceFingerprint(link.agentKey));
+  return msg().pairing.question(link.name, link.urls.map(addressHost).join(', '), deviceFingerprint(link.agentKey));
 }
 
 export interface PairingPrompts {

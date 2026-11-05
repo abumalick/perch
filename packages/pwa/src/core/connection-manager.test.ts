@@ -72,13 +72,13 @@ function harness() {
   return { manager, aggregator, sockets, messages, statuses, secureFor, secureFakes, diagnostics, phases, phaseReporters, spent };
 }
 
-const mac = { id: 'mac', name: 'Mac', url: 'wss://mac', token: 't1', agentKey };
-const mini = { id: 'mini', name: 'Mini', url: 'wss://mini', token: 't2', agentKey };
+const mac = { id: 'mac', name: 'Mac', addresses: ['wss://mac'], token: 't1', agentKey };
+const mini = { id: 'mini', name: 'Mini', addresses: ['wss://mini'], token: 't2', agentKey };
 
 describe('ConnectionManager relay machines', () => {
   it('connects a relay machine through the secure factory for its key', () => {
     const h = harness();
-    h.manager.setMachines([{ ...mini, url: 'wss://relay/acct' }]);
+    h.manager.setMachines([{ ...mini, addresses: ['wss://relay/acct'] }]);
     expect(h.secureFor).toEqual([`${agentKey} ${mini.token}`]);
     expect(Object.keys(h.sockets)).toEqual(['wss://relay/acct']);
   });
@@ -153,65 +153,29 @@ describe('ConnectionManager relay machines', () => {
   });
 
   it.each([
-    ['no key', undefined],
-    ['an empty key', ''],
+    ['no key', ''],
     ['a malformed key', 'not-a-key'],
     ['a key of the wrong length', agentKey.slice(0, 40)],
-  ])('treats an entry with %s as an old direct entry: no socket, and says why', (_label, key) => {
+  ])('opens no socket for an entry with %s', (_label, key) => {
     const h = harness();
     h.manager.setMachines([{ ...mac, agentKey: key }]);
     expect(h.sockets).toEqual({});
-    expect(h.statuses).toEqual([['mac', 'offline']]);
-    expect(h.diagnostics).toEqual([['mac', 'old direct entry — no longer supported; pair this machine again']]);
   });
 
-  it('drops a connected relay machine whose key is cleared, and never reconnects it', () => {
+  it('opens no socket for an entry with no address it can dial', () => {
+    const h = harness();
+    h.manager.setMachines([{ ...mac, addresses: [] }, { ...mini, addresses: ['https://mini'] }]);
+    expect(h.sockets).toEqual({});
+  });
+
+  it('drops a connected machine whose key is cleared, and never reconnects it', () => {
     const h = harness();
     h.manager.setMachines([mac]);
-    h.manager.setMachines([{ ...mac, agentKey: undefined }]);
+    h.manager.setMachines([{ ...mac, agentKey: '' }]);
     expect(h.sockets['wss://mac']!.isClosed()).toBe(true);
     h.manager.send('mac', { type: 'list' });
     h.manager.reconnect('mac');
     expect(h.secureFakes).toHaveLength(1);
-  });
-
-  it('connects an entry stored with the old relay flag like any other', () => {
-    const h = harness();
-    h.manager.setMachines([{ ...mac, relay: true }]);
-    expect(Object.keys(h.sockets)).toEqual(['wss://mac']);
-  });
-
-  it('stamps a diagnostic with the injected clock', () => {
-    const at: number[] = [];
-    const manager = new ConnectionManager({
-      secureSocketFactory: () => () => fakeSocket().socket,
-      aggregator: new WorkspaceAggregator(),
-      onMessage: () => undefined,
-      onStatus: () => undefined,
-      onDiagnostic: (_id, d) => at.push(d.at),
-      now: () => 1234,
-    });
-    manager.setMachines([{ ...mac, agentKey: undefined }]);
-    expect(at).toEqual([1234]);
-  });
-});
-
-describe('ConnectionManager old direct entries', () => {
-  const direct = { id: 'old', name: 'Old', url: 'wss://old', token: 't' };
-
-  it.each([
-    ['switched on', { ...direct, enabled: true }],
-    ['with no enabled flag', direct],
-    ['switched off', { ...direct, enabled: false }],
-  ])('opens no socket for one %s, and reports it offline with the reason', (_label, entry) => {
-    const h = harness();
-    h.manager.setMachines([entry, mac]);
-    expect(Object.keys(h.sockets)).toEqual(['wss://mac']);
-    expect(h.statuses.filter(([id]) => id === 'old')).toEqual([['old', 'offline']]);
-    expect(h.diagnostics).toEqual([['old', 'old direct entry — no longer supported; pair this machine again']]);
-    h.manager.reconnect('old');
-    h.manager.send('old', { type: 'list' });
-    expect(Object.keys(h.sockets)).toEqual(['wss://mac']);
   });
 });
 

@@ -1276,7 +1276,7 @@ export class PerchStore {
     this.recomputeGrace();
   }
 
-  updateMachine(id: string, patch: { url: string; token?: string; defaultPath?: string; agentKey?: string }): void {
+  updateMachine(id: string, patch: { addresses: string[]; token?: string; defaultPath?: string; agentKey?: string }): void {
     this.deps.settings.update(id, patch);
     this.machines = this.deps.settings.list();
     this.deps.manager.setMachines(this.machines);

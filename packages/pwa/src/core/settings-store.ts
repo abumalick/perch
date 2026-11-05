@@ -1,37 +1,38 @@
 import type { StoragePort } from './ports/storage';
 import type { FilterMode } from './project-folders';
 import { parseAgentKey } from './relay-key';
+import { normalizeAddress } from './machine-addresses';
 import { parseLanguageChoice, type LanguageChoice } from './i18n/language';
 import { DEFAULT_PRESETS, parsePresets, type DictationPreset } from './dictation-presets';
 
 export interface MachineConfig {
   id: string;
   name: string;
-  url: string;
+  // Where the agent is reached, tried in this order: its own listener, behind `tailscale serve`,
+  // Funnel or a proxy. Stored normalized (`normalizeAddress`).
+  addresses: string[];
   token: string;
   defaultPath?: string; // root that relative New-workspace paths resolve against
   enabled?: boolean; // absent = enabled; false = user switched the machine off
-  // Written by earlier versions on every relay entry; read and ignored now.
-  relay?: boolean;
-  // The agent's X25519 public key (base64url), which the Noise session pins. Every entry the app
-  // connects carries a valid one; an entry without one is an old direct entry.
-  agentKey?: string;
+  // The agent's X25519 public key (base64url), which the Noise session pins.
+  agentKey: string;
   // A one-time pairing secret from a pairing link, used in place of the token until this
   // device's key is enrolled; cleared once the machine has accepted it. A paired entry has no
   // token at all: its enrolled device key is what authenticates it from then on.
   pairing?: string;
 }
 
-// A machine the app can reach: one whose agent key the end-to-end session can pin. An entry from
-// before the relay (a direct machine) has none; it is kept in storage so its owner can see and
-// delete it, but is never connected and counts as no machine at all.
-export function isRelayMachine(machine: Pick<MachineConfig, 'agentKey'>): boolean {
-  return parseAgentKey(machine.agentKey) !== null;
-}
-
-// A machine the app tries to reach: switched on, and a relay entry.
-export function isConnectable(machine: Pick<MachineConfig, 'agentKey' | 'enabled'>): boolean {
-  return machine.enabled !== false && isRelayMachine(machine);
+// A machine the app tries to reach: switched on, with an agent key the session can pin and an
+// address to dial. Storage is read as it is, so an entry missing either is listed but never
+// connected.
+export function isConnectable(machine: Pick<MachineConfig, 'agentKey' | 'enabled' | 'addresses'>): boolean {
+  return (
+    machine.enabled !== false &&
+    parseAgentKey(machine.agentKey) !== null &&
+    Array.isArray(machine.addresses) &&
+    machine.addresses.length > 0 &&
+    machine.addresses.every((address) => normalizeAddress(address) !== null)
+  );
 }
 
 const KEY = 'tarfa.machines';
@@ -76,7 +77,7 @@ export class SettingsStore {
     this.persist(next);
   }
 
-  update(id: string, patch: { url: string; token?: string; defaultPath?: string; agentKey?: string }): void {
+  update(id: string, patch: { addresses: string[]; token?: string; defaultPath?: string; agentKey?: string }): void {
     const machines = this.list();
     if (!machines.some((m) => m.id === id)) return;
     this.persist(
@@ -84,11 +85,10 @@ export class SettingsStore {
         m.id === id
           ? {
               ...m,
-              url: patch.url,
+              addresses: patch.addresses,
               token: patch.token ?? m.token,
               defaultPath: patch.defaultPath ?? m.defaultPath,
-              // '' clears it; absent keeps it.
-              agentKey: patch.agentKey === undefined ? m.agentKey : patch.agentKey || undefined,
+              agentKey: patch.agentKey ?? m.agentKey,
             }
           : m,
       ),

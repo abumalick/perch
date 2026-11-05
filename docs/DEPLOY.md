@@ -1,16 +1,16 @@
-# Deploying Perch (macOS and Linux agents, a phone client, through a relay)
+# Deploying Perch (macOS and Linux agents, a phone client)
 
-Perch runs an **agent** on each machine and a **PWA** that your phone installs. Today a phone
-reaches an agent through one or more **relays** the agent dials out to, end to end encrypted
-with a device key ([relay runbook](relay-cf-runbook.md)). Each agent also listens on a loopback
-**phone port** (`PERCH_PHONE_PORT`, default 8797) that serves the same Noise session directly,
-for when it is published (see "The phone port" below); a PWA that connects there is still to
-come, so the relays remain the way in. Both listeners bind `127.0.0.1` only: the hooks endpoint
+Perch runs an **agent** on each machine and a **PWA**, Tarfa, that your phone installs from
+tarfa.app. Each agent listens on a loopback **phone port** (`PERCH_PHONE_PORT`, default 8797)
+that its operator publishes (`tailscale serve`, Funnel or a proxy; see "The phone port" below),
+and the PWA connects there directly, end to end encrypted with a device key. Machines not yet
+moved off them still reach older PWAs through **relays** the agent dials out to
+([relay runbook](relay-cf-runbook.md)). Both listeners bind `127.0.0.1` only: the hooks endpoint
 (`PERCH_PORT`) and the phone port.
 
 ## 0. Prerequisites (every machine)
 - A relay to connect to: the Cloudflare Worker or a self-hosted relay (runbook, "Choose your relay host").
-- The machine hosting the PWA (step 5) needs Tailscale with MagicDNS + HTTPS enabled in the tailnet admin (`https://login.tailscale.com/admin/dns`), since the PWA is served on the tailnet. So does any machine publishing a self-hosted relay there. An agent itself needs no Tailscale.
+- A machine published with `tailscale serve` or Funnel, and the machine hosting the staging PWA (step 5), need Tailscale with MagicDNS + HTTPS enabled in the tailnet admin (`https://login.tailscale.com/admin/dns`). So does any machine publishing a self-hosted relay there. An agent itself needs no Tailscale.
 - `tmux`, and the toolchain via mise: `mise trust` (the config isn't trusted on a fresh clone), then `mise install`, then `mise exec -- pnpm install` (the postinstall fixes node-pty's `spawn-helper` perms — works on macOS and Linux).
 - Clone the repo on each machine that runs an agent (`deploy/agent.env` is per-machine and gitignored).
 - Verify node-pty: `mise exec -- pnpm --filter @perch/agent test` should pass (real tmux/node-pty). On Ubuntu, `node-pty` prebuilds + the spawn-helper postinstall work without extra build tools.
@@ -206,7 +206,24 @@ use them:
 one on the phone does. It asks the running agent over its loopback listener (`PERCH_PORT` from
 `deploy/agent.env`, the hooks secret in `~/.perch/token`), so it needs the agent running.
 
-## 5. Host the PWA (the always-on Linux machine only)
+## 5. The PWA: tarfa.app, and the tailnet staging copy
+Tarfa is a static-assets Worker (`packages/pwa/wrangler.jsonc`) in the maintainer's Cloudflare
+account, on the `tarfa.app` custom domain. Deploy it only with the script, from a clean main that
+matches origin:
+```sh
+cp deploy/pwa-deploy.env.example deploy/pwa-deploy.env   # once, in the main checkout: CLOUDFLARE_ACCOUNT_ID
+deploy/pwa-deploy.sh             # frozen install, build, deploy, then waits until tarfa.app serves this build
+deploy/pwa-deploy.sh --dry-run   # build and check only, from any checkout
+```
+To test a worktree's PWA on a phone from a public origin, `deploy/pwa-deploy.sh --dev` deploys it
+to a throwaway `tarfa-dev` Worker on workers.dev and prints its URL (its header shows a
+`tarfa-dev` badge); mint a link for it with `pnpm perch pair --pwa <that URL>`, and remove it with
+`deploy/pwa-deploy.sh --dev --delete` when done. Another Cloudflare account serves its own copy the
+same way with `--env-file <its file>`.
+
+The tailnet copy below is the **staging PWA**, which `pnpm serve:build` points at a worktree
+(the always-on Linux machine only). It is a separate origin, so phones install and pair it
+separately:
 ```sh
 sed "s#REPO_PATH#$(pwd)#g" deploy/perch-pwa.service > ~/.config/systemd/user/perch-pwa.service
 systemctl --user daemon-reload
@@ -214,14 +231,16 @@ systemctl --user enable --now perch-pwa     # builds dist/ then serves on 127.0.
 sudo tailscale serve --bg --https=8443 4173  # Linux: sudo; ≥1.64 syntax
 tailscale serve status   # shows https://mini.<tailnet>.ts.net:8443/ -> 127.0.0.1:4173
 ```
-PWA URL: `https://mini.<tailnet>.ts.net:8443/`.
+Staging PWA URL: `https://mini.<tailnet>.ts.net:8443/`.
 
 ## 6. Install on the phone
-1. Install the Tailscale app, log into the same tailnet, ensure it's connected (the PWA is served on the tailnet).
-2. Open `https://mini.<tailnet>.ts.net:8443/` in Safari on an iPhone (the tailnet cert is publicly valid — no manual trust needed).
-3. Share → **Add to Home Screen**. Launch Perch from the home screen (standalone).
-4. Pair each machine: on the machine, `pnpm perch pair` prints a QR code; in Perch, **Settings → Scan QR code**
-   (runbook, "Connecting a machine and pairing a phone"). Nothing is typed on the phone.
+1. Open `https://tarfa.app/` in Safari on an iPhone (or Chrome on Android). Tailscale on the phone
+   is needed only for machines published with `tailscale serve` alone; a Funneled machine is
+   reached without it.
+2. Share → **Add to Home Screen**. Launch Tarfa from the home screen (standalone).
+3. Pair each machine: on the machine, `pnpm perch pair` prints a QR code; in Tarfa, **Settings → Scan QR code**.
+   Nothing is typed on the phone. On Android, Chrome asks once to find devices on the local
+   network the first time it opens a tailnet address: allow it.
 
 ## 7. On-device smoke test
 1. On a machine: `pnpm --filter @perch/agent exec tsx src/cli.ts create ~/workspace/SOME_PROJECT bash` (or create from the phone).

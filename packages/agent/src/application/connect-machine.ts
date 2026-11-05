@@ -90,7 +90,7 @@ export async function connectMachine(deps: ConnectDeps, input: ConnectInput): Pr
     lines.push('', 'No PWA origin known, so no pairing link yet. Run `perch pair --pwa <where your phone opens Perch>`.');
     return { lines };
   }
-  return { lines, link: await mintPairingLink(deps, { phoneUrl: relayUrl, pwaOrigin }) };
+  return { lines, link: await mintPairingLink(deps, { phoneUrls: [relayPhoneUrl(deps.keys, relayUrl)], pwaOrigin }) };
 }
 
 const GENERIC_MACHINE_IDS = new Set(['', 'local', 'localhost']);
@@ -101,16 +101,21 @@ export function pairingName(machineId: string, hostname: string): string {
   return GENERIC_MACHINE_IDS.has(machineId) ? hostname.split('.')[0]! : machineId;
 }
 
+// The address a phone reaches this machine by through a relay: the relay and the machine's account.
+export function relayPhoneUrl(keys: ConnectDeps['keys'], relayUrl: string): string {
+  return `${relayBase(relayUrl)}/${accountId(keys.ed25519.publicKey)}`;
+}
+
+// `phoneUrls` are the addresses the phone tries, in order, each as the phone dials it.
 export async function mintPairingLink(
   deps: Pick<ConnectDeps, 'keys' | 'machineId' | 'defaultPath' | 'pairings' | 'newSecret' | 'now'>,
-  input: { phoneUrl: string; pwaOrigin: string },
+  input: { phoneUrls: string[]; pwaOrigin: string },
 ): Promise<string> {
   checkDefaultPath(deps.defaultPath);
   const secret = deps.newSecret();
   await deps.pairings.update((list) => addPairing(list, secret, deps.now()));
-  const account = accountId(deps.keys.ed25519.publicKey);
   return pairingLink(input.pwaOrigin, {
-    url: `${relayBase(input.phoneUrl)}/${account}`,
+    urls: input.phoneUrls,
     agentKey: deps.keys.x25519.publicKey,
     secret,
     name: deps.machineId,

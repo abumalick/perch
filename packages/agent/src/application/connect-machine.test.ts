@@ -87,7 +87,7 @@ describe('connectMachine', () => {
     expect(parseEnvFile(s.env()).PERCH_PWA_ORIGIN).toBe('https://pwa.example:8443');
     expect(s.restarts()).toBe(1);
     const link = parsePairingLink(result.link!)!;
-    expect(link).toEqual({ url: `wss://relay.example/${account}`, agentKey: keys.x25519.publicKey, secret: s.pairings()[0]!.secret, name: 'dev' });
+    expect(link).toEqual({ urls: [`wss://relay.example/${account}`], agentKey: keys.x25519.publicKey, secret: s.pairings()[0]!.secret, name: 'dev' });
     expect(result.link!.startsWith('https://pwa.example:8443/#pair?')).toBe(true);
     expect(result.lines.join('\n')).toContain('agent.env.bak-1');
     expect(result.lines.join('\n')).not.toContain(joinKey);
@@ -97,7 +97,7 @@ describe('connectMachine', () => {
     const s = setup();
     const result = await connectMachine(s.deps, { ...input, agentUrl: 'ws://127.0.0.1:8450' });
     expect(parseEnvFile(s.env()).PERCH_RELAY_URLS).toBe('ws://127.0.0.1:8450');
-    expect(parsePairingLink(result.link!)!.url).toBe(`wss://relay.example/${account}`);
+    expect(parsePairingLink(result.link!)!.urls).toEqual([`wss://relay.example/${account}`]);
   });
 
   it('is idempotent: already joined and configured, it changes and restarts nothing', async () => {
@@ -149,15 +149,21 @@ describe('connectMachine', () => {
 describe('mintPairingLink', () => {
   it('stores a ten-minute, one-time secret and puts it in the link fragment', async () => {
     const s = setup();
-    const link = await mintPairingLink(s.deps, { phoneUrl: 'wss://relay.example', pwaOrigin: 'https://pwa.example' });
+    const link = await mintPairingLink(s.deps, { phoneUrls: ['wss://relay.example/acct'], pwaOrigin: 'https://pwa.example' });
     const [stored] = s.pairings();
     expect(Date.parse(stored!.expiresAt) - NOW.getTime()).toBe(PAIRING_TTL_MS);
     expect(link.split('#')[0]).toBe('https://pwa.example/');
     expect(parsePairingLink(link)!.secret).toBe(stored!.secret);
   });
 
+  it('carries every phone address, in order, as given', async () => {
+    const phoneUrls = ['wss://dev.example.ts.net:10000/abu', 'wss://dev.example.ts.net:8443/abu'];
+    const link = await mintPairingLink(setup().deps, { phoneUrls, pwaOrigin: 'https://tarfa.app' });
+    expect(parsePairingLink(link)!.urls).toEqual(phoneUrls);
+  });
+
   it('carries the default path when the machine has one', async () => {
-    const mint = (defaultPath?: string) => mintPairingLink(setup({ defaultPath }).deps, { phoneUrl: 'wss://relay.example', pwaOrigin: 'https://pwa.example' });
+    const mint = (defaultPath?: string) => mintPairingLink(setup({ defaultPath }).deps, { phoneUrls: ['wss://relay.example/acct'], pwaOrigin: 'https://pwa.example' });
     expect(parsePairingLink(await mint('/home/u/workspace'))!.defaultPath).toBe('/home/u/workspace');
     expect(parsePairingLink(await mint())!.defaultPath).toBeUndefined();
     await expect(mint('workspace')).rejects.toThrow(/absolute/);

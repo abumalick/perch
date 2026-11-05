@@ -26,7 +26,7 @@ test.beforeEach(async () => {
 });
 
 function link(origin: string, defaultPath?: string): string {
-  return pairingLink(origin, { url: agent.url, agentKey: agent.agentKey, secret: SECRET, name: 'dev box', defaultPath });
+  return pairingLink(origin, { urls: [agent.url], agentKey: agent.agentKey, secret: SECRET, name: 'dev box', defaultPath });
 }
 
 function recordUrls(page: Page): string[] {

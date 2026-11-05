@@ -11,20 +11,20 @@ export type Paired = { ok: true; machine: MachineConfig } | { ok: false; reason:
 // entry's token on the next connect. An existing entry keeps its own name and default path; the
 // link's path only fills one it lacks.
 export function pairedMachine(machines: MachineConfig[], link: PairingLink, newId: () => string): Paired {
-  const existing = machines.find((m) => m.url === link.url);
+  const existing = machines.find((m) => m.url === link.urls[0]);
   if (existing && existing.agentKey?.trim() !== link.agentKey) {
     return { ok: false, reason: msg().pairing.otherKey(existing.name) };
   }
   const defaultPath = existing?.defaultPath || link.defaultPath;
   const path = defaultPath ? { defaultPath } : {};
   if (existing) return { ok: true, machine: { ...existing, ...path, pairing: link.secret, enabled: true } };
-  return { ok: true, machine: { id: newId(), name: link.name, url: link.url, token: '', agentKey: link.agentKey, ...path, pairing: link.secret } };
+  return { ok: true, machine: { id: newId(), name: link.name, url: link.urls[0]!, token: '', agentKey: link.agentKey, ...path, pairing: link.secret } };
 }
 
 // What the owner is asked before a pairing link adds anything: any page can open such a link. The
 // machine key's fingerprint is the one `perch pair` prints beside the code, to compare by eye.
 export function pairingQuestion(link: PairingLink): string {
-  return msg().pairing.question(link.name, new URL(link.url).host, deviceFingerprint(link.agentKey));
+  return msg().pairing.question(link.name, new URL(link.urls[0]!).host, deviceFingerprint(link.agentKey));
 }
 
 export interface PairingPrompts {

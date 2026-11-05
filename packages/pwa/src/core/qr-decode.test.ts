@@ -22,7 +22,7 @@ describe('QR decoding of a pairing link', () => {
   it('reads back the exact link', () => {
     const keys = generateAgentKeys();
     const link = pairingLink('https://perch-host.example-tailnet.ts.net:8443', {
-      url: `wss://perch-relay.example.com/${accountId(keys.ed25519.publicKey)}`,
+      urls: [`wss://perch-relay.example.com/${accountId(keys.ed25519.publicKey)}`],
       agentKey: keys.x25519.publicKey,
       secret: generatePairingSecret(),
       name: 'dev box',

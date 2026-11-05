@@ -20,7 +20,7 @@ test.afterEach(async () => {
 async function pair(page: Page, baseURL: string): Promise<void> {
   const secret = await agent.newPairing();
   page.on('dialog', (dialog) => void dialog.accept());
-  await page.goto(pairingLink(baseURL, { url: agent.url, agentKey: agent.agentKey, secret, name: 'dev box' }));
+  await page.goto(pairingLink(baseURL, { urls: [agent.url], agentKey: agent.agentKey, secret, name: 'dev box' }));
   await expect(page.getByText('demo', { exact: true })).toBeVisible();
 }
 

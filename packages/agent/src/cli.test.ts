@@ -254,7 +254,7 @@ describe('perch pair / connect (arguments and agent.env)', () => {
     const out = await run(['pair'], env, home);
     const link = out.split('\n').find((line) => line.startsWith('https://'))!;
     const pairing = parsePairingLink(link)!;
-    expect(pairing.url.startsWith('wss://relay.example/')).toBe(true);
+    expect(pairing.urls).toEqual([expect.stringMatching(/^wss:\/\/relay\.example\/[\w-]+$/)]);
     expect(pairing.name).toBe('box');
     const stored = JSON.parse(await readFile(join(home, '.perch', 'pairing.json'), 'utf8')) as Array<{ secret: string }>;
     expect(stored.map((p) => p.secret)).toEqual([pairing.secret]);

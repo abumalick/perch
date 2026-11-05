@@ -6,7 +6,7 @@ import { acceptPairingLink, outsideInstalledApp, pairedMachine, pairingQuestion,
 import type { MachineConfig } from './settings-store';
 
 const link: PairingLink = {
-  url: 'wss://relay.example/acct123',
+  urls: ['wss://relay.example/acct123'],
   agentKey: 'K'.repeat(43),
   secret: 'S'.repeat(43),
   name: 'dev',
@@ -17,15 +17,23 @@ describe('pairedMachine', () => {
     expect(pairedMachine([], link, () => 'id1')).toEqual({ ok: true, machine: {
       id: 'id1',
       name: 'dev',
-      url: link.url,
+      url: link.urls[0]!,
       token: '',
       agentKey: link.agentKey,
       pairing: link.secret,
     } });
   });
 
+  it('makes the entry from the first of several addresses, and asks about its host', () => {
+    const several = { ...link, urls: ['wss://first.example/acct123', 'wss://second.example/acct123'] };
+    const paired = pairedMachine([], several, () => 'id1');
+    expect(paired.ok && paired.machine.url).toBe('wss://first.example/acct123');
+    expect(pairingQuestion(several)).toContain('first.example');
+    expect(pairingQuestion(several)).not.toContain('second.example');
+  });
+
   it('updates the entry for the same relay and agent key instead of adding a second one', () => {
-    const existing: MachineConfig = { id: 'm1', name: 'dev (relay)', url: link.url, token: 'tok', agentKey: link.agentKey, enabled: false };
+    const existing: MachineConfig = { id: 'm1', name: 'dev (relay)', url: link.urls[0]!, token: 'tok', agentKey: link.agentKey, enabled: false };
     expect(pairedMachine([existing], link, () => 'unused')).toEqual({ ok: true, machine: { ...existing, pairing: link.secret, enabled: true } });
   });
 
@@ -36,7 +44,7 @@ describe('pairedMachine', () => {
 
   // A re-scan retries a pairing; the path the owner set in Settings is theirs, like the name.
   it("fills an existing entry's default path only when it has none", () => {
-    const existing: MachineConfig = { id: 'm1', name: 'dev', url: link.url, token: '', agentKey: link.agentKey };
+    const existing: MachineConfig = { id: 'm1', name: 'dev', url: link.urls[0]!, token: '', agentKey: link.agentKey };
     const withPath = { ...link, defaultPath: '/home/u/workspace' };
     const filled = pairedMachine([existing], withPath, () => 'unused');
     expect(filled.ok && filled.machine.defaultPath).toBe('/home/u/workspace');
@@ -45,7 +53,7 @@ describe('pairedMachine', () => {
   });
 
   it('refuses a code that would re-pin an entry to another agent key, which could take its token', () => {
-    const existing: MachineConfig = { id: 'm1', name: 'dev', url: link.url, token: 'tok', agentKey: 'A'.repeat(43) };
+    const existing: MachineConfig = { id: 'm1', name: 'dev', url: link.urls[0]!, token: 'tok', agentKey: 'A'.repeat(43) };
     const result = pairedMachine([existing], link, () => 'unused');
     expect(result.ok).toBe(false);
     expect(!result.ok && result.reason).toMatch(/another key for dev/);
@@ -67,7 +75,7 @@ describe('acceptPairingLink', () => {
 
   it('asks the owner with the pairing question, then returns the entry to add', () => {
     const p = prompts(true);
-    expect(acceptPairingLink([], link, p)).toEqual({ id: 'id1', name: 'dev', url: link.url, token: '', agentKey: link.agentKey, pairing: link.secret });
+    expect(acceptPairingLink([], link, p)).toEqual({ id: 'id1', name: 'dev', url: link.urls[0]!, token: '', agentKey: link.agentKey, pairing: link.secret });
     expect(p.asked).toEqual([pairingQuestion(link)]);
     expect(p.alerts).toEqual([]);
   });
@@ -80,7 +88,7 @@ describe('acceptPairingLink', () => {
 
   it('says why a link is refused, without asking', () => {
     const p = prompts(true);
-    const existing: MachineConfig = { id: 'm1', name: 'dev', url: link.url, token: 'tok', agentKey: 'A'.repeat(43) };
+    const existing: MachineConfig = { id: 'm1', name: 'dev', url: link.urls[0]!, token: 'tok', agentKey: 'A'.repeat(43) };
     expect(acceptPairingLink([existing], link, p)).toBeNull();
     expect(p.alerts).toEqual([expect.stringContaining('another key for dev')]);
     expect(p.asked).toEqual([]);

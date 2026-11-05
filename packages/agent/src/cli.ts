@@ -28,7 +28,7 @@ import { enrolmentMode, forgetDevice, policyWarning, relayPolicy, revokeDevice, 
 import encodeQR from 'qr';
 import { deviceFingerprint, generatePairingSecret, isJoinKey, parsePairingLink, sanitizeDeviceName } from '@perch/secure-channel';
 import { parseEnvFile } from './application/agent-env';
-import { connectMachine, mintPairingLink, pairingName } from './application/connect-machine';
+import { connectMachine, mintPairingLink, pairingName, relayPhoneUrl } from './application/connect-machine';
 import { FilePairingStore } from './infrastructure/file-pairing-store';
 import { agentEnvFile, locateAgentEnv } from './infrastructure/agent-env-file';
 import { agentService } from './infrastructure/agent-service';
@@ -550,7 +550,7 @@ async function relaySetup(command: 'connect' | 'pair', argv: string[], env: Node
   }
   const origin = pwa ?? pwaOrigin(config.pwaOrigin);
   if (!origin) throw new Error('no PWA origin: pass --pwa <where your phone opens Perch>, e.g. https://host:8443');
-  return pairingInstructions(await mintPairingLink(deps, { phoneUrl: relay, pwaOrigin: origin }));
+  return pairingInstructions(await mintPairingLink(deps, { phoneUrls: [relayPhoneUrl(deps.keys, relay)], pwaOrigin: origin }));
 }
 
 function pairingInstructions(link: string): string {

@@ -51,7 +51,7 @@ export {
   verifyDeviceHello,
   type DeviceHello,
 } from './device-hello';
-export { generatePairingSecret, isPairingPath, pairingLink, parsePairingLink, type PairingLink } from './pairing-link';
+export { generatePairingSecret, isMachineUrl, isPairingPath, MAX_ADDRESSES, pairingLink, parsePairingLink, type PairingLink } from './pairing-link';
 export { REFUSAL, IN_BAND_REFUSAL, DEVICE_REFUSED, type Refusal, type AgentRefusal } from './refusal';
 export { generateChallengeKey, mintChallenge, verifyChallenge } from './relay-challenge';
 export { startTimer } from './timers';

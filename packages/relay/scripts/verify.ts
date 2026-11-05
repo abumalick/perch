@@ -402,9 +402,9 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     const link = parsePairingLink(process.argv[3] ?? '');
     if (!link) throw new Error('usage: verify.ts enrol <pairing link>');
     const { keys } = await loadDevice();
-    const conn = await authenticate(await open(link.url, link.agentKey, { keys, proof: { secret: link.secret, cred: 'pairing' } }), link.secret);
+    const conn = await authenticate(await open(link.urls[0]!, link.agentKey, { keys, proof: { secret: link.secret, cred: 'pairing' } }), link.secret);
     console.log(`enrolled device ${deviceFingerprint(keys.x25519.publicKey)}: ${(await workspaces(conn)).length} workspaces`);
-    console.log(`PERCH_URL=${link.url}\nAGENT_KEY=${link.agentKey}`);
+    console.log(`PERCH_URL=${link.urls[0]}\nAGENT_KEY=${link.agentKey}`);
     conn.close();
   },
 
@@ -414,15 +414,15 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     const link = parsePairingLink(process.argv[3] ?? '');
     if (!link) throw new Error('usage: verify.ts pair <pairing link>');
     const phone: Device = { keys: generateDeviceKeys(), proof: { secret: link.secret, cred: 'pairing' } };
-    const first = await authenticate(await open(link.url, link.agentKey, phone), link.secret);
+    const first = await authenticate(await open(link.urls[0]!, link.agentKey, phone), link.secret);
     console.log(`paired with the code: ${(await workspaces(first)).length} workspaces, device ${deviceFingerprint(phone.keys.x25519.publicKey)}`);
     first.close();
     await new Promise((r) => setTimeout(r, 500));
-    const again = await authenticate(await open(link.url, link.agentKey, { keys: phone.keys }), '');
+    const again = await authenticate(await open(link.urls[0]!, link.agentKey, { keys: phone.keys }), '');
     console.log(`reconnected with no token and no code: ${(await workspaces(again)).length} workspaces`);
     again.close();
     try {
-      const late = await authenticate(await open(link.url, link.agentKey, { keys: generateDeviceKeys(), proof: { secret: link.secret, cred: 'pairing' } }), link.secret);
+      const late = await authenticate(await open(link.urls[0]!, link.agentKey, { keys: generateDeviceKeys(), proof: { secret: link.secret, cred: 'pairing' } }), link.secret);
       console.log('FAIL: a second device got in with the spent code');
       late.close();
     } catch (err) {

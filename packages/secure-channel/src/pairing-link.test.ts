@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { generatePairingSecret, isPairingPath, pairingLink, parsePairingLink } from './pairing-link';
+import { generatePairingSecret, isMachineUrl, isPairingPath, MAX_ADDRESSES, pairingLink, parsePairingLink } from './pairing-link';
 
 const pairing = {
-  url: 'wss://relay.example/abcDEF_123-xyz',
+  urls: ['wss://relay.example/abcDEF_123-xyz'],
   agentKey: 'A'.repeat(43),
   secret: generatePairingSecret(),
   name: 'dev box',
@@ -52,7 +52,6 @@ describe('pairing link', () => {
       variants((q) => q.set('s', 'short')),
       variants((q) => q.set('u', 'https://relay.example/acct')),
       variants((q) => q.set('u', 'ws://relay.example/acct')),
-      variants((q) => q.set('u', 'wss://relay.example/')),
       variants((q) => q.set('u', 'wss://relay.example/a/b')),
       variants((q) => q.set('u', 'wss://relay.example/acct?role=agent')),
       variants((q) => q.set('n', 'x'.repeat(65))),
@@ -65,7 +64,7 @@ describe('pairing link', () => {
   // is kept only for a relay on the phone's own machine, which is what the e2e and a local test use.
   it('takes a plain ws: relay only on a loopback address', () => {
     for (const host of ['127.0.0.1:8450', 'localhost:8450', '[::1]:8450']) {
-      expect(parsePairingLink(pairingLink('https://pwa.example', { ...pairing, url: `ws://${host}/acct` }))?.url).toBe(`ws://${host}/acct`);
+      expect(parsePairingLink(pairingLink('https://pwa.example', { ...pairing, urls: [`ws://${host}/acct`] }))?.urls).toEqual([`ws://${host}/acct`]);
     }
   });
 
@@ -96,5 +95,54 @@ describe('pairing link', () => {
     expect(isPairingPath('/' + 'x'.repeat(127))).toBe(true);
     expect(isPairingPath('/' + 'x'.repeat(128))).toBe(false);
     expect(isPairingPath('~/workspace')).toBe(false);
+  });
+});
+
+// The vector the agent's `perch setup` and the PWA are both held to.
+describe('pairing link with several addresses', () => {
+  const agentKey = 'K'.repeat(43);
+  const secret = 'S'.repeat(43);
+  const vector =
+    `https://tarfa.app/#pair?u=wss://dev.example.ts.net:10000/abu&u=wss://dev.example.ts.net:8443/abu&k=${agentKey}&s=${secret}&n=dev&p=/home/u/workspace`;
+
+  it('reads every address, in order', () => {
+    expect(parsePairingLink(vector)).toEqual({
+      urls: ['wss://dev.example.ts.net:10000/abu', 'wss://dev.example.ts.net:8443/abu'],
+      agentKey,
+      secret,
+      name: 'dev',
+      defaultPath: '/home/u/workspace',
+    });
+  });
+
+  it(`refuses more than ${MAX_ADDRESSES} addresses`, () => {
+    const urls = Array.from({ length: MAX_ADDRESSES + 1 }, (_, i) => `wss://h${i}.example/x`);
+    const link = pairingLink('https://tarfa.app', { ...pairing, urls: urls.slice(0, MAX_ADDRESSES) });
+    expect(parsePairingLink(link)?.urls).toEqual(urls.slice(0, MAX_ADDRESSES));
+    expect(parsePairingLink(link.replace('&k=', `&u=${urls[MAX_ADDRESSES]}&k=`))).toBe(null);
+  });
+
+  it('refuses the whole link when one address is bad', () => {
+    expect(parsePairingLink(vector.replace('u=wss://dev.example.ts.net:8443/abu', 'u=https://dev.example.ts.net:8443/abu'))).toBe(null);
+    expect(parsePairingLink(vector.replace('u=wss://dev.example.ts.net:8443/abu', 'u='))).toBe(null);
+  });
+
+  it('round-trips one and three addresses in order', () => {
+    for (const urls of [['wss://a.example/'], ['wss://c.example:10000/abu', 'wss://a.example/', 'wss://b.example:8443/x-1']]) {
+      expect(parsePairingLink(pairingLink('https://tarfa.app', { ...pairing, urls }))?.urls).toEqual(urls);
+    }
+  });
+
+  it('takes a bare / path or one segment, nothing deeper', () => {
+    expect(isMachineUrl('wss://dev.example.ts.net:10000')).toBe(true);
+    expect(isMachineUrl('wss://dev.example.ts.net:10000/')).toBe(true);
+    expect(isMachineUrl('wss://dev.example.ts.net/abu')).toBe(true);
+    expect(isMachineUrl('wss://dev.example.ts.net/a/b')).toBe(false);
+    expect(isMachineUrl(`wss://dev.example.ts.net/${'x'.repeat(65)}`)).toBe(false);
+    expect(isMachineUrl('ws://dev.example.ts.net/abu')).toBe(false);
+  });
+
+  it('refuses a link with no address', () => {
+    expect(parsePairingLink(vector.replace(/u=[^&]*&/g, ''))).toBe(null);
   });
 });

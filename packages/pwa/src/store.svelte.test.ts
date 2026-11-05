@@ -104,7 +104,7 @@ const mac = { id: 'mac', name: 'Mac', url: 'wss://mac', token: 't', agentKey };
 
 describe('PerchStore pairing', () => {
   const link = pairingLink('https://pwa.example', {
-    url: 'wss://relay.example/acct',
+    urls: ['wss://relay.example/acct'],
     agentKey: generateAgentKeys().x25519.publicKey,
     secret: 'S'.repeat(43),
     name: 'dev',

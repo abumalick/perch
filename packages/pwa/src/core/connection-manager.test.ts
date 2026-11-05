@@ -51,9 +51,9 @@ function harness() {
   const phaseReporters: Array<(phase: string, detail: string) => void> = [];
   const spent: string[] = [];
   const manager = new ConnectionManager({
-    secureSocketFactory: (key, token, credential, onPhase) => {
+    secureSocketFactory: (key, token, onPhase) => {
       phaseReporters.push(onPhase);
-      secureFor.push(`${key} ${token}${credential === 'pairing' ? ' (pairing)' : ''}`);
+      secureFor.push(`${key} ${token}`);
       return (url) => {
         const f = fakeSocket();
         sockets[url] = f;
@@ -83,11 +83,26 @@ describe('ConnectionManager relay machines', () => {
     expect(Object.keys(h.sockets)).toEqual(['wss://relay/acct']);
   });
 
-  it('reports the phases of a relay connect under the machine they belong to', () => {
+  it('reports the phases of a connect under the machine and the address they belong to', () => {
     const h = harness();
-    h.manager.setMachines([mini]);
-    h.phaseReporters[0]!('challenge', 'ok 12ms');
-    expect(h.phases).toEqual(['mini challenge ok 12ms']);
+    h.manager.setMachines([{ ...mini, addresses: ['wss://mini-a', 'wss://mini-b'] }]);
+    h.phaseReporters[0]!('ws-open', '12ms');
+    h.sockets['wss://mini-a']!.fireClose({ code: 1006 });
+    h.phaseReporters[1]!('ws-open', '30ms');
+    expect(h.phases).toEqual(['mini ws-open 12ms wss://mini-a', 'mini address wss://mini-a closed (code 1006)', 'mini ws-open 30ms wss://mini-b']);
+  });
+
+  it('remembers the address that worked across a change to the machine list', () => {
+    const h = harness();
+    const two = { ...mini, addresses: ['wss://mini-a', 'wss://mini-b'] };
+    h.manager.setMachines([two]);
+    h.sockets['wss://mini-a']!.fireClose({ code: 1006 });
+    h.sockets['wss://mini-b']!.open();
+    h.sockets['wss://mini-b']!.deliver({ type: 'authResult', ok: true });
+    delete h.sockets['wss://mini-a'];
+    delete h.sockets['wss://mini-b'];
+    h.manager.setMachines([two, mac]);
+    expect(Object.keys(h.sockets)).toEqual(['wss://mini-b', 'wss://mac']);
   });
 
   it('reports when the workspace list arrives, once per connect, timed from the attempt', () => {
@@ -126,7 +141,7 @@ describe('ConnectionManager relay machines', () => {
   it('authenticates with the pairing secret while the entry holds one, even beside a token', () => {
     const h = harness();
     h.manager.setMachines([{ ...mini, pairing: 'S'.repeat(43) }]);
-    expect(h.secureFor).toEqual([`${agentKey} ${'S'.repeat(43)} (pairing)`]);
+    expect(h.secureFor).toEqual([`${agentKey} ${'S'.repeat(43)}`]);
   });
 
   it("forgets an entry's credential once the agent says its key is enrolled, for every later connect", () => {
@@ -136,7 +151,7 @@ describe('ConnectionManager relay machines', () => {
     h.secureFakes[0]!.deliver({ type: 'authResult', ok: true, credential: 'pairing', enrolled: true });
     expect(h.spent).toEqual(['mini']);
     h.manager.reconnect('mini');
-    expect(h.secureFor).toEqual([`${agentKey} ${'S'.repeat(43)} (pairing)`, `${agentKey} `]);
+    expect(h.secureFor).toEqual([`${agentKey} ${'S'.repeat(43)}`, `${agentKey} `]);
     h.secureFakes[1]!.open();
     expect(h.secureFakes[1]!.sent.map((d) => JSON.parse(d))).toContainEqual({ type: 'auth', token: '' });
   });

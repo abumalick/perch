@@ -4,7 +4,7 @@ import { startTimer } from '@perch/secure-channel';
 // The largest file the agent serves (audio, 30 MB). A header announcing more is refused
 // outright rather than buffered.
 export const MAX_MEDIA_BYTES = 30 * 1024 * 1024;
-// No message for this long means the transfer is dead (the agent, or the relay, went quiet
+// No message for this long means the transfer is dead (the agent, or whatever fronts it, went quiet
 // without closing the connection).
 const STALL_MS = 20_000;
 

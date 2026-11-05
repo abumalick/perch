@@ -26,7 +26,7 @@ export interface BrowserStreamDeps {
 // Reasons that mean a manual retry is the only sensible recovery, so the viewer stops and
 // shows the ended overlay instead of reconnecting: the session is gone (`not-found`) or
 // another device took it over (`opened-elsewhere`, where reconnecting would fight forever).
-// Everything else — a bare socket drop, or the relay's transient `closed`/`error` — is a
+// Everything else — a bare socket drop, or a transient `closed`/`error` — is a
 // blip we reconnect through.
 const TERMINAL_REASONS = new Set<BrowserEndedReason>(['not-found', 'opened-elsewhere']);
 

@@ -21,23 +21,14 @@ describe('describeRefusal', () => {
     [4403, REFUSAL.enrolmentOff, withToken, 'Enrolment is turned off on dev box — pair with `perch pair` instead', true],
     [4003, REFUSAL.enrolmentClosed, paired, 'Enrolment is closed on dev box — run `perch devices enrolment off` there to allow pairing', true],
     [4403, REFUSAL.notEnrolled, enrolled, 'This phone is not enrolled on dev box — run `perch pair` there to pair it again', true],
-    [4401, REFUSAL.signature, enrolled, 'The relay refused this phone: its device-key signature did not verify', true],
-    [4401, REFUSAL.deviceKeyRequired, enrolled, 'The relay refused this phone: dev box accepts only phones with a device key', true],
-    [4401, REFUSAL.challenge, enrolled, 'The relay refused this phone: its sign-in challenge had expired — retrying', false],
-    [4408, REFUSAL.challengeUnanswered, enrolled, 'The relay did not receive this phone’s sign-in — retrying', false],
-    [4400, REFUSAL.invalidReply, enrolled, 'The relay did not receive this phone’s sign-in — retrying', false],
-    [4404, REFUSAL.unknownAccount, enrolled, 'The relay does not know dev box — run `perch connect` on it again', true],
-    [4503, REFUSAL.agentOffline, enrolled, 'dev box is not connected to the relay', false],
-    [4504, REFUSAL.agentSilent, enrolled, 'dev box did not answer through the relay', false],
-    [4429, REFUSAL.tooManyPending, enrolled, 'The relay is busy: too many phones are connecting to dev box', false],
-    [4429, REFUSAL.tooManyConnections, enrolled, 'The relay is busy: too many phones are connecting to dev box', false],
-    [4500, REFUSAL.internal, enrolled, 'The relay failed (internal error) — retrying', false],
+    [4429, REFUSAL.tooManyPending, enrolled, 'dev box is busy: too many phones are connecting to it', false],
+    [4429, REFUSAL.tooManyConnections, enrolled, 'dev box is busy: too many phones are connecting to it', false],
+    [4500, REFUSAL.internal, enrolled, 'dev box failed (internal error) — retrying', false],
   ] as const)('%i %s', (code, reason, context, message, final) => {
     expect(describeRefusal(code, reason, context)).toEqual({ message, final });
   });
 
-  // The agent's own close for a device, forwarded by the relay, uses the same words.
-  it('reads the agent closing the session over a device, or a code spent since the relay let it through', () => {
+  it('reads the agent closing the session over a device, or a code spent since the phone dialed', () => {
     expect(describeRefusal(4003, REFUSAL.revoked, enrolled)?.message).toBe('This phone was revoked on dev box');
     expect(describeRefusal(4003, REFUSAL.codeUsed, paired)?.message).toMatch(/^This pairing code was already used/);
   });
@@ -50,9 +41,15 @@ describe('describeRefusal', () => {
     expect(describeRefusal(4403, REFUSAL.enrolmentRefused, withToken)?.message).toBe('dev box refused the token — check the token in this entry');
   });
 
-  it('still says the relay refused the phone for a reason it does not know', () => {
-    expect(describeRefusal(4403, 'something new', enrolled)).toEqual({ message: 'The relay refused this phone (something new)', final: false });
-    expect(describeRefusal(4418, '', enrolled)).toEqual({ message: 'The relay refused this phone (code 4418)', final: false });
+  it('still says the machine refused the phone for a reason it does not know', () => {
+    expect(describeRefusal(4003, 'something new', enrolled)).toEqual({ message: 'dev box refused this phone (something new)', final: false });
+    expect(describeRefusal(4418, '', enrolled)).toEqual({ message: 'dev box refused this phone (code 4418)', final: false });
+  });
+
+  it('no longer words what only a relay said', () => {
+    for (const reason of [REFUSAL.deviceKeyRequired, REFUSAL.challenge, REFUSAL.unknownAccount, REFUSAL.agentOffline]) {
+      expect(describeRefusal(4401, reason, enrolled)?.message).toBe(`dev box refused this phone (${reason})`);
+    }
   });
 
   it('leaves every other close to the connection', () => {

@@ -16,7 +16,7 @@ export interface ConnectionDiagnostic {
   message: string;
   code?: number;
   at: number;
-  // The relay or the agent refused this phone, and `message` says why in the owner's words.
+  // The agent refused this phone, and `message` says why in the owner's words.
   refused?: true;
   // A refusal that redialing cannot help: the machine waits for the owner instead.
   final?: true;
@@ -26,7 +26,14 @@ export interface ConnectionDiagnostic {
 }
 
 export interface MachineConnectionDeps {
-  url: string;
+  // Where the agent is reached, tried in this order within one attempt.
+  addresses: string[];
+  // The address that last reached `online` in this app session, tried first; and where to
+  // remember a new one.
+  preferredAddress?: () => string | undefined;
+  onAddressWorked?: (address: string) => void;
+  // One address failing and the next being tried, for the connection log.
+  onPhase?: (phase: string, detail: string) => void;
   token: string;
   socketFactory: SocketFactory;
   onMessage: (message: AgentMessage) => void;
@@ -37,7 +44,7 @@ export interface MachineConnectionDeps {
   // separate from `schedule` (the reconnect backoff) so it can be cancelled once open.
   startTimer?: (fn: () => void, ms: number) => () => void;
   now?: () => number;
-  // Names the machine and the credential in a refusal's message (relay entries).
+  // Names the machine and the credential in a refusal's message.
   refusalContext?: RefusalContext;
   // `all`: the agent said, inside the session, that this phone's device key is enrolled; the
   // entry's token and pairing secret are to be forgotten, and the connection sends neither from
@@ -52,9 +59,13 @@ export interface MachineConnectionDeps {
 const BASE_BACKOFF_MS = 250;
 const MAX_BACKOFF_MS = 10_000;
 // A socket that never reaches `open` within this window is reaped and retried. Without it,
-// iOS WebKit can leave a socket hanging in CONNECTING indefinitely when the network path to the
-// relay is briefly flaky, stranding the machine on "connecting" forever with no retry.
+// iOS WebKit can leave a socket hanging in CONNECTING indefinitely when the network path is
+// briefly flaky, stranding the machine on "connecting" forever with no retry.
 const CONNECT_TIMEOUT_MS = 10_000;
+// How long one address of several may take to open before the next is tried. It must allow
+// Chrome's first local-network prompt and a slow first open (measured 1.5–5 s on Android). The
+// last address gets at least what is left of CONNECT_TIMEOUT_MS, so a lone address keeps it all.
+export const ADDRESS_OPEN_MS = 6_000;
 // Failed attempts before a machine that has NEVER connected gives up auto-retrying and
 // waits for a manual `reconnect()`. An unreachable peer that kept retrying would churn the
 // network and starve the other machines' connections; going quiet keeps the app usable.
@@ -90,7 +101,12 @@ export class MachineConnection {
   // machine was toggled off/on (which called close() — the only thing that quiesced them).
   private generation = 0;
   private closedByUser = false;
-  // Per-attempt diagnostic state, reset on each `connect()`.
+  // The current attempt's addresses in the order it tries them, the one being dialed, and when
+  // the attempt began.
+  private order: string[] = [];
+  private index = 0;
+  private attemptStarted = 0;
+  // Per-socket diagnostic state, reset on each dial.
   private opened = false;
   private errored = false;
   private timedOut = false;
@@ -115,22 +131,53 @@ export class MachineConnection {
     this.now = deps.now ?? (() => Date.now());
   }
 
+  // One attempt: the addresses in order, the one that last worked first. An address that fails
+  // without the agent answering (no route, a hang, a refused upgrade) hands over to the next; one
+  // the agent answered on, with a session or a refusal, decides the attempt, since every address
+  // leads to the same agent.
   connect(): void {
     this.stopHeartbeat();
     this.deps.onStatus('connecting');
+    const preferred = this.deps.preferredAddress?.();
+    const addresses = this.deps.addresses;
+    this.order = preferred && addresses.includes(preferred) ? [preferred, ...addresses.filter((a) => a !== preferred)] : [...addresses];
+    this.index = 0;
+    this.attemptStarted = this.now();
+    this.dial();
+  }
+
+  private isLastAddress(): boolean {
+    return this.index >= this.order.length - 1;
+  }
+
+  // The current socket failed before the agent answered: try the next address, superseding it
+  // first so its late events are ignored.
+  private nextAddress(socket: Socket, why: string): void {
+    this.deps.onPhase?.('address', `${this.order[this.index]} ${why}`);
+    this.index += 1;
+    this.dial();
+    socket.close();
+  }
+
+  private dial(): void {
     this.opened = false;
     this.errored = false;
     this.timedOut = false;
-    const socket = this.deps.socketFactory(this.deps.url);
+    const address = this.order[this.index]!;
+    const socket = this.deps.socketFactory(address);
     this.socket = socket;
-    // Reap a connection that stalls in CONNECTING: close it so the `onClose` path below
-    // marks the machine offline and schedules a retry, instead of hanging forever.
+    const deadline = this.isLastAddress()
+      ? Math.max(ADDRESS_OPEN_MS, CONNECT_TIMEOUT_MS - (this.now() - this.attemptStarted))
+      : ADDRESS_OPEN_MS;
+    // Reap a connection that stalls in CONNECTING: hand over to the next address, or close it so
+    // the `onClose` path below marks the machine offline and schedules a retry, instead of
+    // hanging forever.
     const cancelDeadline = this.startTimer(() => {
-      if (this.socket === socket && !this.opened) {
-        this.timedOut = true;
-        socket.close();
-      }
-    }, CONNECT_TIMEOUT_MS);
+      if (this.socket !== socket || this.opened) return;
+      if (!this.isLastAddress()) return this.nextAddress(socket, `timed out after ${deadline}ms`);
+      this.timedOut = true;
+      socket.close();
+    }, deadline);
     socket.onOpen(() => {
       // Ignore a late open from a socket we've already superseded (reconnect/close swapped it
       // out): it must not authenticate or become the live connection.
@@ -161,14 +208,18 @@ export class MachineConnection {
         return;
       }
       let refusal = this.deps.refusalContext && !this.timedOut ? describeRefusal(info?.code, info?.reason, this.deps.refusalContext) : null;
-      // The close reason comes from outside the session, so the relay could send it: the token is
-      // held back for the next attempt, never forgotten on this alone.
+      // The close reason comes from outside the session, so whatever fronts the agent could send it:
+      // the token is held back for the next attempt, never forgotten on this alone.
       if (refusal && info?.reason === REFUSAL.tokenNotNeeded && this.token) {
         this.withheld = this.token;
         this.token = '';
       } else if (refusal && info?.reason === REFUSAL.notEnrolled && this.withheld !== null) {
         this.restoreWithheld();
         refusal = { ...refusal, final: false };
+      }
+      if (!refusal && !this.opened && !this.timedOut && !this.isLastAddress()) {
+        this.nextAddress(socket, info?.code ? `closed (code ${info.code})` : 'closed');
+        return;
       }
       const diagnostic: ConnectionDiagnostic = refusal
         ? { message: refusal.message, code: info?.code, at: this.now(), refused: true, ...(refusal.final ? { final: true as const } : {}) }
@@ -244,8 +295,8 @@ export class MachineConnection {
       message = DIAGNOSTIC.timedOut;
     } else if (!this.opened) {
       // Closed before ever opening: never reached the agent. A 1006 abnormal closure here
-      // means the relay could not be reached. A reason means the socket knows better (e.g. the
-      // relay handshake failed).
+      // means the address could not be reached. A reason means the socket knows better (e.g. the
+      // handshake failed).
       const why = reason
         ? reason
         : this.errored || code === 1006
@@ -291,6 +342,7 @@ export class MachineConnection {
         this.backoff = BASE_BACKOFF_MS;
         this.failCount = 0;
         this.everConnected = true;
+        this.deps.onAddressWorked?.(this.order[this.index]!);
         this.startHeartbeat(socket);
         if (!message.pushed) this.deps.openingRequests?.forEach((request) => socket.send(JSON.stringify(request)));
         this.deps.onStatus('online');

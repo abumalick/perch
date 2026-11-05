@@ -50,7 +50,7 @@
     // round-trip; the terminal takes focus from it when it mounts (see store.requestCreate).
     store.setKeyboardAnchor(() => kbAnchor.focus());
     const stopWide = trackWide((m) => (wide = m));
-    // Auto-recover the relay sessions: when the app returns to the foreground (the iPhone
+    // Auto-recover the machine sessions: when the app returns to the foreground (the iPhone
     // suspends a backgrounded PWA and its sockets) or the browser regains connectivity,
     // re-attempt every non-online machine so a machine that gave up retrying comes back on
     // its own — no need to tap Reconnect in the common case.

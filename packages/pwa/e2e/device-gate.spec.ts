@@ -5,8 +5,8 @@ import { failOnCspViolation } from './csp';
 
 failOnCspViolation(test);
 
-// The relay admits a phone by the device key the agent published, after the phone signs the
-// relay's challenge with it: the whole gate, in WebKit, against the real relay server.
+// The agent admits a phone by the device key its IK handshake carries, checked against the
+// roster: the whole gate, in WebKit, against the agent's own session code.
 
 let agent: FakeAgent;
 
@@ -24,7 +24,7 @@ async function pair(page: Page, baseURL: string): Promise<void> {
   await expect(page.getByText('demo', { exact: true })).toBeVisible();
 }
 
-test('an unknown key with no credential is refused by the relay, and not redialed', async ({ page }) => {
+test('an unknown key with no credential is refused by the agent, and not redialed', async ({ page }) => {
   await seedMachine(page, agent, { token: '' });
   await page.goto('/');
   await expect(page.getByTestId('home-refusal')).toHaveText('This phone is not enrolled on Test — run `perch pair` there to pair it again');
@@ -35,7 +35,7 @@ test('an unknown key with no credential is refused by the relay, and not rediale
   expect(agent.upgrades).toBe(upgrades);
 });
 
-test('a paired key is admitted by the relay on its own: no proof, no token', async ({ page, baseURL }) => {
+test('a paired key is admitted on its own: no token', async ({ page, baseURL }) => {
   await pair(page, baseURL!);
   agent.received.length = 0;
   await page.reload();

@@ -14,8 +14,8 @@ export interface Refusal {
   final: boolean;
 }
 
-// A refusal by the relay (IN_BAND_REFUSAL + an HTTP status) or by the agent (DEVICE_REFUSED),
-// in the owner's words; null for any other close.
+// A refusal by the agent (DEVICE_REFUSED, or IN_BAND_REFUSAL + an HTTP status), in the owner's
+// words; null for any other close.
 export function describeRefusal(code: number | undefined, reason: string | undefined, context: RefusalContext): Refusal | null {
   if (code === undefined) return null;
   const refused = code === DEVICE_REFUSED || (code >= IN_BAND_REFUSAL + 400 && code < IN_BAND_REFUSAL + 600);
@@ -50,31 +50,16 @@ export function describeRefusal(code: number | undefined, reason: string | undef
     case REFUSAL.notEnrolled:
       return final(m.notEnrolled(machine));
     case REFUSAL.signature:
-      // The agent says it too, when a new phone's hello does not prove its relay key.
-      return code === DEVICE_REFUSED
-        ? final(m.agentSignature(machine))
-        : final(m.relaySignature);
+      // A new phone's hello did not prove its device key.
+      return final(m.agentSignature(machine));
     case REFUSAL.tooManyEnrolments:
       return passing(m.tooManyEnrolments(machine));
-    case REFUSAL.deviceKeyRequired:
-      return final(m.deviceKeyRequired(machine));
-    case REFUSAL.challenge:
-      return passing(m.challenge);
-    case REFUSAL.challengeUnanswered:
-    case REFUSAL.invalidReply:
-      return passing(m.challengeUnanswered);
-    case REFUSAL.unknownAccount:
-      return final(m.unknownAccount(machine));
-    case REFUSAL.agentOffline:
-      return passing(m.agentOffline(machine));
-    case REFUSAL.agentSilent:
-      return passing(m.agentSilent(machine));
     case REFUSAL.tooManyPending:
     case REFUSAL.tooManyConnections:
       return passing(m.busy(machine));
     case REFUSAL.internal:
-      return passing(m.internal);
+      return passing(m.internal(machine));
     default:
-      return passing(m.other(reason || m.code(code)));
+      return passing(m.other(machine, reason || m.code(code)));
   }
 }

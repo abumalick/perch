@@ -6,7 +6,7 @@ import { failOnCspViolation } from './csp';
 failOnCspViolation(test);
 
 // A pairing link carries a one-time secret in its fragment. Opening it (or pasting it) adds the
-// relay entry and connects with the secret in place of a token; the secret must never reach a
+// machine entry and connects with the secret in place of a token; the secret must never reach a
 // request, stay in the address bar, or outlive the machine accepting it.
 
 let agent: FakeAgent;
@@ -196,4 +196,31 @@ test.describe('on a French phone', () => {
     await expect(page.getByText('Aucune machine pour l’instant')).toBeVisible();
     expect(asked).toEqual([expect.stringMatching(/^Associer dev box via 127.0.0.1/)]);
   });
+});
+
+// A machine reached by several addresses: the link carries them in order, and the phone walks
+// them, here past a first address nothing listens on.
+test('a link with several addresses keeps them in order and connects through the one that answers', async ({ page, baseURL }) => {
+  const dead = 'ws://127.0.0.1:59997/';
+  page.on('dialog', (dialog) => void dialog.accept());
+  await page.goto(pairingLink(baseURL!, { urls: [dead, agent.url], agentKey: agent.agentKey, secret: SECRET, name: 'dev box' }));
+  await expect(page.getByText('demo', { exact: true })).toBeVisible();
+  expect(await stored(page)).toEqual([expect.objectContaining({ addresses: [dead, agent.url] })]);
+});
+
+// One entry per machine: a second link for the same agent key moves the entry, never adds one.
+test('a new link for a machine the phone knows updates its addresses in place', async ({ page, baseURL }) => {
+  page.on('dialog', (dialog) => void dialog.accept());
+  await page.goto(link(baseURL!));
+  await expect(page.getByText('demo', { exact: true })).toBeVisible();
+  const [first] = await stored(page);
+
+  const moved = 'ws://127.0.0.1:59996/abu';
+  const secret = await agent.newPairing();
+  // A fresh load, as opening the link from outside the app is: a hash change alone reloads nothing.
+  await page.goto('about:blank');
+  await page.goto(pairingLink(baseURL!, { urls: [moved, agent.url], agentKey: agent.agentKey, secret, name: 'dev box' }));
+  await expect.poll(async () => (await stored(page))[0]?.addresses).toEqual([moved, agent.url]);
+  expect(await stored(page)).toEqual([expect.objectContaining({ id: first!.id })]);
+  await expect(page.getByText('demo', { exact: true })).toBeVisible();
 });

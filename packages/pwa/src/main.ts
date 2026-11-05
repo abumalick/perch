@@ -9,7 +9,7 @@ import { LocalStorageAdapter } from './adapters/local-storage';
 import { createConnectionLog } from './core/connection-log';
 import { createStorageLogStore } from './adapters/storage-log-store';
 import { browserFrameSocketFactory } from './adapters/browser-frame-socket';
-import { fetchRelayChallenge, noiseSocketFactory } from './adapters/noise-socket';
+import { noiseSocketFactory } from './adapters/noise-socket';
 import { indexedDbIdentityStore, loadDeviceIdentity, replaceUnreadableDeviceIdentity } from './adapters/device-keys';
 import { deviceName } from './core/device-name';
 import { deviceFingerprint } from '@perch/secure-channel';
@@ -100,16 +100,12 @@ const keyInfo = async (load: Promise<DeviceIdentity>) => {
 };
 
 let store: PerchStore;
-const legacyRelays = new Set<string>();
 const manager = new ConnectionManager({
-  secureSocketFactory: (agentKey, token, credential, onPhase) =>
+  secureSocketFactory: (agentKey, token, onPhase) =>
     noiseSocketFactory(browserFrameSocketFactory, agentKey, {
       device: deviceIdentity,
       token,
-      credential,
       deviceName: deviceName(navigator.userAgent),
-      fetchChallenge: fetchRelayChallenge,
-      legacyRelays,
       onPhase,
     }),
   aggregator,

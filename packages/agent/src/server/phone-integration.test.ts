@@ -389,6 +389,17 @@ describe('phones on the phone port', () => {
     });
   });
 
+  it('puts Funnel requests in a pool of their own: a public flood never evicts a tailnet handshake', async () => {
+    stack = await startStack({ admission: new PhoneAdmission({ now: () => Date.now(), publicTotal: 2 }) });
+    const tailnet = await open(stack.url, { 'x-forwarded-for': '100.64.0.9' });
+    const publics: Opened[] = [];
+    for (let i = 0; i < 3; i++) publics.push(await open(stack.url, { 'x-forwarded-for': `198.51.100.${i}`, 'tailscale-funnel-request': '?1' }));
+    cleanups.push(() => [tailnet, ...publics].forEach((s) => s.socket.terminate()));
+    expect(await publics[0]!.closed).toEqual({ code: IN_BAND_REFUSAL + 429, reason: REFUSAL.tooManyPending });
+    expect(tailnet.socket.readyState).toBe(WebSocket.OPEN);
+    expect(publics[2]!.socket.readyState).toBe(WebSocket.OPEN);
+  });
+
   it('closes a socket that never authenticates, and frees its slot', async () => {
     stack = await startStack({ admission: new PhoneAdmission({ now: () => Date.now(), perAddress: 1 }), authTimeoutMs: 100 });
     const idle = await open(stack.url, { 'x-forwarded-for': '203.0.113.7' });

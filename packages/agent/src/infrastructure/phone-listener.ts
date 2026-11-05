@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { IN_BAND_REFUSAL, MAX_FRAME_BYTES, REFUSAL } from '@perch/secure-channel';
-import { clientAddress, type PhoneAdmission } from '../application/phone-admission';
+import { clientAddress, isFunnelRequest, type PhoneAdmission } from '../application/phone-admission';
 import { limitedDevices, type DiskReadLimiter } from '../application/disk-read-limiter';
 import type { AgentDeviceGate } from '../server/device-gate-wiring';
 import type { WsServer } from '../server/ws-server';
@@ -53,11 +53,14 @@ export function startPhoneListener(opts: PhoneListenerOptions): Promise<PhoneLis
   http.on('upgrade', (req, socket, head) => {
     socket.on('error', () => undefined);
     const forwarded = req.headers['x-forwarded-for'];
-    const address = clientAddress(req.socket.remoteAddress ?? '', Array.isArray(forwarded) ? forwarded.join(',') : forwarded);
+    const peer = req.socket.remoteAddress ?? '';
+    const address = clientAddress(peer, Array.isArray(forwarded) ? forwarded.join(',') : forwarded);
+    const funnel = req.headers['tailscale-funnel-request'];
+    const pool = isFunnelRequest(peer, Array.isArray(funnel) ? funnel.join(',') : funnel) ? 'public' : 'tailnet';
     wss.handleUpgrade(req, socket, head, (ws) => {
       ws.on('error', () => undefined);
       const frame = wsFrameSocket(ws, true);
-      const slot = admission.admit(address, () => frame.close(TOO_MANY, REFUSAL.tooManyPending));
+      const slot = admission.admit(address, () => frame.close(TOO_MANY, REFUSAL.tooManyPending), pool);
       if (!slot.ok) {
         gate.options({}).refusalLog?.line(`phone:${slot.reason}`, `phone port: refused a socket from ${address ?? 'a local proxy'}: too many (${slot.reason})`);
         frame.close(TOO_MANY, REFUSAL.tooManyConnections);

@@ -467,6 +467,7 @@ export async function startFakeAgent(
       refuseRevokedDevices(isRevoked: (x25519: string) => boolean) {
         for (const conn of sessions) if (conn.device && isRevoked(conn.device)) conn.refuse(REFUSAL.revoked);
       },
+      broadcastDeviceEnrolled() {},
     };
     const gate = startDeviceGate({ keys, server, store, pairings, log: () => undefined, rosterPollMs: 60_000 });
     const listener = await startPhoneListener({

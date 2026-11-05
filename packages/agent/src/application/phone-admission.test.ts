@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PhoneAdmission, clientAddress } from './phone-admission';
+import { HANDSHAKES_PER_MINUTE_PER_PREFIX, isFunnelRequest, PhoneAdmission, UNAUTHENTICATED_PER_PREFIX, UNAUTHENTICATED_PUBLIC_TOTAL, UNAUTHENTICATED_TOTAL, clientAddress } from './phone-admission';
 
 function clock() {
   let t = 0;
@@ -111,5 +111,66 @@ describe('PhoneAdmission', () => {
     expect(evicted).toEqual([]);
     admitted(admission.admit('d', () => evicted.push('d')));
     expect(evicted).toEqual(['b']);
+  });
+});
+
+describe('PhoneAdmission: an IPv6 /56', () => {
+  // Sixteen /64s of one /56: what one host with a routed /48 hands out freely.
+  const in56 = (i: number) => `2001:db8:1:${(0x100 + i).toString(16)}::/64`;
+
+  it('caps a /56 at three times the /64 count, however many /64s it spreads over', () => {
+    const c = clock();
+    const admission = new PhoneAdmission({ now: c.now });
+    for (let i = 0; i < UNAUTHENTICATED_PER_PREFIX; i++) admitted(admission.admit(in56(i % 16), () => undefined));
+    expect(admission.admit(in56(15), () => undefined)).toEqual({ ok: false, reason: 'address' });
+    expect(admission.admit('2001:db8:1:200::/64', () => undefined).ok).toBe(true);
+  });
+
+  it('caps the sockets a /56 opens in a minute', () => {
+    const c = clock();
+    const admission = new PhoneAdmission({ now: c.now });
+    for (let i = 0; i < HANDSHAKES_PER_MINUTE_PER_PREFIX; i++) admitted(admission.admit(in56(i % 16), () => undefined)).release();
+    expect(admission.admit(in56(3), () => undefined)).toEqual({ ok: false, reason: 'rate' });
+    c.advance(60_000);
+    expect(admission.admit(in56(3), () => undefined).ok).toBe(true);
+  });
+
+  it('gives back the /56 slot with the /64 one', () => {
+    const c = clock();
+    const admission = new PhoneAdmission({ now: c.now });
+    const held = Array.from({ length: UNAUTHENTICATED_PER_PREFIX }, (_, i) => admitted(admission.admit(in56(i % 16), () => undefined)));
+    held[0]!.authenticated();
+    expect(admission.admit(in56(0), () => undefined).ok).toBe(true);
+  });
+});
+
+describe('PhoneAdmission: Funnel requests have a pool of their own', () => {
+  it('evicts only within the public pool, so a public flood never closes a tailnet handshake', () => {
+    const c = clock();
+    const admission = new PhoneAdmission({ now: c.now });
+    let tailnetEvicted = false;
+    admitted(admission.admit('100.64.0.9', () => (tailnetEvicted = true)));
+    const evicted: number[] = [];
+    for (let i = 0; i < UNAUTHENTICATED_PUBLIC_TOTAL + 5; i++) admitted(admission.admit(`198.51.100.${i}`, () => evicted.push(i), 'public'));
+    expect(tailnetEvicted).toBe(false);
+    expect(evicted).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('leaves the tailnet pool its full size', () => {
+    const c = clock();
+    const admission = new PhoneAdmission({ now: c.now });
+    for (let i = 0; i < UNAUTHENTICATED_PUBLIC_TOTAL; i++) admitted(admission.admit(`198.51.100.${i}`, () => undefined, 'public'));
+    const evicted: number[] = [];
+    for (let i = 0; i < UNAUTHENTICATED_TOTAL; i++) admitted(admission.admit(`10.0.0.${i}`, () => evicted.push(i)));
+    expect(evicted).toEqual([]);
+  });
+});
+
+describe('isFunnelRequest', () => {
+  it('believes the Funnel header only from a loopback peer', () => {
+    expect(isFunnelRequest('127.0.0.1', '?1')).toBe(true);
+    expect(isFunnelRequest('::1', '?1')).toBe(true);
+    expect(isFunnelRequest('127.0.0.1', undefined)).toBe(false);
+    expect(isFunnelRequest('100.64.0.9', '?1')).toBe(false);
   });
 });

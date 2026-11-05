@@ -10,7 +10,7 @@ import type { WsServer } from './ws-server';
 
 export interface DeviceGateDeps {
   keys: AgentKeys;
-  server: Pick<WsServer, 'refuseRevokedDevices'>;
+  server: Pick<WsServer, 'refuseRevokedDevices' | 'broadcastDeviceEnrolled'>;
   store: DeviceStorePort;
   pairings: PairingStorePort;
   log: (message: string) => void;
@@ -45,6 +45,10 @@ export function startDeviceGate(deps: DeviceGateDeps): AgentDeviceGate {
     pairings: deps.pairings,
     now: () => new Date(),
     onChange: wrote,
+    onEnrolled: (device, via) => {
+      log(`device enrolled: ${device.id} "${device.name}" (${via === 'pairing' ? 'pairing code' : 'token'})`);
+      server.broadcastDeviceEnrolled(device);
+    },
   });
   const pushBudget = new PushBudget(() => Date.now());
   const refusalLog = new LimitedLog(log, () => Date.now());

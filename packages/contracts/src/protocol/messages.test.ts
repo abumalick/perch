@@ -149,6 +149,12 @@ describe('clientMessageSchema', () => {
 });
 
 describe('agentMessageSchema', () => {
+  it('parses deviceEnrolled, the notice a new phone paired', () => {
+    const msg = { type: 'deviceEnrolled', id: 'c590-c6a1-9f8d', name: 'Android · Chrome', at: '2026-11-05T10:00:00.000Z' };
+    expect(parseAgentMessage(msg)).toEqual(msg);
+    expect(() => parseAgentMessage({ type: 'deviceEnrolled', id: 'x' })).toThrow();
+  });
+
   it('parses a fileStored message', () => {
     const msg = { type: 'fileStored', workspaceId: 'perch-a', path: '.tmp/files/pasted-image.png' };
     expect(parseAgentMessage(msg)).toEqual(msg);

@@ -12,6 +12,8 @@ export interface RosterDevicesDeps {
   now: () => Date;
   // Called after this agent wrote the roster, so the gate's copy knows a new device at once.
   onChange: () => void;
+  // Called once the roster holds a device it did not hold before.
+  onEnrolled?: (device: { id: string; name: string; at: string; x25519: string }, via: 'pairing' | 'token') => void;
 }
 
 // The agent's device gate, over ~/.perch/devices.json.
@@ -25,8 +27,18 @@ export class RosterDevices implements DeviceGate {
 
   async enrol(device: { x25519: string; ed25519: string; name: string }, via: 'pairing' | 'token'): Promise<boolean> {
     // Enrolment may have been closed or turned off between the handshake and the credential.
-    const roster = await this.deps.store.update((current) => (mayEnrol(current, via) ? enrolDevice(current, device, this.deps.now()) : current));
+    let known = true;
+    const roster = await this.deps.store.update((current) => {
+      known = standingOf(current, device.x25519) !== 'unknown';
+      return mayEnrol(current, via) ? enrolDevice(current, device, this.deps.now()) : current;
+    });
     this.deps.onChange();
+    const entry = known ? undefined : roster.devices.find((d) => d.x25519 === device.x25519);
+    try {
+      if (entry) this.deps.onEnrolled?.({ id: entry.id, name: entry.name, at: entry.enrolledAt, x25519: entry.x25519 }, via);
+    } catch {
+      // Telling of it is best-effort: the device is enrolled whatever happens to the notice.
+    }
     return standingOf(roster, device.x25519) === 'enrolled';
   }
 

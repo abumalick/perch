@@ -11,6 +11,8 @@ export interface PairingDeps {
   pairings: PairingStorePort;
   newSecret: () => string;
   now: () => Date;
+  // How long the code stays live; PAIRING_TTL_MS when not given.
+  ttlMs?: number;
 }
 
 const GENERIC_MACHINE_IDS = new Set(['', 'local', 'localhost']);
@@ -28,7 +30,7 @@ export async function mintPairingLink(deps: PairingDeps, input: { phoneUrls: str
     throw new Error(`PERCH_DEFAULT_PATH must be an absolute path of at most 128 characters (got ${deps.defaultPath})`);
   }
   const secret = deps.newSecret();
-  await deps.pairings.update((list) => addPairing(list, secret, deps.now()));
+  await deps.pairings.update((list) => addPairing(list, secret, deps.now(), deps.ttlMs));
   return pairingLink(input.pwaOrigin, {
     urls: input.phoneUrls,
     agentKey: deps.keys.x25519.publicKey,

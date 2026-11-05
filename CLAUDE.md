@@ -23,7 +23,8 @@ device key, and streams its terminals. No agent listens on a phone-facing port.
   **Change the protocol here first**, then the agent and PWA.
 - `packages/agent` (`@perch/agent`) — per-machine agent. tmux via `node:child_process`,
   terminal streaming via `node-pty`, a `RelayLink` per relay that dials a socket back for
-  each phone (served through `NoiseClientConnection`), and a `node:http` server on
+  each phone and a loopback phone port phones connect to directly (both served through
+  `NoiseClientConnection`), and a `node:http` server on
   `127.0.0.1` with three bearer-token-guarded routes: `POST /hooks` (Claude Code hooks report
   attention here), `POST /unpark` (`perch unpark`) and `POST /message` (`perch send`).
   Domain/application in `application/` + `ports/`, adapters in `infrastructure/`, wiring in
@@ -79,15 +80,38 @@ Build each feature in its own git worktree; full runbook in `docs/WORKTREES.md`.
 ## Runtime & deployment
 See `docs/DEPLOY.md` for the full runbook. In short:
 - Each agent reads `deploy/agent.env` (`PERCH_TOKEN`, `PERCH_MACHINE_ID`,
-  `PERCH_PROJECT_ROOTS`, `PERCH_PORT` for the loopback hooks listener, `PERCH_RELAY_URLS`) and
+  `PERCH_PROJECT_ROOTS`, `PERCH_PORT` for the loopback hooks listener, `PERCH_PHONE_PORT` for the
+  phone port, `PERCH_RELAY_URLS`) and
   runs as a service: **launchd** on macOS
   (`deploy/com.perch.agent.plist`), **systemd user unit + linger** on Ubuntu. Both invoke
   `deploy/run-agent.sh`, which self-locates `mise` (services don't inherit an interactive
   PATH). Run `mise trust` once per machine or the unit crash-loops.
-- **An agent is reached only through its relays.** It binds `127.0.0.1` whatever
-  `PERCH_HOST` says (a non-loopback value is ignored with a warning), serves only `POST /hooks`,
-  `POST /unpark` and `POST /message` there, and is never published with `tailscale serve`. `pnpm perch connect` joins a machine
-  to a relay; `perch pair` pairs a phone (relay section).
+- **An agent is reached through its relays, or on its phone port once that is published.** It
+  binds `127.0.0.1` whatever `PERCH_HOST` says (a non-loopback value is ignored with a warning).
+  The hooks port (`PERCH_PORT`) serves only `POST /hooks`, `POST /unpark` and `POST /message`, and
+  is never published with `tailscale serve`. `pnpm perch connect` joins a machine to a relay;
+  `perch pair` pairs a phone (relay section).
+- **The phone port: phones connect to the agent directly** (`PERCH_PHONE_PORT`, default 8797,
+  `infrastructure/phone-listener.ts`). It upgrades on **any** path (`tailscale serve --set-path`
+  strips its prefix) and answers anything else 404, and each socket runs the unchanged Noise
+  session through `WsServer.acceptPhoneSocket`, the same entry a relay dial-back takes. **One
+  device gate serves both** (`startDeviceGate`): one roster, push budget, refusal log and roster
+  monitor, so a revocation closes direct sessions too. It runs whether or not relays are set, and
+  the agent key is loaded or created at every start. Things not to "simplify":
+  - **The bounds the relay enforced now live in the agent** (`application/phone-admission.ts`):
+    8 unauthenticated sockets per client address, 32 in all, and when full the **oldest** is
+    closed, never the newcomer, so strangers holding slots cannot lock the owner out; 20 new
+    sockets a minute per address. A session leaves every count once authenticated (a pushed
+    session only at its first frame, as on the relay path). Refusals are in band, `4429`.
+  - **The client address is `x-forwarded-for`'s last hop, believed only from a loopback peer**;
+    a loopback peer naming nobody counts against the total only.
+  - **Roster and pairing-file reads a stranger can cause are limited** (`DiskReadLimiter`, 4 at
+    once, 10 a minute; a limited read fails as an unreadable roster). An enrolled key is answered
+    from the roster the monitor last read, so the owner's phones never wait on it.
+  - **A taken phone port does not stop the agent:** it logs `no phone port` and keeps its relays,
+    since a second Linux user's agent left on the default would otherwise crash-loop.
+  - Every accepted `authResult` names `agent: { protocol: PROTOCOL_VERSION }` (contracts), so a
+    PWA can tell an agent too old for it.
 - The PWA is built and served on the always-on machine via `deploy/run-pwa.sh` +
   `tailscale serve`, and added to the iPhone home screen.
   - **The host running `run-pwa.sh`:** it keeps a `vite preview`

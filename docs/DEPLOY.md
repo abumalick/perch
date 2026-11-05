@@ -1,10 +1,12 @@
 # Deploying Perch (macOS and Linux agents, a phone client, through a relay)
 
-Perch runs an **agent** on each machine and a **PWA** that your phone installs. A phone never
-connects to an agent directly: each agent dials out to one or more **relays** and the phone
-reaches it through them, end to end encrypted with a device key
-([relay runbook](relay-cf-runbook.md)). An agent listens on no phone-facing port; its only
-listener is the Claude Code hooks endpoint on `127.0.0.1`.
+Perch runs an **agent** on each machine and a **PWA** that your phone installs. Today a phone
+reaches an agent through one or more **relays** the agent dials out to, end to end encrypted
+with a device key ([relay runbook](relay-cf-runbook.md)). Each agent also listens on a loopback
+**phone port** (`PERCH_PHONE_PORT`, default 8797) that serves the same Noise session directly,
+for when it is published (see "The phone port" below); a PWA that connects there is still to
+come, so the relays remain the way in. Both listeners bind `127.0.0.1` only: the hooks endpoint
+(`PERCH_PORT`) and the phone port.
 
 ## 0. Prerequisites (every machine)
 - A relay to connect to: the Cloudflare Worker or a self-hosted relay (runbook, "Choose your relay host").
@@ -89,9 +91,28 @@ one, `connect` still joins and says so, and `perch pair --pwa <origin>` prints t
 per relay the machine should hold. `journalctl --user -u perch-agent | grep 'socket open'` (or
 `deploy/agent.log` on macOS) then shows one `relay control socket open (<url>)` line per relay.
 
-Nothing is exposed with `tailscale serve` for the agent. A machine set up before the relay may
+The hooks port is never exposed with `tailscale serve`. A machine set up before the relay may
 still publish its agent (`tailscale serve status` shows `:8442 -> 127.0.0.1:8787`): remove it
 with `tailscale serve --https=8442 off` (`sudo` on Linux).
+
+### The phone port
+The agent logs `perch agent: phones on 127.0.0.1:<port>` at startup. The port takes a WebSocket
+upgrade on any path (`tailscale serve --set-path` strips its prefix) and answers anything else
+404, so `/hooks`, `/unpark` and `/message` are never one proxy away from the network. It is meant to sit behind
+`tailscale serve` or Funnel; the only port to publish is `PERCH_PHONE_PORT`, never `PERCH_PORT`.
+A phone there gets exactly what a relay dial-back gets: the same device roster, revocation and
+pairing codes. Its bounds, as the relay enforced them: 8 unauthenticated sockets per client
+address and 32 in all (the oldest is closed when full), 20 new sockets a minute per address, a
+ping every 30 s, 64 KiB frames, and at most 4 roster or pairing-file reads at once and 10 a minute
+for keys that are not enrolled. The client address is the last hop of `x-forwarded-for` from the
+local proxy. Refusals arrive in band (`4429`). Several agents on one machine need distinct
+phone ports; if the port is taken, the agent logs `no phone port` and keeps its relays.
+Check it with an upgrade (`101`) and a plain request (`404`):
+```sh
+curl -si --http1.1 -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
+  -H "Sec-WebSocket-Key: $(openssl rand -base64 16)" http://127.0.0.1:8797/x | head -1
+curl -si http://127.0.0.1:8797/hooks | head -1
+```
 
 ## 4. Wire Claude Code hooks (each machine)
 The agent writes its token to `~/.perch/token` on startup (mode 600); the hook reads it.

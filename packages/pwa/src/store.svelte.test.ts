@@ -37,7 +37,7 @@ const prompts = { confirm: () => false, alert: () => undefined, newId: () => `id
 
 function memStorage(seed: unknown[] = []): StoragePort {
   const map = new Map<string, string>();
-  if (seed.length) map.set('perch.machines', JSON.stringify(seed));
+  if (seed.length) map.set('tarfa.machines', JSON.stringify(seed));
   return { read: (k) => map.get(k) ?? null, write: (k, v) => void map.set(k, v) };
 }
 
@@ -138,7 +138,7 @@ describe('PerchStore pairing', () => {
   it('refuses anything that is not a pairing link, and stores nothing', () => {
     const { store } = build();
     store.start();
-    expect(store.pairFromLink('https://pwa.example/#pair?u=wss://x/acct')).toEqual({ error: expect.stringMatching(/not a Perch pairing code/) });
+    expect(store.pairFromLink('https://pwa.example/#pair?u=wss://x/acct')).toEqual({ error: expect.stringMatching(/not a Tarfa pairing code/) });
     expect(store.machines).toEqual([]);
   });
 
@@ -201,7 +201,7 @@ describe('PerchStore pairing', () => {
     store.refreshMachines();
     expect(store.machines).toBe(before);
     const added = { id: 'dev', name: 'dev', url: 'wss://relay.example/acct', token: '', agentKey: generateAgentKeys().x25519.publicKey };
-    storage.write('perch.machines', JSON.stringify([mac, added]));
+    storage.write('tarfa.machines', JSON.stringify([mac, added]));
     store.refreshMachines();
     expect(store.machines.map((m) => m.id)).toEqual(['mac', 'dev']);
   });
@@ -2296,7 +2296,7 @@ describe('PerchStore dictation presets', () => {
     expect(store.currentPreset.id).toBe('scribe');
     store.selectPreset('clean');
     expect(store.currentPreset.id).toBe('clean');
-    expect(storage.read('perch.dictationPreset')).toBe('clean');
+    expect(storage.read('tarfa.dictationPreset')).toBe('clean');
   });
 
   it('saves an edited list, falling back to the first preset when the current one is gone', () => {
@@ -2333,7 +2333,7 @@ describe('PerchStore dictation presets', () => {
     store.saveDictationPresets([DEFAULT_PRESETS[1]!]);
     store.resetDictationPresets();
     expect(store.dictationPresets).toEqual(DEFAULT_PRESETS);
-    expect(storage.read('perch.dictationPresets')).toBe('');
+    expect(storage.read('tarfa.dictationPresets')).toBe('');
   });
 
   it('keeps the OpenRouter key', () => {
@@ -2341,7 +2341,7 @@ describe('PerchStore dictation presets', () => {
     store.start();
     store.setOpenRouterApiKey('sk-or-x');
     expect(store.openRouterApiKey).toBe('sk-or-x');
-    expect(storage.read('perch.openRouterApiKey')).toBe('sk-or-x');
+    expect(storage.read('tarfa.openRouterApiKey')).toBe('sk-or-x');
   });
 });
 

@@ -34,20 +34,20 @@ export function isConnectable(machine: Pick<MachineConfig, 'agentKey' | 'enabled
   return machine.enabled !== false && isRelayMachine(machine);
 }
 
-const KEY = 'perch.machines';
-const LAST_MACHINE_KEY = 'perch.lastMachine';
-const LAST_COMMAND_KEY = 'perch.lastCommand';
-const FILE_WRAP_KEY = 'perch.fileWrap';
-const TERMINAL_FONT_SIZE_KEY = 'perch.terminalFontSize';
-const SHARE_LINKS_KEY = 'perch.shareLinks';
-const LANGUAGE_KEY = 'perch.language';
-const ELEVENLABS_API_KEY = 'perch.elevenLabsApiKey';
-const OPENROUTER_API_KEY = 'perch.openRouterApiKey';
-const DICTATION_PRESETS_KEY = 'perch.dictationPresets';
-const DICTATION_PRESET_KEY = 'perch.dictationPreset';
-const FOLDER_FILTER_KEY = 'perch.folderFilter';
-const FOLDER_HIDDEN_KEY = 'perch.folderHidden';
-const FOLDER_FILTER_MODE_KEY = 'perch.folderFilterMode';
+const KEY = 'tarfa.machines';
+const LAST_MACHINE_KEY = 'tarfa.lastMachine';
+const LAST_COMMAND_KEY = 'tarfa.lastCommand';
+const FILE_WRAP_KEY = 'tarfa.fileWrap';
+const TERMINAL_FONT_SIZE_KEY = 'tarfa.terminalFontSize';
+const SHARE_LINKS_KEY = 'tarfa.shareLinks';
+const LANGUAGE_KEY = 'tarfa.language';
+const ELEVENLABS_API_KEY = 'tarfa.elevenLabsApiKey';
+const OPENROUTER_API_KEY = 'tarfa.openRouterApiKey';
+const DICTATION_PRESETS_KEY = 'tarfa.dictationPresets';
+const DICTATION_PRESET_KEY = 'tarfa.dictationPreset';
+const FOLDER_FILTER_KEY = 'tarfa.folderFilter';
+const FOLDER_HIDDEN_KEY = 'tarfa.folderHidden';
+const FOLDER_FILTER_MODE_KEY = 'tarfa.folderFilterMode';
 
 export const TERMINAL_FONT_MIN = 8;
 export const TERMINAL_FONT_MAX = 24;

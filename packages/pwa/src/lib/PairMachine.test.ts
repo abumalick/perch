@@ -7,7 +7,7 @@ import PairMachine from './PairMachine.svelte';
 function fakeStore(accepts: (text: string) => boolean = () => true) {
   return {
     pairFromLink: vi.fn((text: string) =>
-      accepts(text) ? { name: 'dev' } : { error: 'That is not a Perch pairing code. Run `perch pair` on the machine for a fresh one.' },
+      accepts(text) ? { name: 'dev' } : { error: 'That is not a Tarfa pairing code. Run `perch pair` on the machine for a fresh one.' },
     ),
   };
 }
@@ -26,7 +26,7 @@ describe('PairMachine', () => {
     render(PairMachine, { props: { store: fakeStore(() => false), scan: vi.fn() } });
     await fireEvent.input(screen.getByLabelText(/paste a pairing link/i), { target: { value: 'hello' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Pair' }));
-    expect(screen.getByRole('alert').textContent).toMatch(/not a Perch pairing code/);
+    expect(screen.getByRole('alert').textContent).toMatch(/not a Tarfa pairing code/);
   });
 
   it('scans until a code pairs, then stops the camera', async () => {
@@ -44,7 +44,7 @@ describe('PairMachine', () => {
     emit('a shop receipt');
     await tick();
     expect(stop).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert').textContent).toMatch(/not a Perch pairing code/);
+    expect(screen.getByRole('alert').textContent).toMatch(/not a Tarfa pairing code/);
     emit('good');
     await tick();
     expect(stop).toHaveBeenCalledTimes(1);

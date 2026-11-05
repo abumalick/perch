@@ -34,7 +34,7 @@ describe('createStorageLogStore', () => {
   });
 
   it('returns null on malformed stored JSON', () => {
-    expect(createStorageLogStore(fakeStorage({ 'perch.connlog': '{not json' })).load()).toBeNull();
+    expect(createStorageLogStore(fakeStorage({ 'tarfa.connlog': '{not json' })).load()).toBeNull();
   });
 
   it('swallows a storage write failure (logging must never break the app)', () => {

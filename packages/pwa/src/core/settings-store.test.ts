@@ -69,11 +69,11 @@ describe('SettingsStore', () => {
 
   it('clamps an out-of-range or unparsable stored font size on read', () => {
     const storage = memStorage();
-    storage.write('perch.terminalFontSize', '999');
+    storage.write('tarfa.terminalFontSize', '999');
     expect(new SettingsStore(storage).terminalFontSize()).toBe(24);
-    storage.write('perch.terminalFontSize', '1');
+    storage.write('tarfa.terminalFontSize', '1');
     expect(new SettingsStore(storage).terminalFontSize()).toBe(8);
-    storage.write('perch.terminalFontSize', 'abc');
+    storage.write('tarfa.terminalFontSize', 'abc');
     expect(new SettingsStore(storage).terminalFontSize()).toBe(13);
   });
 
@@ -164,7 +164,7 @@ describe('SettingsStore', () => {
   it('reads an entry stored with the old relay flag unchanged', () => {
     const storage = memStorage();
     const stored = { id: 'mac', name: 'Mac', url: 'wss://relay/acct', token: 't', relay: true, agentKey };
-    storage.write('perch.machines', JSON.stringify([stored]));
+    storage.write('tarfa.machines', JSON.stringify([stored]));
     const [machine] = new SettingsStore(storage).list();
     expect(machine).toEqual(stored);
     expect(isConnectable(machine!)).toBe(true);
@@ -194,7 +194,7 @@ describe('SettingsStore', () => {
 
   it('returns [] on corrupt storage', () => {
     const storage = memStorage();
-    storage.write('perch.machines', 'not json');
+    storage.write('tarfa.machines', 'not json');
     expect(new SettingsStore(storage).list()).toEqual([]);
   });
 
@@ -285,7 +285,7 @@ describe('SettingsStore', () => {
 
   it('returns [] on a corrupt folder filter value', () => {
     const storage = memStorage();
-    storage.write('perch.folderFilter', 'not json');
+    storage.write('tarfa.folderFilter', 'not json');
     expect(new SettingsStore(storage).folderFilter()).toEqual([]);
   });
 
@@ -301,7 +301,7 @@ describe('SettingsStore', () => {
 
   it('returns [] on a corrupt hidden folders value', () => {
     const storage = memStorage();
-    storage.write('perch.folderHidden', 'not json');
+    storage.write('tarfa.folderHidden', 'not json');
     expect(new SettingsStore(storage).folderHidden()).toEqual([]);
   });
 
@@ -328,7 +328,7 @@ describe('SettingsStore', () => {
 
   it('falls back to show-only on an unrecognised filter mode', () => {
     const storage = memStorage();
-    storage.write('perch.folderFilterMode', 'sideways');
+    storage.write('tarfa.folderFilterMode', 'sideways');
     expect(new SettingsStore(storage).folderFilterMode()).toBe('only');
   });
 });

@@ -8,7 +8,7 @@ import { generateAgentKeys } from '@perch/secure-channel';
 
 async function seedMachines(page: Page, machines: unknown[]): Promise<void> {
   await page.addInitScript((m) => {
-    localStorage.setItem('perch.machines', JSON.stringify(m));
+    localStorage.setItem('tarfa.machines', JSON.stringify(m));
   }, machines);
 }
 

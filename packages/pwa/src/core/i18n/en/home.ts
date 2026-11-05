@@ -9,7 +9,7 @@ export const home = {
   sharedPreview: 'Shared preview',
   sharedReady: '1 file ready — open a session to attach it',
   noMachines: 'No machines yet',
-  noMachinesSub: 'Connect a machine running the Perch agent to get started.',
+  noMachinesSub: 'Connect a machine running the Tarfa agent to get started.',
   addMachine: '⚙ Add a machine',
   connecting: 'Connecting to your machines…',
   reconnecting: 'Reconnecting…',

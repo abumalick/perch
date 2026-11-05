@@ -19,7 +19,7 @@ test.beforeEach(() => {
 });
 
 const stored = (page: import('@playwright/test').Page) =>
-  page.evaluate(() => JSON.parse(localStorage.getItem('perch.machines') ?? '[]') as Array<Record<string, unknown>>);
+  page.evaluate(() => JSON.parse(localStorage.getItem('tarfa.machines') ?? '[]') as Array<Record<string, unknown>>);
 
 test('an entry without a valid agent key is an old direct entry, even one flagged relay', async ({ page }) => {
   await seedMachine(page, agent, { agentKey: undefined });

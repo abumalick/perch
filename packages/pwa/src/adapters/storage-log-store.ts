@@ -1,7 +1,7 @@
 import type { StoragePort } from '../core/ports/storage';
 import type { LogStore, PersistedLogState } from '../core/connection-log';
 
-const KEY = 'perch.connlog';
+const KEY = 'tarfa.connlog';
 
 // Persists the connection-log ring in a StoragePort (localStorage in production) so the buffer
 // survives a full app kill. A read/parse failure yields null (fresh start) and a write failure

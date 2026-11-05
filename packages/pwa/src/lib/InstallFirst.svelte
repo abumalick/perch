@@ -37,7 +37,7 @@
       </li>
       <li>{msg().app.installFirst.openInSafari}</li>
       <li>{msg().app.installFirst.inSafariTap}<b>{msg().app.installFirst.share}</b> → <b>{msg().app.installFirst.addToHomeScreen}</b>{msg().app.installFirst.alreadyOnHomeScreen}</li>
-      <li>{msg().app.installFirst.openPerch}<b>{msg().app.installFirst.addMachine}</b>{msg().app.installFirst.then}<b>{msg().app.installFirst.pastePairingLink}</b>.</li>
+      <li>{msg().app.installFirst.openTarfa}<b>{msg().app.installFirst.addMachine}</b>{msg().app.installFirst.then}<b>{msg().app.installFirst.pastePairingLink}</b>.</li>
     </ol>
     <p class="note">{msg().app.installFirst.notUsedYet}<code>perch pair</code>.</p>
     <button type="button" class="link" onclick={() => store.pairInBrowser()}>{msg().app.installFirst.pairInBrowser}</button>

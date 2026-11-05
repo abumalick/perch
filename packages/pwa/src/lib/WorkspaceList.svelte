@@ -161,7 +161,7 @@
 
 <header>
   <h1>
-    Perch
+    Tarfa
     {#if isTestBuild(buildLabel)}
       <span class="build-badge" title={msg().home.testBuild}>{buildLabel}</span>
     {/if}

@@ -75,7 +75,7 @@ test('an unreadable stored device key can be replaced from Settings, and the rel
   await page.evaluate(
     () =>
       new Promise<void>((resolve, reject) => {
-        const open = indexedDB.open('perch-device', 1);
+        const open = indexedDB.open('tarfa-device', 1);
         open.onsuccess = () => {
           const tx = open.result.transaction('identity', 'readwrite');
           tx.objectStore('identity').put({ x25519: {}, ed25519: {} }, 'device');

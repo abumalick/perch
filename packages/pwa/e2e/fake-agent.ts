@@ -166,7 +166,7 @@ export function machineEntry(agent: FakeAgent, overrides: Record<string, unknown
 }
 
 export async function seedMachine(page: Page, agent: FakeAgent, overrides: Record<string, unknown> = {}): Promise<void> {
-  await page.addInitScript((m) => localStorage.setItem('perch.machines', JSON.stringify([m])), machineEntry(agent, overrides));
+  await page.addInitScript((m) => localStorage.setItem('tarfa.machines', JSON.stringify([m])), machineEntry(agent, overrides));
 }
 
 // The real relay path in front of a fake agent: the self-hosted relay server (`@perch/relay`) and

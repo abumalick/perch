@@ -76,7 +76,7 @@ test.describe('crowded rows', () => {
 
   test('no row and no page overflows', async ({ page }) => {
     await page.addInitScript(
-      (entries) => localStorage.setItem('perch.machines', JSON.stringify(entries)),
+      (entries) => localStorage.setItem('tarfa.machines', JSON.stringify(entries)),
       [machineEntry(dev, { id: 'dev', name: 'dev' }), machineEntry(mac, { id: 'mac', name: 'mac' })],
     );
     await page.goto('/');

@@ -109,7 +109,7 @@ describe('readPairingLink', () => {
   });
 
   it('says so when the text is no pairing link at all', () => {
-    expect(readPairingLink('https://pwa.example/', 'https://pwa.example')).toEqual({ ok: false, reason: expect.stringMatching(/not a Perch pairing code/) });
+    expect(readPairingLink('https://pwa.example/', 'https://pwa.example')).toEqual({ ok: false, reason: expect.stringMatching(/not a Tarfa pairing code/) });
   });
 });
 
@@ -164,6 +164,6 @@ describe('readPairingLink in French', () => {
   it('refuses a non-link in French', () => {
     setLanguage('fr');
     const result = readPairingLink('hello', 'https://p');
-    expect(result.ok ? '' : result.reason).toBe('Ce n’est pas un code d’association Perch. Lancez `perch pair` sur la machine pour en obtenir un nouveau.');
+    expect(result.ok ? '' : result.reason).toBe('Ce n’est pas un code d’association Tarfa. Lancez `perch pair` sur la machine pour en obtenir un nouveau.');
   });
 });

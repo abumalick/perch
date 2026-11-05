@@ -174,7 +174,7 @@ store = new PerchStore({
 // Cache API is absent or no share happened. The entry is deleted only when the image is
 // actually attached to a session (flush), so a re-open before attaching still surfaces it.
 if ('caches' in self) {
-  void caches.open('perch-shared').then((cache) => store.loadSharedFile(cache));
+  void caches.open('tarfa-shared').then((cache) => store.loadSharedFile(cache));
 } else {
   void store.loadSharedFile(null);
 }

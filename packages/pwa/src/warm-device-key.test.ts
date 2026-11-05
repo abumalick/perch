@@ -23,6 +23,7 @@ describe('warm-device-key.js', () => {
     void indexedDbIdentityStore(app.factory).get().catch(() => undefined);
     const warm = fakeIndexedDb();
     run(warm.factory);
+    expect(app.open.mock.calls[0]![0]).toBe('tarfa-device');
     expect(warm.open).toHaveBeenCalledWith(app.open.mock.calls[0]![0]);
     warm.req.onsuccess?.(new Event('success'));
     expect(warm.db.close).toHaveBeenCalled();

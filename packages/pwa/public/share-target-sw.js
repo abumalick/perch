@@ -35,7 +35,7 @@ self.addEventListener('fetch', (event) => {
         const form = await event.request.formData();
         const file = form.get('file') ?? form.get('image');
         if (file) {
-          const cache = await caches.open('perch-shared');
+          const cache = await caches.open('tarfa-shared');
           await cache.put(
             '/shared-file',
             new Response(file, {

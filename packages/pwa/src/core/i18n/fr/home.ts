@@ -13,7 +13,7 @@ export const home: Messages['home'] = {
   sharedPreview: 'Aperçu partagé',
   sharedReady: '1 fichier prêt — ouvrez une session pour le joindre',
   noMachines: 'Aucune machine pour l’instant',
-  noMachinesSub: 'Connectez une machine qui exécute l’agent Perch pour commencer.',
+  noMachinesSub: 'Connectez une machine qui exécute l’agent Tarfa pour commencer.',
   addMachine: '⚙ Ajouter une machine',
   connecting: 'Connexion à vos machines…',
   reconnecting: 'Reconnexion…',

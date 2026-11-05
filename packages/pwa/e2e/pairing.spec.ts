@@ -36,7 +36,7 @@ function recordUrls(page: Page): string[] {
   return urls;
 }
 
-const stored = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('perch.machines') ?? '[]') as Array<Record<string, unknown>>);
+const stored = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('tarfa.machines') ?? '[]') as Array<Record<string, unknown>>);
 
 test('opening a pairing link adds the machine, connects with the secret, and forgets it', async ({ page, baseURL }) => {
   const urls = recordUrls(page);
@@ -98,7 +98,7 @@ test('a pasted link that is not a pairing link is refused with a reason', async 
   await page.getByRole('button', { name: /add a machine/i }).click();
   await page.getByLabel(/paste a pairing link/i).fill('https://example.com/#pair?u=nope');
   await page.getByRole('button', { name: 'Pair', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('not a Perch pairing code');
+  await expect(page.getByRole('alert')).toContainText('not a Tarfa pairing code');
   expect(await stored(page)).toEqual([]);
 });
 

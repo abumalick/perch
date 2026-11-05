@@ -8,7 +8,7 @@ export const app = {
   },
   installFirst: {
     title: (name: string) => `Pair ${name} from the Home Screen app`,
-    lead: 'Perch runs from its icon on your Home Screen, and that app keeps its own data: a machine paired on this page would not be there.',
+    lead: 'Tarfa runs from its icon on your Home Screen, and that app keeps its own data: a machine paired on this page would not be there.',
     copied: 'Copied ✓',
     copyLink: 'Copy pairing link',
     copyByHand: 'Copy it by hand:',
@@ -17,7 +17,7 @@ export const app = {
     share: 'Share',
     addToHomeScreen: 'Add to Home Screen',
     alreadyOnHomeScreen: '. Already on your Home Screen? Skip this.',
-    openPerch: 'Open Perch from its icon, tap ',
+    openTarfa: 'Open Tarfa from its icon, tap ',
     addMachine: 'Add a machine',
     then: ', then ',
     pastePairingLink: 'Paste pairing link',

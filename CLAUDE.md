@@ -105,7 +105,13 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   (Claude Code rewrites `settings.json` with sorted keys); **an existing `PERCH_PWA_ORIGIN` is
   kept unless `--pwa` is given**; **a phone or hooks port held by anything but this user's
   agent is refused** (another Linux user's processes are invisible to `ss`/`lsof`); and **an
-  existing serve handler on the same port and path is never replaced**. `perch pair` mints a
+  existing serve handler on the same port and path is never replaced**; **an existing roster with
+  token enrolment on is never published silently** (any phone address and no `--token-enrolment`
+  → refused, an address already in agent.env included); **the `--tailscale none` operator line
+  takes its port from `--tailscale-port`, else the `--address` under the slug, else 443,
+  and reads `funnel` when that port is already on Funnel** (`serve` would turn Funnel off for every
+  agent on it); and **a `systemctl --user` that cannot reach the manager stops setup** (without
+  `XDG_RUNTIME_DIR` it would read as "not installed" and reinstall a working unit). `perch pair` mints a
   link with every `PERCH_PHONE_ADDRESSES` address in order (`PERCH_PWA_ORIGIN` defaults to
   `https://tarfa.app`); `--relay` still pairs through a relay.
 - **The phone port: phones connect to the agent directly** (`PERCH_PHONE_PORT`, default 8797,

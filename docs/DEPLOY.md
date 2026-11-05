@@ -28,7 +28,9 @@ creates the agent key, writes `~/.perch/devices.json` with token enrolment **off
 service first starts (a missing roster would let the token enrol phones on a public port),
 installs the systemd user unit with linger or the launchd agent, runs `install-hooks`, adds one
 `tailscale serve` (or `funnel`) handler for the phone port, restarts the agent only if anything
-changed and checks the phone port answers. Rerun with the same flags, it changes nothing. It
+changed and checks the phone port answers. On a machine whose existing roster has token
+enrolment on, a run that leaves phones an address (new, or already in `agent.env`) refuses until `--token-enrolment off` switches it
+off or `--token-enrolment on` keeps it deliberately. Rerun with the same flags, it changes nothing. It
 never replaces an agent key, a token, an installed unit that already runs this checkout's
 `deploy/run-agent.sh` with `KillMode=process`, or a `tailscale serve` entry pointing elsewhere.
 An existing `PERCH_PWA_ORIGIN` is kept unless `--pwa` names another (the default is
@@ -42,7 +44,12 @@ Several agents on one node share a Tailscale port under their own `--slug`, each
 operator, so a second Linux user runs
 `perch setup … --phone-port 8798 --tailscale none --slug <name> --address wss://<node>.<tailnet>.ts.net/<name>`,
 which prints the `tailscale serve --bg --https=443 --set-path=/<name> http://127.0.0.1:8798`
-line for the operator. `tailscale serve` replaces whatever `x-forwarded-for` a client sends with
+line for the operator. The line's port is `--tailscale-port`, else the port of the first
+`--address` under `/<name>`, else 443; it reads `tailscale funnel` instead when the serve config
+shows that port already on Funnel, since `tailscale serve` there would take the port off Funnel
+for every agent on it. Run through `sudo -u <user>`, setup needs `XDG_RUNTIME_DIR=/run/user/<uid>`
+to reach that user's systemd manager, and stops without it rather than reinstall a working unit.
+`tailscale serve` replaces whatever `x-forwarded-for` a client sends with
 the tailnet peer's address, so the per-address caps see the real client.
 
 ## 1. Configure each agent

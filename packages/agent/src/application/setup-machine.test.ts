@@ -158,7 +158,7 @@ describe('planSetup', () => {
   });
 
   it('never replaces the agent key or an existing roster', () => {
-    const kinds = plan(flags(), fresh({ hasKey: true, roster: 'on' })).map((s) => s.kind);
+    const kinds = plan(flags(), fresh({ hasKey: true, roster: 'closed' })).map((s) => s.kind);
     expect(kinds).not.toContain('create-key');
     expect(kinds).not.toContain('write-roster');
   });
@@ -241,6 +241,35 @@ describe('planSetup', () => {
     });
   });
 
+  it('takes the operator line\'s port from --tailscale-port, else the address under the slug, else 443', () => {
+    const line = (f: Partial<SetupFlags>, s: Partial<SetupState> = {}) =>
+      plan(flags({ tailscale: 'none', tailscalePort: undefined, slug: 'bob', phonePort: 8798, ...f }), fresh({ tailscale: null, serve: null, ...s })).find((x) => x.kind === 'print');
+    expect(line({ addresses: [`wss://${HOST}:10000/bob`] })).toEqual({ kind: 'print', line: 'tailscale serve --bg --https=10000 --set-path=/bob http://127.0.0.1:8798' });
+    expect(line({ addresses: [`wss://${HOST}:10000/bob`], tailscalePort: 8443 })).toMatchObject({ line: expect.stringContaining('--https=8443 ') });
+    expect(line({ addresses: [`wss://${HOST}:10000/other`, `wss://${HOST}:8443/bob`] })).toMatchObject({ line: expect.stringContaining('--https=8443 ') });
+    expect(line({ addresses: [`wss://${HOST}:10000/other`] })).toMatchObject({ line: expect.stringContaining('--https=443 ') });
+  });
+
+  it('prints the funnel form when the serve config shows that port on Funnel', () => {
+    const steps = plan(
+      flags({ tailscale: 'none', tailscalePort: undefined, slug: 'bob', phonePort: 8798, addresses: [`wss://${HOST}:10000/bob`] }),
+      fresh({ tailscale: null, serve: SERVED }),
+    );
+    expect(steps).toContainEqual({ kind: 'print', line: 'tailscale funnel --bg --https=10000 --set-path=/bob http://127.0.0.1:8798' });
+  });
+
+  it('refuses to publish an address while token enrolment is on, unless asked to keep it', () => {
+    const f = flags({ tailscale: 'none', slug: 'bob', phonePort: 8798, addresses: [`wss://${HOST}:10000/bob`] });
+    expect(errorOf(f, fresh({ tailscale: null, roster: 'on' }))).toMatch(/--token-enrolment off.*--token-enrolment on/s);
+    expect(errorOf(flags(), fresh({ roster: 'on' }))).toMatch(/--token-enrolment off/);
+    expect(plan({ ...f, tokenEnrolment: 'off' }, fresh({ tailscale: null, roster: 'on' }))).toContainEqual({ kind: 'write-roster', mode: 'off' });
+    expect(plan({ ...f, tokenEnrolment: 'on' }, fresh({ tailscale: null, roster: 'on' })).map((s) => s.kind)).not.toContain('write-roster');
+    expect(plan(flags({ tailscale: 'none', slug: undefined }), fresh({ tailscale: null, roster: 'on' })).map((s) => s.kind)).not.toContain('write-roster');
+    expect(plan(f, fresh({ tailscale: null }))).toContainEqual({ kind: 'write-roster', mode: 'off' });
+    const envText = `PERCH_TOKEN=t\nPERCH_PHONE_ADDRESSES=wss://${HOST}/bob\n`;
+    expect(errorOf(flags({ tailscale: 'none', slug: undefined }), fresh({ tailscale: null, roster: 'on', envText }))).toMatch(/--token-enrolment off/);
+  });
+
   describe('Tailscale checks', () => {
     const cases: Array<[string, Partial<TailscaleStatus> | null, RegExp]> = [
       ['not installed or not running', null, /tailscale up/],
@@ -304,7 +333,7 @@ describe('planSetup', () => {
     });
 
     it('warns when a public port would be published with token enrolment on', () => {
-      const result = planSetup(flags(), fresh({ roster: 'on' }));
+      const result = planSetup(flags({ tokenEnrolment: 'on' }), fresh({ roster: 'on' }));
       expect(result).toMatchObject({ checks: expect.arrayContaining([expect.stringMatching(/perch devices enrolment off/)]) });
       expect(planSetup(flags(), fresh({ roster: 'off' }))).not.toMatchObject({ checks: expect.arrayContaining([expect.stringMatching(/warning/)]) });
     });

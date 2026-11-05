@@ -95,6 +95,7 @@ export function planSetup(flags: SetupFlags, state: SetupState): { steps: SetupS
   const steps: SetupStep[] = [];
   const checks: string[] = [];
   let serveStep: SetupStep | undefined;
+  let operatorStep: SetupStep | undefined;
   let derived: string | undefined;
 
   if (flags.tailscale !== 'none') {
@@ -108,10 +109,22 @@ export function planSetup(flags: SetupFlags, state: SetupState): { steps: SetupS
     if (served.public) checks.push(`tailscale: port ${port} is on Funnel, so this address is reachable from the internet`);
     if (served.needed) serveStep = { kind: 'tailscale-serve', port, path, target, funnel: flags.tailscale === 'funnel' };
     derived = `wss://${checked.host}:${port}${path === '/' ? '' : path}`;
+  } else if (flags.slug) {
+    const operator = operatorEntry(flags, state.serve, path, target);
+    if (operator.funnel) checks.push(`tailscale: port ${operator.port} is on Funnel, so this address is reachable from the internet`);
+    operatorStep = { kind: 'print', line: serveCommand(operator) };
   }
 
   const addresses = [...(derived ? [derived] : []), ...flags.addresses];
   if (addresses.length > MAX_ADDRESSES) return { error: `a machine takes at most ${MAX_ADDRESSES} addresses (got ${addresses.length})` };
+  // A roster that already offers token enrolment is never published silently: the owner says
+  // whether to keep it.
+  const published = addresses.length > 0 || Boolean(parseEnvFile(state.envText ?? '').PERCH_PHONE_ADDRESSES);
+  if (published && state.roster === 'on' && flags.tokenEnrolment === undefined) {
+    return {
+      error: 'token enrolment is on in ~/.perch/devices.json, and this run gives phones an address: pass --token-enrolment off to switch it off (pairing codes only), or --token-enrolment on to keep it on deliberately',
+    };
+  }
 
   const env = planEnv(flags, state, addresses);
   if (env) steps.push(env);
@@ -129,9 +142,7 @@ export function planSetup(flags: SetupFlags, state: SetupState): { steps: SetupS
   if (!state.hooksCurrent) steps.push({ kind: 'install-hooks' });
   if (serveStep) steps.push(serveStep);
   if (steps.length > 0) steps.push({ kind: 'restart' }, { kind: 'check-listener', port: flags.phonePort });
-  if (flags.tailscale === 'none' && flags.slug) {
-    steps.push({ kind: 'print', line: `tailscale serve --bg --https=${flags.tailscalePort ?? 443} --set-path=${path} ${target}` });
-  }
+  if (operatorStep) steps.push(operatorStep);
   if (flags.pair) steps.push({ kind: 'pair' });
   return { steps, checks };
 }
@@ -170,6 +181,21 @@ function unitIsCurrent(kind: 'systemd' | 'launchd', installed: string | null, re
   if (words.includes(script)) return true;
   const workingDirectory = /^WorkingDirectory=(.*)$/m.exec(installed)?.[1]?.trim();
   return workingDirectory === repo && (words.includes('deploy/run-agent.sh') || words.includes('./deploy/run-agent.sh'));
+}
+
+// The handler a node's operator adds for a user who cannot change the serve config. The port is
+// --tailscale-port, else the one of the first --address under this slug, else 443; the funnel
+// form only when the serve config shows that host:port already on Funnel, since `tailscale serve`
+// on a Funnel port would take the port off Funnel for every agent on it.
+function operatorEntry(flags: SetupFlags, serve: ServeConfig | null, path: string, target: string) {
+  const address = flags.addresses.map((a) => new URL(a)).find((url) => url.pathname === path);
+  const port = flags.tailscalePort ?? (address?.port ? Number(address.port) : 443);
+  const funnel = address !== undefined && serve?.AllowFunnel?.[`${address.hostname}:${port}`] === true;
+  return { port, path, target, funnel };
+}
+
+function serveCommand(entry: { port: number; path: string; target: string; funnel: boolean }): string {
+  return `tailscale ${entry.funnel ? 'funnel' : 'serve'} --bg --https=${entry.port}${entry.path === '/' ? '' : ` --set-path=${entry.path}`} ${entry.target}`;
 }
 
 function checkTailscale(mode: 'serve' | 'funnel', port: number, status: TailscaleStatus | null): { host: string; checks: string[] } | { error: string } {
@@ -240,7 +266,7 @@ export function describeStep(step: SetupStep, envPath: string): string {
     case 'install-hooks':
       return 'install the Claude Code (and Codex) hooks';
     case 'tailscale-serve':
-      return `tailscale ${step.funnel ? 'funnel' : 'serve'} --bg --https=${step.port}${step.path === '/' ? '' : ` --set-path=${step.path}`} ${step.target}`;
+      return serveCommand(step);
     case 'restart':
       return 'restart the agent';
     case 'check-listener':

@@ -588,7 +588,10 @@ Tailscale, once per node:
        sudo tailscale set --operator=$USER
 Several agents on one node (one per Linux user) share a Tailscale port, each under its own --slug.
 The node has one operator: a second user runs \`--tailscale none --slug <name> --address <url>\`
-with their own --phone-port, and setup prints the \`tailscale serve\` line for the operator to run.
+with their own --phone-port, and setup prints the \`tailscale serve\` line for the operator to run:
+on the port of that --address (or --tailscale-port), as \`tailscale funnel\` when the port is already
+on Funnel. Setup refuses to give phones an address while token enrolment is on, until
+--token-enrolment says which way. Run as another user (sudo -u), set XDG_RUNTIME_DIR=/run/user/<uid>.
 
 Example:
   perch setup --machine-id dev --project-roots ~/workspace --tailscale funnel --slug me --pair`;
@@ -625,7 +628,8 @@ async function setup(argv: string[], env: NodeJS.ProcessEnv, home: string, io: C
     phonePortOwner: await owner(flags.phonePort),
     hooksPortOwner: await owner(config.port),
     tailscale: flags.tailscale === 'none' ? null : await tailscale.status(),
-    serve: flags.tailscale === 'none' ? null : await tailscale.serveStatus(),
+    // Under --tailscale none, read only to word the operator's line: unreadable means the serve form.
+    serve: flags.tailscale === 'none' && !flags.slug ? null : await tailscale.serveStatus(),
   };
   const plan = planSetup(flags, state);
   if ('error' in plan) throw new Error(plan.error);

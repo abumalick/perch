@@ -17,6 +17,8 @@ const systemRun: Run = async (command, args) => {
   }
 };
 
+const NO_USER_MANAGER = /Failed to connect to (the )?(user scope )?bus/i;
+
 async function readOrNull(path: string): Promise<string | null> {
   try {
     return await readFile(path, 'utf8');
@@ -61,7 +63,17 @@ export function serviceInstall(options: {
     template: () => readFile(join(options.repo, 'deploy', 'perch-agent.service'), 'utf8'),
     installed: () => readOrNull(unit),
     async enabled() {
-      const enabled = await run('systemctl', ['--user', 'is-enabled', 'perch-agent']).then(() => true, () => false);
+      const enabled = await run('systemctl', ['--user', 'is-enabled', 'perch-agent']).then(
+        () => true,
+        (err: unknown) => {
+          // Without a reachable manager every answer would read as "not enabled", and setup would
+          // reinstall a working unit; a disabled or missing unit fails with other words.
+          if (NO_USER_MANAGER.test(String(err instanceof Error ? err.message : err))) {
+            throw new Error('systemctl --user cannot reach your user manager (no session bus): set XDG_RUNTIME_DIR=/run/user/$(id -u) (or log in as this user), then run perch setup again');
+          }
+          return false;
+        },
+      );
       const linger = await run('loginctl', ['show-user', options.user, '-p', 'Linger', '--value']).then((out) => out.trim() === 'yes', () => false);
       return enabled && linger;
     },

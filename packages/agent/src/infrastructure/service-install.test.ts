@@ -46,6 +46,18 @@ describe('serviceInstall', () => {
     expect(await disabled.enabled()).toBe(false);
   });
 
+  it('stops when systemctl --user cannot reach the user manager, instead of reading it as not enabled', async () => {
+    const { repo, home } = await dirs();
+    const run = (stderr: string) => async (_c: string, a: string[]) => {
+      if (a.includes('is-enabled')) throw new Error(`systemctl --user is-enabled perch-agent failed: ${stderr}`);
+      return 'yes\n';
+    };
+    const unreachable = serviceInstall({ repo, home, user: 'u', uid: 1000, platform: 'linux', run: run('Failed to connect to bus: No medium found') });
+    await expect(unreachable.enabled()).rejects.toThrow(/XDG_RUNTIME_DIR=\/run\/user\/\$\(id -u\)/);
+    const notFound = serviceInstall({ repo, home, user: 'u', uid: 1000, platform: 'linux', run: run('not-found') });
+    expect(await notFound.enabled()).toBe(false);
+  });
+
   it('installs a launchd agent, replacing a loaded one', async () => {
     const { repo, home } = await dirs();
     const ran: string[] = [];

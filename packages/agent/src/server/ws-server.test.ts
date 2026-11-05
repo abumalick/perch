@@ -186,6 +186,8 @@ function testConfig(home: string, overrides: Partial<AgentConfig> = {}): AgentCo
     machineId: 'test',
     token: 'secret',
     port: 0,
+    phonePort: 0,
+    phoneAddresses: [],
     projectRoots: [tmpdir()],
     recentStorePath: join(home, 'recent.json'),
     statusStorePath: join(home, 'status.json'),

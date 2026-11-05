@@ -152,8 +152,9 @@ async function main(): Promise<void> {
   });
   await server.start();
   process.stdout.write(`perch agent: hooks on 127.0.0.1:${server.address().port}\n`);
+  // The agent key exists from the first start, so `perch pair` works with no relay configured.
+  const keys = await loadOrCreateRelayKeys(config.relayKeyPath);
   if (config.relayUrls.length > 0) {
-    const keys = await loadOrCreateRelayKeys(config.relayKeyPath);
     const log = (message: string) => process.stdout.write(`${message}\n`);
     const relays = startRelayLinks({
       config,

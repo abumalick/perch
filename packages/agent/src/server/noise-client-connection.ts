@@ -1,4 +1,4 @@
-import type { AgentMessage } from '@perch/contracts';
+import { PROTOCOL_VERSION, type AgentMessage } from '@perch/contracts';
 import {
   DEVICE_REFUSED,
   REFUSAL,
@@ -115,7 +115,8 @@ export class NoiseClientConnection implements ClientConnection {
       return;
     }
     if (message.type === 'authResult' && message.ok) {
-      const accepted = message;
+      const accepted = { ...message, agent: { protocol: PROTOCOL_VERSION } };
+      message = accepted;
       if (!this.awaitingPhone) this.cancelDeadline();
       this.session.raiseCap(MAX_MESSAGE_BYTES);
       if (this.state.kind === 'enrolling') {

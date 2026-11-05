@@ -30,7 +30,21 @@ describe('loadConfig', () => {
       claudeSessionsDir: '/home/u/.claude/sessions',
       inboxDir: '/home/u/.perch/inbox',
       sessionPrefix: 'perch-',
+      phonePort: 8797,
+      phoneAddresses: [],
     });
+  });
+
+  it('reads the phone port and the addresses phones reach it by', () => {
+    const cfg = loadConfig({ ...base, PERCH_PHONE_PORT: '9100', PERCH_PHONE_ADDRESSES: ' wss://a.example.ts.net/x , ,wss://b.example.com ' }, '/home/u');
+    expect(cfg.phonePort).toBe(9100);
+    expect(cfg.phoneAddresses).toEqual(['wss://a.example.ts.net/x', 'wss://b.example.com']);
+  });
+
+  it('throws when PERCH_PHONE_PORT is not a port number', () => {
+    for (const bad of ['abc', '8797.5', '0', '65536', '-1', '80x']) {
+      expect(() => loadConfig({ ...base, PERCH_PHONE_PORT: bad }, '/home/u')).toThrow(/PERCH_PHONE_PORT/);
+    }
   });
 
   it('sends the machine load unless PERCH_STATS turns it off', () => {
@@ -79,14 +93,17 @@ describe('loadConfig', () => {
     ]);
   });
 
-  it('warns that no phone can reach an agent with no relay', () => {
-    expect(configWarnings(base)).toEqual(['no relay in PERCH_RELAY_URLS: no phone can reach this agent (see `perch connect`)']);
+  it('warns that phones reach an agent with no relay and no phone address only once its phone port is published', () => {
+    expect(configWarnings(base)).toEqual([
+      'no relay in PERCH_RELAY_URLS and no PERCH_PHONE_ADDRESSES: phones reach this agent only once its phone port is published (tailscale serve, a reverse proxy)',
+    ]);
+    expect(configWarnings({ ...base, PERCH_PHONE_ADDRESSES: 'wss://a.example.ts.net' })).toEqual([]);
   });
 
   it('warns that a non-loopback PERCH_HOST is ignored', () => {
     expect(configWarnings({ ...relayed, PERCH_HOST: '127.0.0.1' })).toEqual([]);
     expect(configWarnings({ ...relayed, PERCH_HOST: '0.0.0.0' })).toEqual([
-      'PERCH_HOST=0.0.0.0 is ignored: the agent listens on 127.0.0.1 only, and phones reach it through its relays',
+      'PERCH_HOST=0.0.0.0 is ignored: the agent listens on 127.0.0.1 only, and phones reach it through its relays or its published phone port',
     ]);
   });
 

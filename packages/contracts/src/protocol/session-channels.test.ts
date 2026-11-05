@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAgentMessage, parseClientMessage } from './messages';
+import { PROTOCOL_VERSION, parseAgentMessage, parseClientMessage } from './messages';
 
 const event = { sess: 's', seq: 0, t: 1, kind: 'online', online: true, vis: 'visible' };
 
@@ -18,6 +18,17 @@ describe('session channels on the wire', () => {
   it('keeps that the agent pushed the opening replies, and drops a value it does not know', () => {
     expect(parseAgentMessage({ type: 'authResult', ok: true, pushed: true })).toEqual({ type: 'authResult', ok: true, pushed: true });
     expect(parseAgentMessage({ type: 'authResult', ok: true, pushed: 'yes' })).toEqual({ type: 'authResult', ok: true });
+  });
+
+  it('keeps the agent protocol an agent names on authResult, and drops a malformed one', () => {
+    expect(parseAgentMessage({ type: 'authResult', ok: true, agent: { protocol: PROTOCOL_VERSION } })).toEqual({
+      type: 'authResult',
+      ok: true,
+      agent: { protocol: 1 },
+    });
+    expect(parseAgentMessage({ type: 'authResult', ok: true })).toEqual({ type: 'authResult', ok: true });
+    expect(parseAgentMessage({ type: 'authResult', ok: true, agent: 'x' })).toEqual({ type: 'authResult', ok: true });
+    expect(parseAgentMessage({ type: 'authResult', ok: true, agent: { protocol: 1.5 } })).toEqual({ type: 'authResult', ok: true });
   });
 
   it('drops the channel list an older agent still advertises on authResult', () => {

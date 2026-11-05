@@ -127,6 +127,10 @@ export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export const detachReasonSchema = z.enum(['opened-elsewhere', 'closed', 'error']);
 export type DetachReason = z.infer<typeof detachReasonSchema>;
 
+// The agent's protocol, named on every accepted authResult so a PWA can tell an agent too old for
+// it. Bumped only when a PWA must refuse an older agent.
+export const PROTOCOL_VERSION = 1;
+
 export const agentMessageSchema = z.discriminatedUnion('type', [
   // `credential` is what authenticated the session; `enrolled` says the device key is enrolled (written), so the
   // phone forgets its token and pairing secret. Both optional: an older agent sends neither.
@@ -138,6 +142,7 @@ export const agentMessageSchema = z.discriminatedUnion('type', [
     credential: z.enum(['device', 'pairing', 'token']).optional().catch(undefined),
     enrolled: z.boolean().optional().catch(undefined),
     pushed: z.literal(true).optional().catch(undefined),
+    agent: z.object({ protocol: z.number().int() }).optional().catch(undefined),
   }),
   // `claudeVoice`: whether this machine can play a Claude voice dictation (see voiceStart).
   // An older agent omits it, and the PWA then treats Claude voice as unavailable there.

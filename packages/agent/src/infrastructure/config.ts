@@ -4,8 +4,13 @@ import { isCleartextRemote, withoutTrailingSlash } from '../application/relay-ur
 export interface AgentConfig {
   machineId: string;
   token: string | undefined;
-  // The loopback port Claude Code's hooks post to. Phones never reach it: they come through relays.
+  // The loopback port Claude Code's hooks post to. Phones never reach it.
   port: number;
+  // The loopback port phones' WebSockets reach, through whatever publishes it (tailscale serve,
+  // Funnel, a reverse proxy). It serves upgrades only.
+  phonePort: number;
+  // Where phones reach the phone port from outside (PERCH_PHONE_ADDRESSES), in order.
+  phoneAddresses: string[];
   projectRoots: string[];
   // The default path pairing links hand a phone (PERCH_DEFAULT_PATH); none unless set.
   defaultPath?: string;
@@ -60,10 +65,20 @@ export function loadConfig(env: NodeJS.ProcessEnv, home: string): AgentConfig {
     }
   }
 
+  let phonePort = 8797;
+  if (env.PERCH_PHONE_PORT !== undefined) {
+    phonePort = /^\d+$/.test(env.PERCH_PHONE_PORT.trim()) ? Number(env.PERCH_PHONE_PORT.trim()) : Number.NaN;
+    if (!(phonePort >= 1 && phonePort <= 65535)) {
+      throw new Error('PERCH_PHONE_PORT must be a port number (1-65535)');
+    }
+  }
+
   return {
     machineId,
     token: env.PERCH_TOKEN,
     port,
+    phonePort,
+    phoneAddresses: phoneAddresses(env),
     projectRoots,
     recentStorePath: join(home, '.perch', 'recent.json'),
     statusStorePath: join(home, '.perch', 'status.json'),
@@ -110,15 +125,23 @@ export function configWarnings(env: NodeJS.ProcessEnv): string[] {
   for (const url of listedRelayUrls(env).filter(isCleartextRemote)) {
     warnings.push(`${url} is ignored: a relay off this machine must be wss://, or its upgrades travel in the clear`);
   }
-  if (relayUrls(env).length === 0) warnings.push('no relay in PERCH_RELAY_URLS: no phone can reach this agent (see `perch connect`)');
+  if (relayUrls(env).length === 0 && phoneAddresses(env).length === 0) {
+    warnings.push(
+      'no relay in PERCH_RELAY_URLS and no PERCH_PHONE_ADDRESSES: phones reach this agent only once its phone port is published (tailscale serve, a reverse proxy)',
+    );
+  }
   if (env.PERCH_RELAY_ALLOW_NK !== undefined) {
     warnings.push('PERCH_RELAY_ALLOW_NK is ignored: phones without a device key are no longer served; remove it from deploy/agent.env');
   }
   const host = env.PERCH_HOST?.trim();
   if (host && host !== '127.0.0.1' && host !== 'localhost') {
-    warnings.push(`PERCH_HOST=${host} is ignored: the agent listens on 127.0.0.1 only, and phones reach it through its relays`);
+    warnings.push(`PERCH_HOST=${host} is ignored: the agent listens on 127.0.0.1 only, and phones reach it through its relays or its published phone port`);
   }
   return warnings;
+}
+
+function phoneAddresses(env: Record<string, string | undefined>): string[] {
+  return (env.PERCH_PHONE_ADDRESSES ?? '').split(',').map((url) => url.trim()).filter(Boolean);
 }
 
 function listedRelayUrls(env: Record<string, string | undefined>): string[] {

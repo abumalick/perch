@@ -2,7 +2,7 @@ import { accountId, b64url, enrolKey, type AgentKeys } from '@perch/secure-chann
 import { PushBudget } from '../application/push-budget';
 import { LimitedLog } from '../application/limited-log';
 import { RosterDevices, RosterMonitor } from '../application/device-gate';
-import { standingOf } from '../application/device-roster';
+import { standingOf, type DeviceRoster } from '../application/device-roster';
 import type { DeviceStorePort } from '../ports/device-store-port';
 import type { PairingStorePort } from '../ports/pairing-store-port';
 import type { NoiseClientConnectionOptions } from './noise-client-connection';
@@ -28,8 +28,9 @@ export interface AgentDeviceGate {
   options(extra: { onAuthenticated?: () => void }): NoiseClientConnectionOptions;
   // Called when the roster changed, by this agent or behind its back.
   onRosterChange(listener: () => void): void;
-  // The X25519 keys enrolled and not revoked, as of the last roster read.
-  enrolledKeys(): ReadonlySet<string>;
+  // The roster as last read (null before the first read), which answers an enrolled key without
+  // a read of its own (limitedDevices).
+  roster(): DeviceRoster | null;
   // Checks the roster for edits made by another process (`perch devices`) now, rather than on
   // the next tick.
   pollRoster(): Promise<void>;
@@ -51,7 +52,7 @@ export function startDeviceGate(deps: DeviceGateDeps): AgentDeviceGate {
   });
   const pushBudget = new PushBudget(() => Date.now());
   const refusalLog = new LimitedLog(log, () => Date.now());
-  let enrolled: ReadonlySet<string> = new Set();
+  let last: DeviceRoster | null = null;
   // `perch devices` edits the roster from another process: close the sessions of devices it
   // revoked, and tell the relays.
   const monitor = new RosterMonitor(
@@ -62,7 +63,7 @@ export function startDeviceGate(deps: DeviceGateDeps): AgentDeviceGate {
       server.refuseRevokedDevices((key) => standingOf(roster, key) === 'revoked');
     },
     (roster) => {
-      enrolled = new Set(roster.devices.map((d) => d.x25519).filter((key) => standingOf(roster, key) === 'enrolled'));
+      last = roster;
     },
   );
   void monitor.poll();
@@ -74,7 +75,7 @@ export function startDeviceGate(deps: DeviceGateDeps): AgentDeviceGate {
     devices,
     options: (extra) => ({ devices, log, refusalLog, pushBudget, ...extra }),
     onRosterChange: (listener) => listeners.push(listener),
-    enrolledKeys: () => enrolled,
+    roster: () => last,
     pollRoster: () => monitor.poll(),
     stop: () => clearInterval(poll),
   };

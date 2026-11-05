@@ -61,13 +61,13 @@ describe('startDeviceGate', () => {
     gate.stop();
   });
 
-  it('knows the enrolled keys once it has read the roster, and not the revoked ones', async () => {
+  it('keeps the roster it last read', async () => {
     const { store, gate } = setup({ ...EMPTY_ROSTER, devices: [device('a'), device('b')] });
     await gate.pollRoster();
-    expect([...gate.enrolledKeys()].sort()).toEqual(['a', 'b']);
+    expect(gate.roster()).toEqual(store.roster);
     store.roster = revokeDevice(store.roster, 'b', new Date(0)).roster;
     await gate.pollRoster();
-    expect([...gate.enrolledKeys()]).toEqual(['a']);
+    expect(gate.roster()).toEqual(store.roster);
     gate.stop();
   });
 

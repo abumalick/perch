@@ -107,7 +107,8 @@ export function planSetup(flags: SetupFlags, state: SetupState): { steps: SetupS
     const served = serveNeeds(state.serve, `${checked.host}:${port}`, port, path, target, flags.tailscale === 'funnel');
     if ('error' in served) return served;
     if (served.public) checks.push(`tailscale: port ${port} is on Funnel, so this address is reachable from the internet`);
-    if (served.needed) serveStep = { kind: 'tailscale-serve', port, path, target, funnel: flags.tailscale === 'funnel' };
+    // `tailscale serve` on a port already on Funnel takes the port off Funnel, for every agent on it.
+    if (served.needed) serveStep = { kind: 'tailscale-serve', port, path, target, funnel: flags.tailscale === 'funnel' || served.public };
     derived = `wss://${checked.host}:${port}${path === '/' ? '' : path}`;
   } else if (flags.slug) {
     const operator = operatorEntry(flags, state.serve, path, target);

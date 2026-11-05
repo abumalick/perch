@@ -110,7 +110,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   → refused, an address already in agent.env included); **the `--tailscale none` operator line
   takes its port from `--tailscale-port`, else the `--address` under the slug, else 443,
   and reads `funnel` when that port is already on Funnel** (`serve` would turn Funnel off for every
-  agent on it); and **a `systemctl --user` that cannot reach the manager stops setup** (without
+  agent on it; `--tailscale serve` on a Funnel port runs `tailscale funnel` for the same reason); and **a `systemctl --user` that cannot reach the manager stops setup** (without
   `XDG_RUNTIME_DIR` it would read as "not installed" and reinstall a working unit). `perch pair` mints a
   link with every `PERCH_PHONE_ADDRESSES` address in order (`PERCH_PWA_ORIGIN` defaults to
   `https://tarfa.app`); `--relay` still pairs through a relay.

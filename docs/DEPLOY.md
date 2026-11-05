@@ -47,7 +47,8 @@ which prints the `tailscale serve --bg --https=443 --set-path=/<name> http://127
 line for the operator. The line's port is `--tailscale-port`, else the port of the first
 `--address` under `/<name>`, else 443; it reads `tailscale funnel` instead when the serve config
 shows that port already on Funnel, since `tailscale serve` there would take the port off Funnel
-for every agent on it. Run through `sudo -u <user>`, setup needs `XDG_RUNTIME_DIR=/run/user/<uid>`
+for every agent on it; for the same reason `--tailscale serve` on a port already on Funnel adds
+its handler with `tailscale funnel`. Run through `sudo -u <user>`, setup needs `XDG_RUNTIME_DIR=/run/user/<uid>`
 to reach that user's systemd manager, and stops without it rather than reinstall a working unit.
 `tailscale serve` replaces whatever `x-forwarded-for` a client sends with
 the tailnet peer's address, so the per-address caps see the real client.

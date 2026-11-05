@@ -327,6 +327,17 @@ describe('planSetup', () => {
       expect(plan(flags(), fresh({ serve })).find((s) => s.kind === 'tailscale-serve')).toMatchObject({ funnel: true });
     });
 
+    it('keeps Funnel on when --tailscale serve adds a slug to a port already on Funnel', () => {
+      const serve: ServeConfig = { ...SERVED, Web: { [`${HOST}:10000`]: { Handlers: { '/bob': { Proxy: 'http://127.0.0.1:8798' } } } } };
+      expect(plan(flags({ tailscale: 'serve' }), fresh({ serve })).find((s) => s.kind === 'tailscale-serve')).toEqual({
+        kind: 'tailscale-serve',
+        port: 10000,
+        path: '/abu',
+        target: TARGET,
+        funnel: true,
+      });
+    });
+
     it('says a serve address on a port already on Funnel is public', () => {
       const result = planSetup(flags({ tailscale: 'serve' }), fresh({ serve: SERVED }));
       expect(result).toMatchObject({ checks: expect.arrayContaining([expect.stringMatching(/internet/)]) });

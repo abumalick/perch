@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  IN_BAND_REFUSAL,
   IkInitiator,
   SecureSession,
   b64url,
@@ -16,7 +17,7 @@ import {
 } from '@perch/secure-channel';
 import type { FrameSocket } from '../ports/frame-socket';
 import type { DeviceStanding, EnrolmentMode } from '../application/device-roster';
-import type { DeviceGate, Redemption } from '../ports/device-gate-port';
+import { DeviceGateBusy, type DeviceGate, type Redemption } from '../ports/device-gate-port';
 import type { AgentRefusal } from '@perch/secure-channel';
 import { NoiseClientConnection } from './noise-client-connection';
 
@@ -160,7 +161,7 @@ describe('NoiseClientConnection', () => {
     const phone = await handshake(socket, gate);
     conn.send({ type: 'authResult', ok: true });
     const replies = socket.sent.slice(1).map((f) => phone.open(f)).filter((m): m is Uint8Array => m !== null);
-    expect(replies.map((m) => JSON.parse(new TextDecoder().decode(m)))).toEqual([{ type: 'authResult', ok: true, enrolled: true }]);
+    expect(replies.map((m) => JSON.parse(new TextDecoder().decode(m)))).toEqual([{ type: 'authResult', ok: true, enrolled: true, agent: { protocol: 1 } }]);
   });
 
   it('reassembles a message larger than one frame', async () => {
@@ -334,7 +335,7 @@ describe('NoiseClientConnection serving an enrolled device at once', () => {
     const { socket, conn, gate, timers, authenticated } = setup();
     const phone = await ikHandshake(socket, enrolledPhone(gate), { push: true });
     conn.send({ type: 'authResult', ok: true, credential: 'device' });
-    expect(replies(socket, phone)).toEqual([{ type: 'authResult', ok: true, credential: 'device', enrolled: true }]);
+    expect(replies(socket, phone)).toEqual([{ type: 'authResult', ok: true, credential: 'device', enrolled: true, agent: { protocol: 1 } }]);
     expect(timers[0]!.cancelled).toBe(false);
     expect(authenticated).toEqual([]);
     deliver(socket, phone, { type: 'auth', token: '' });
@@ -395,6 +396,27 @@ describe('NoiseClientConnection with device keys (IK)', () => {
     expect(received).toEqual([{ type: 'auth', token: '' }]);
   });
 
+  it('tells a phone the machine is busy, without answering, when its roster check is turned away', async () => {
+    const { socket, gate } = setup();
+    gate.check = () => Promise.reject(new DeviceGateBusy());
+    const attempt = ikHandshake(socket).catch(() => undefined);
+    await settled(socket);
+    expect(socket.sent).toEqual([]);
+    expect(socket.closedWith).toEqual({ code: IN_BAND_REFUSAL + 429, reason: REFUSAL.tooManyPending });
+    await attempt;
+  });
+
+  it('tells a phone the machine is busy when spending its pairing code is turned away, never that the code failed', async () => {
+    const { socket, received, gate } = setup();
+    gate.enrolment = 'off';
+    gate.redeemPairing = () => Promise.reject(new DeviceGateBusy());
+    const phone = await ikHandshake(socket);
+    deliver(socket, phone, { type: 'auth', token: 's'.repeat(43) });
+    await flush();
+    expect(received).toEqual([]);
+    expect(socket.closedWith).toEqual({ code: IN_BAND_REFUSAL + 429, reason: REFUSAL.tooManyPending });
+  });
+
   it('refuses a revoked device before answering the handshake', async () => {
     const { socket, gate } = setup();
     const device = generateDeviceKeys();
@@ -446,7 +468,7 @@ describe('NoiseClientConnection with device keys (IK)', () => {
     write(true);
     await flush();
     expect(replies(socket, phone)).toEqual([
-      { type: 'authResult', ok: true, credential: 'token', enrolled: true },
+      { type: 'authResult', ok: true, credential: 'token', enrolled: true, agent: { protocol: 1 } },
       { type: 'workspaces', workspaces: [] },
     ]);
   });
@@ -460,7 +482,7 @@ describe('NoiseClientConnection with device keys (IK)', () => {
     deliver(socket, phone, { type: 'auth', token: 't' });
     conn.send({ type: 'authResult', ok: true, credential: 'token' });
     await flush();
-    expect(replies(socket, phone)).toEqual([{ type: 'authResult', ok: true, credential: 'token', enrolled: false }]);
+    expect(replies(socket, phone)).toEqual([{ type: 'authResult', ok: true, credential: 'token', enrolled: false, agent: { protocol: 1 } }]);
   });
 
   // The operator turned enrolment off (or closed it) between the phone's handshake and its auth:
@@ -586,7 +608,7 @@ describe('NoiseClientConnection with device keys (IK)', () => {
     const phone = await ikHandshake(socket, device);
     deliver(socket, phone, { type: 'auth', token: '' });
     conn.send({ type: 'authResult', ok: true, credential: 'device' });
-    expect(replies(socket, phone)).toEqual([{ type: 'authResult', ok: true, credential: 'device', enrolled: true }]);
+    expect(replies(socket, phone)).toEqual([{ type: 'authResult', ok: true, credential: 'device', enrolled: true, agent: { protocol: 1 } }]);
   });
 
   // A phone that paired, then lost its enrolment (forgotten, or the roster was reset), has no

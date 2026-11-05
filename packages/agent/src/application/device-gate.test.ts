@@ -248,6 +248,15 @@ describe('RosterMonitor', () => {
     expect(seen).toEqual([store.roster]);
   });
 
+  it('hands every successful read, the first included, to its reader', async () => {
+    const store = new MemoryDeviceStore();
+    const read: DeviceRoster[] = [];
+    const monitor = new RosterMonitor(store, () => undefined, (r) => read.push(r));
+    await monitor.poll();
+    await monitor.poll();
+    expect(read).toEqual([store.roster, store.roster]);
+  });
+
   it('skips an unreadable roster instead of throwing', async () => {
     const store = new MemoryDeviceStore();
     store.read = () => Promise.reject(new Error('malformed'));

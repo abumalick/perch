@@ -186,6 +186,8 @@ function testConfig(home: string, overrides: Partial<AgentConfig> = {}): AgentCo
     machineId: 'test',
     token: 'secret',
     port: 0,
+    phonePort: 0,
+    phoneAddresses: [],
     projectRoots: [tmpdir()],
     recentStorePath: join(home, 'recent.json'),
     statusStorePath: join(home, 'status.json'),
@@ -313,7 +315,7 @@ describe('WsServer (E2E, real tmux)', () => {
       burnPairing: async () => false,
     };
     outside.on('connection', (socket) =>
-      server?.acceptRelaySocket(wsFrameSocket(socket), b64url.decode(keys.x25519.privateKey), { devices }),
+      server?.acceptPhoneSocket(wsFrameSocket(socket), b64url.decode(keys.x25519.privateKey), { devices }),
     );
     const url = `ws://127.0.0.1:${(outside.address() as AddressInfo).port}`;
     try {
@@ -371,7 +373,7 @@ describe('WsServer (E2E, real tmux)', () => {
     const outside = new WebSocketServer({ port: 0, host: '127.0.0.1' });
     await new Promise((r) => outside.once('listening', r));
     outside.on('connection', (socket) =>
-      server?.acceptRelaySocket(wsFrameSocket(socket), b64url.decode(keys.x25519.privateKey), { devices }),
+      server?.acceptPhoneSocket(wsFrameSocket(socket), b64url.decode(keys.x25519.privateKey), { devices }),
     );
     const url = `ws://127.0.0.1:${(outside.address() as AddressInfo).port}`;
     const phone = generateDeviceKeys();

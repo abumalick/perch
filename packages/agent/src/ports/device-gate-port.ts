@@ -20,3 +20,11 @@ export interface DeviceGate {
   // Spends a live secret an enrolled device presented; true if it did.
   burnPairing(secret: string, device: string): Promise<boolean>;
 }
+
+// A gate that will not check now (too many reads a stranger could cause): the phone is told the
+// machine is busy, a refusal it retries, rather than anything about its credential.
+export class DeviceGateBusy extends Error {
+  constructor() {
+    super('device gate busy');
+  }
+}

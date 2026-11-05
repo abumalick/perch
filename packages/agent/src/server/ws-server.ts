@@ -124,7 +124,7 @@ export class WsServer {
   // with the terminal registry's workspace ids (sessions are named after workspaces).
   private readonly browserViewers = new ViewerRegistry();
   private readonly handlers = new Set<ConnectionHandler>();
-  private readonly relayClients = new Set<NoiseClientConnection>();
+  private readonly phoneClients = new Set<NoiseClientConnection>();
   private titlePoll: ReturnType<typeof setInterval> | null = null;
   private tickRunning = false;
   private statsPoll: ReturnType<typeof setInterval> | null = null;
@@ -271,26 +271,27 @@ export class WsServer {
     });
   }
 
-  // A socket the agent dialed out to the relay on a client's behalf. It is served only through
-  // the end-to-end Noise session keyed by the agent's static X25519 key.
-  acceptRelaySocket(socket: FrameSocket, staticPrivate: Uint8Array, options: NoiseClientConnectionOptions): void {
+  // A phone's socket: one the agent dialed out to a relay on a phone's behalf, or one a phone
+  // opened on the phone port. Either is served only through the end-to-end Noise session keyed by
+  // the agent's static X25519 key.
+  acceptPhoneSocket(socket: FrameSocket, staticPrivate: Uint8Array, options: NoiseClientConnectionOptions): void {
     const conn = new NoiseClientConnection(socket, staticPrivate, options);
-    this.relayClients.add(conn);
-    conn.onClose(() => this.relayClients.delete(conn));
+    this.phoneClients.add(conn);
+    conn.onClose(() => this.phoneClients.delete(conn));
     this.accept(conn);
   }
 
-  // Closes the relay sessions of devices that have since been revoked. Only revocation closes a
+  // Closes the phone sessions of devices that have since been revoked. Only revocation closes a
   // live session: a device that is merely unknown here may be one whose enrolment is still being
   // written.
   refuseRevokedDevices(isRevoked: (x25519: string) => boolean): void {
-    for (const conn of this.relayClients) {
+    for (const conn of this.phoneClients) {
       if (conn.device && isRevoked(conn.device)) conn.refuse('device revoked');
     }
   }
 
-  // Serves one client connection. In production every one is a relay-dialed Noise session
-  // (acceptRelaySocket); tests hand in their own.
+  // Serves one client connection. In production every one is a phone's Noise session
+  // (acceptPhoneSocket); tests hand in their own.
   accept(conn: ClientConnection): void {
     const handler = new ConnectionHandler(conn, {
       ...this.deps,

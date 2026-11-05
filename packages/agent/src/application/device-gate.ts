@@ -111,9 +111,11 @@ export class RosterDevices implements DeviceGate {
 export class RosterMonitor {
   private last: string | null = null;
 
+  // `onRead`: every roster read, the first included, for what keeps a copy of it.
   constructor(
     private readonly store: DeviceStorePort,
     private readonly onChange: (roster: DeviceRoster) => void,
+    private readonly onRead?: (roster: DeviceRoster) => void,
   ) {}
 
   async poll(): Promise<void> {
@@ -123,6 +125,7 @@ export class RosterMonitor {
     } catch {
       return;
     }
+    this.onRead?.(roster);
     const text = JSON.stringify(roster);
     if (this.last !== null && text !== this.last) this.onChange(roster);
     this.last = text;

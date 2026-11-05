@@ -474,7 +474,9 @@ export async function startFakeAgent(
       gate,
       server,
       admission: new PhoneAdmission({ now: () => Date.now() }),
-      limiter: new DiskReadLimiter(() => Date.now()),
+      // Every test is a fresh browser, so a new device key the agent must read the roster for;
+      // the production limit (10 a minute) would answer a whole spec file busy.
+      limiter: new DiskReadLimiter(() => Date.now(), 4, 10_000),
       log: () => undefined,
     });
     const port = listener.port;

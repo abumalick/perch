@@ -102,7 +102,7 @@ test('a pasted link that is not a pairing link is refused with a reason', async 
   expect(await stored(page)).toEqual([]);
 });
 
-// The relay refuses a phone in band: a browser's WebSocket reports 1006 for any refused upgrade,
+// The agent refuses a phone in band: a browser's WebSocket reports 1006 for any refused upgrade,
 // so the reason can only reach the phone as a close code and reason on an opened socket.
 for (const [state, message] of [
   ['expired', 'This pairing code has expired — run `perch pair` on dev box for a new one'],

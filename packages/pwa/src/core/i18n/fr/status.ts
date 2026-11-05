@@ -31,7 +31,7 @@ export const status: Messages['status'] = {
     closedByAgent: (reason) => `fermée par l’agent — ${reason}`,
     dropped: 'ouverte puis perdue',
     authRejected: 'authentification refusée',
-    networkError: 'probablement une erreur réseau — relais injoignable',
+    networkError: 'probablement une erreur réseau — machine injoignable',
     neverOpened: 'jamais ouverte',
     secureChannel: 'échec du canal sécurisé',
   },

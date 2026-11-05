@@ -436,7 +436,7 @@ describe('MachineConnection', () => {
     h.conn.connect();
     h.sockets[0]!.fireClose({ code: 1006 });
     expect(h.diagnostics).toEqual([
-      { message: 'connection failed (likely network error — relay unreachable)', code: 1006, at: 1000, attempt: 1, retryInMs: 250 },
+      { message: 'connection failed (likely network error — machine unreachable)', code: 1006, at: 1000, attempt: 1, retryInMs: 250 },
     ]);
   });
 
@@ -445,7 +445,7 @@ describe('MachineConnection', () => {
     h.conn.connect();
     h.sockets[0]!.fireError();
     h.sockets[0]!.fireClose();
-    expect(h.diagnostics[0]!.message).toBe('connection failed (likely network error — relay unreachable)');
+    expect(h.diagnostics[0]!.message).toBe('connection failed (likely network error — machine unreachable)');
   });
 
   it('reports the reason a socket gives for closing before it opened', () => {

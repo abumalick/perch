@@ -100,9 +100,9 @@ describe('MachineDetail', () => {
   it('shows the connection error and reconnects a machine that is not online', async () => {
     const { store } = setup({}, {
       statuses: { mac: 'offline' },
-      lastConnectionError: { mac: { message: 'relay unreachable', code: 1006, at: Date.now() } },
+      lastConnectionError: { mac: { message: 'machine unreachable', code: 1006, at: Date.now() } },
     });
-    expect(screen.getByTestId('diagnostic')).toHaveTextContent('relay unreachable (code 1006)');
+    expect(screen.getByTestId('diagnostic')).toHaveTextContent('machine unreachable (code 1006)');
     await fireEvent.click(screen.getByTestId('reconnect'));
     expect(store.reconnectMachine).toHaveBeenCalledWith('mac');
   });

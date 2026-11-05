@@ -591,7 +591,7 @@ describe('PerchStore', () => {
   it('records a connection error and clears it on online', () => {
     const { store } = build([mac]);
     store.setStatus('mac', 'offline');
-    store.setConnectionError('mac', { message: 'connection failed (likely network error — relay unreachable)', code: 1006, at: 1000 });
+    store.setConnectionError('mac', { message: 'connection failed (likely network error — machine unreachable)', code: 1006, at: 1000 });
     expect(store.lastConnectionError['mac']?.code).toBe(1006);
     store.setStatus('mac', 'online');
     expect(store.lastConnectionError['mac']).toBeUndefined();

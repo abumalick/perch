@@ -104,10 +104,10 @@ describe('Settings — machines list', () => {
   it('shows why an offline machine is not connected', () => {
     const store = fakeStore({
       statuses: { mac: 'offline' },
-      lastConnectionError: { mac: { message: 'relay unreachable', code: 1006, at: Date.now() } },
+      lastConnectionError: { mac: { message: 'machine unreachable', code: 1006, at: Date.now() } },
     });
     render(Settings, { props: { store: store as never } });
-    expect(screen.getByTestId('diagnostic')).toHaveTextContent('relay unreachable (code 1006)');
+    expect(screen.getByTestId('diagnostic')).toHaveTextContent('machine unreachable (code 1006)');
   });
 
   it('hides an old error once the machine is online', () => {

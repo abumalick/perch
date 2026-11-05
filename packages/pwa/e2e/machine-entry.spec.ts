@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { seedMachine, startFakeAgent, type FakeAgent } from './fake-agent';
 
 // An entry that cannot open the end-to-end session must never connect at all: without an agent
-// key there is nothing to pin, and its token would reach the relay in plaintext. The fake agent
+// key there is nothing to pin, and its token would travel in plaintext. The fake agent
 // counts every upgrade and records every `auth` that reaches it, so either one is that leak.
 
 let agent: FakeAgent;

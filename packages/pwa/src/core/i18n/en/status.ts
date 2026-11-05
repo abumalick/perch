@@ -29,7 +29,7 @@ export const status = {
     closedByAgent: (reason: string) => `closed by agent — ${reason}`,
     dropped: 'opened then dropped',
     authRejected: 'auth rejected',
-    networkError: 'likely network error — relay unreachable',
+    networkError: 'likely network error — machine unreachable',
     neverOpened: 'never opened',
     secureChannel: 'secure channel failed',
   },

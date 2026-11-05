@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isAndroid } from './android-input';
   import { flip } from 'svelte/animate';
   import { slide } from 'svelte/transition';
   import { imageMediaType, type Workspace } from '@perch/contracts';
@@ -219,6 +220,9 @@
     {:else}
       <p class="empty-title">{msg().home.cantReach}</p>
       <p class="empty-sub">{msg().home.cantReachSub}</p>
+      {#if isAndroid(navigator.userAgent)}
+        <p class="empty-sub" data-testid="local-network-hint">{msg().home.localNetworkHint}</p>
+      {/if}
     {/if}
     <button type="button" class="cta" data-testid="reconnect-home" onclick={() => store.reconnectAll(true)}>{msg().home.reconnect}</button>
   </div>

@@ -45,7 +45,7 @@ there is no file option, so a body cannot smuggle a path or a binary.
   made by `perch spawn --cli codex`, is the sender itself, does not exist on this machine, the
   message is empty (`empty message`), the sender is not a Perch workspace, or the delivery itself
   failed (`delivery failed: <reason>`, with the CLI's own wording in the sections below).
-- **Same machine only.** The agent knows its own tmux; no relay is involved.
+- **Same machine only.** The agent knows its own tmux; nothing leaves the machine.
 - **Log:** `~/.perch/messages.jsonl` (gitignored) records time, sender, recipient, relation,
   recipient CLI, outcome and body length, never the body. Best-effort.
 - **Status:** a delivered message sets the sender's `messagedLast` mark, so a child that ends

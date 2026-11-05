@@ -28,9 +28,9 @@ git init -q "${SB}"
 git -C "${SB}" config user.email t@t
 git -C "${SB}" config user.name test
 mkdir -p "${SB}/deploy" "${SB}/packages/pwa/dist"
-printf 'packages/pwa/dist/\n.worktrees/\ndeploy/pwa-live\ndeploy/agent-live\ndeploy/relay-live\n' > "${SB}/.gitignore"
+printf 'packages/pwa/dist/\n.worktrees/\ndeploy/pwa-live\ndeploy/agent-live\n' > "${SB}/.gitignore"
 echo main > "${SB}/packages/pwa/dist/main.txt"
-cp "${HERE}/serve-build.sh" "${HERE}/serve-agent.sh" "${HERE}/serve-relay.sh" "${HERE}/remove-worktree.sh" "${SB}/deploy/"
+cp "${HERE}/serve-build.sh" "${HERE}/serve-agent.sh" "${HERE}/remove-worktree.sh" "${SB}/deploy/"
 git -C "${SB}" add -A
 git -C "${SB}" commit -qm init
 
@@ -46,13 +46,6 @@ SB_PHYS="$(cd "${SB}" && pwd -P)"
 agent_target() { cd "${AGENT_LIVE}" && pwd -P; }
 agent_serves_main() { [ "$(agent_target)" = "${SB_PHYS}" ]; }
 agent_serves_foo()  { [ "$(agent_target)" = "$(cd "${SB}/.worktrees/foo" && pwd -P)" ]; }
-
-# The self-hosted relay's symlink works like agent-live.
-SERVE_RELAY="${SB}/deploy/serve-relay.sh"
-RELAY_LIVE="${SB}/deploy/relay-live"
-relay_target() { cd "${RELAY_LIVE}" && pwd -P; }
-relay_serves_main() { [ "$(relay_target)" = "${SB_PHYS}" ]; }
-relay_serves_foo()  { [ "$(relay_target)" = "$(cd "${SB}/.worktrees/foo" && pwd -P)" ]; }
 
 make_worktree() {
   git -C "${SB}" worktree add -q "${SB}/.worktrees/foo" -b foo 2>/dev/null \
@@ -129,34 +122,7 @@ ln -sfn "${SB}/.worktrees/foo" "${AGENT_LIVE}"
 agent_serves_main || fail "agent was not restored to main before removal"
 echo "ok: removing the agent-deployed worktree restores main first"
 
-# --- 8. serve-relay: flip to a worktree and back ----------------------------
-git -C "${SB}" branch -D foo >/dev/null 2>&1 || true
-make_worktree
-"${SERVE_RELAY}" "${SB}/.worktrees/foo" >/dev/null
-relay_serves_foo || fail "serve-relay did not point relay-live at the worktree"
-"${SERVE_RELAY}" --restore >/dev/null
-relay_serves_main || fail "serve-relay --restore did not point relay-live back at main"
-echo "ok: serve-relay flips relay-live to a worktree and restores main"
-if "${SERVE_RELAY}" "${SB}/.worktrees/missing" >/dev/null 2>&1; then fail "serve-relay accepted a missing worktree"; fi
-relay_serves_main || fail "serve-relay moved relay-live for a missing worktree"
-echo "ok: serve-relay refuses a missing worktree and leaves relay-live alone"
-
-# --- 9. relay heal: dangling falls back to main, healthy is left alone -------
-ln -sfn "${SB}/gone" "${RELAY_LIVE}"
-"${SERVE_RELAY}" --heal >/dev/null
-relay_serves_main || fail "relay heal did not restore main for a dangling symlink"
-ln -sfn "${SB}/.worktrees/foo" "${RELAY_LIVE}"
-"${SERVE_RELAY}" --heal >/dev/null
-relay_serves_foo || fail "relay heal disturbed a healthy (non-dangling) symlink"
-echo "ok: relay heal restores main only when relay-live dangles"
-
-# --- 10. remove: relay runs from the worktree -> restore + remove -----------
-"${REMOVE}" "${SB}/.worktrees/foo" >/dev/null
-[ ! -e "${SB}/.worktrees/foo" ] || fail "worktree was not removed (relay-deploy case)"
-relay_serves_main || fail "relay was not restored to main before removal"
-echo "ok: removing the relay-deployed worktree restores main first"
-
-# --- 11. run from a worktree: every script acts on main's symlinks ----------
+# --- 8. run from a worktree: every script acts on main's symlinks ----------
 # `pnpm serve:*` inside a worktree runs that worktree's copy of the script; it must still flip
 # main's live symlinks (the ones the services read), never create its own beside it.
 git -C "${SB}" branch -D foo >/dev/null 2>&1 || true
@@ -167,17 +133,15 @@ agent_serves_foo || fail "serve-agent run from the worktree did not flip main's 
 [ ! -e "${WT_DEPLOY}/agent-live" ] && [ ! -L "${WT_DEPLOY}/agent-live" ] || fail "serve-agent made a worktree-local agent-live"
 "${WT_DEPLOY}/serve-agent.sh" --restore >/dev/null
 agent_serves_main || fail "serve-agent --restore run from the worktree did not restore main"
-(cd "${SB}/.worktrees/foo" && "${WT_DEPLOY}/serve-relay.sh" . >/dev/null)
-relay_serves_foo || fail "serve-relay run from the worktree did not flip main's relay-live"
-[ ! -e "${WT_DEPLOY}/relay-live" ] && [ ! -L "${WT_DEPLOY}/relay-live" ] || fail "serve-relay made a worktree-local relay-live"
 ln -sfn "${SB}/.worktrees/foo/packages/pwa/dist" "${LIVE}"
 "${WT_DEPLOY}/serve-build.sh" --restore >/dev/null
 serves_main "${LIVE}" || fail "serve-build --restore run from the worktree did not restore main's pwa-live"
 [ ! -e "${WT_DEPLOY}/pwa-live" ] && [ ! -L "${WT_DEPLOY}/pwa-live" ] || fail "serve-build made a worktree-local pwa-live"
-# The relay is still served from the worktree: removing it with its own copy restores main.
+# The agent is served from the worktree again: removing it with its own copy restores main.
+(cd "${SB}/.worktrees/foo" && "${WT_DEPLOY}/serve-agent.sh" . >/dev/null)
 "${WT_DEPLOY}/remove-worktree.sh" "${SB}/.worktrees/foo" >/dev/null
 [ ! -e "${SB}/.worktrees/foo" ] || fail "remove-worktree run from the worktree did not remove it"
-relay_serves_main || fail "remove-worktree run from the worktree did not restore main's relay-live"
+agent_serves_main || fail "remove-worktree run from the worktree did not restore main's agent-live"
 echo "ok: run from a worktree, the scripts act on main's live symlinks"
 
 echo "All worktree-remove guard tests passed."

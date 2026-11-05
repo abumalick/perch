@@ -20,7 +20,7 @@ describe('describeConnectionError', () => {
     expect(fr('connection failed (likely network error — machine unreachable)')).toBe('échec de la connexion (probablement une erreur réseau — machine injoignable)');
     expect(fr('connection failed (never opened)')).toBe('échec de la connexion (jamais ouverte)');
     expect(fr('connection failed (secure channel failed)')).toBe('échec de la connexion (échec du canal sécurisé)');
-    expect(fr('connection failed (relay challenge timed out)')).toBe('échec de la connexion (relay challenge timed out)');
+    expect(fr('connection failed (something new)')).toBe('échec de la connexion (something new)');
     expect(fr('closed by agent — wrong agent key')).toBe('fermée par l’agent — wrong agent key');
     expect(fr('opened then dropped')).toBe('ouverte puis perdue');
     expect(fr('auth rejected')).toBe('authentification refusée');

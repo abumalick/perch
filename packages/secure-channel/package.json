@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
-  "description": "Noise IK sessions, framing, agent and device signatures, and the relay control messages, shared by the agent, the PWA and the relay.",
+  "description": "Noise IK sessions, framing, device hellos, pairing links and refusals, shared by the agent and the PWA.",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",

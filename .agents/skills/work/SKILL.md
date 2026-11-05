@@ -66,9 +66,8 @@ pnpm serve:build .worktrees/<feature>
 ```
 
 The installed PWA updates while foregrounded in about 60 seconds and shows the
-feature slug. Protocol changes also need `pnpm serve:agent .worktrees/<feature>`;
-relay changes may need `pnpm serve:relay .worktrees/<feature>`. These change shared
-live services. Check the existing deploy symlinks before replacing them.
+feature slug. Protocol changes also need `pnpm serve:agent .worktrees/<feature>`.
+These change shared live services. Check the existing deploy symlinks before replacing them.
 
 Wait for the user's on-device verdict before integration. Explain this gate as the
 project's requirement and link to this skill when asking. Existing authorization
@@ -77,8 +76,7 @@ still applies; do not ask twice. Docs-only work skips this phase.
 ## Integration and cleanup
 
 After the device test is approved and integration is authorized, restore any live
-slots this task changed (`serve:restore`, `serve:agent-restore`,
-`serve:relay-restore`). Commit only this task's changes with hooks enabled. From the
+slots this task changed (`serve:restore`, `serve:agent-restore`). Commit only this task's changes with hooks enabled. From the
 main checkout, verify that it is on main, merge the feature branch, then use
 `pnpm worktree:remove .worktrees/<feature>` and `git branch -d <feature>` after a
 successful merge. Do not switch another session's shared checkout branch.

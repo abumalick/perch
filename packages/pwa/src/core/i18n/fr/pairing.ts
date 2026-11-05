@@ -6,7 +6,7 @@ export const pairing: Messages['pairing'] = {
   question: (machine, host, fingerprint) =>
     `Associer ${machine} via ${host} ?\n\n` +
     `Clé de la machine ${fingerprint} : vérifiez qu’elle correspond à ce qu’a affiché perch pair.\n\n` +
-    'Ne continuez que si vous venez de lancer perch pair ou perch connect sur cette machine.',
+    'Ne continuez que si vous venez de lancer perch pair sur cette machine.',
   notALink: "Ce n’est pas un code d’association Tarfa. Lancez `perch pair` sur la machine pour en obtenir un nouveau.",
   otherOrigin: (origin, own) => `Ce code d’association est pour le Tarfa de ${origin}, pas pour celui-ci (${own}).`,
   cameraRefused: "L’accès à la caméra a été refusé. Autorisez-le pour cette application, ou collez le lien d’association ci-dessous.",

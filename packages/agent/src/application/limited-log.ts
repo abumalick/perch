@@ -1,6 +1,6 @@
 const EVERY_MS = 60_000;
 
-// A line a stranger can trigger as fast as the relay lets them through: the journal gets one a
+// A line a stranger can trigger as fast as the phone port lets them in: the journal gets one a
 // minute for each key, so a stream of bad attempts cannot fill it nor hide the owner's own.
 export class LimitedLog {
   private readonly entries = new Map<string, { last: number; held: number }>();

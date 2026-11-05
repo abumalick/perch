@@ -5,8 +5,8 @@ import type { ReadServableFileResult } from './read-servable-file';
 // carries 65 519 bytes of plaintext). A larger message would be sealed into several frames
 // sent back to back, so terminal output could not slip in between them.
 export const MEDIA_CHUNK_BYTES = 45 * 1024;
-// Chunks in flight before the phone acknowledges one. Through a relay the agent cannot see the
-// slow leg (relay → phone: its own socket drains into the relay at once), so the phone's
+// Chunks in flight before the phone acknowledges one. Behind tailscale serve, Funnel or a proxy
+// the agent cannot see the slow leg (its own socket drains into the proxy at once), so the phone's
 // acknowledgements are the only backpressure there is, and this window is the most a preview
 // can put ahead of terminal output.
 export const MEDIA_WINDOW = 4;

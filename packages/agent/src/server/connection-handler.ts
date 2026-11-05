@@ -190,7 +190,7 @@ export class ConnectionHandler {
       const isToken = token !== undefined && constantTimeEqual(message.token, token);
       const byKey = this.conn.keyCredential;
       // An enrolled key needs no token, and a phone that keeps sending it hands it to whoever
-      // holds the agent's relay key: refused, so the phone drops it (it knows this refusal).
+      // holds the agent's key: refused, so the phone drops it (it knows this refusal).
       if (byKey === 'device' && isToken && this.conn.refuse) {
         this.conn.refuse(REFUSAL.tokenNotNeeded);
         return;

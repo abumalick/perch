@@ -191,8 +191,8 @@ describe('filterWorkspaces', () => {
 
 describe('pruneStaleFilter', () => {
   const agentKey = generateAgentKeys().x25519.publicKey;
-  const relay = (id: string, defaultPath: string): MachineConfig => ({ ...machine(id, defaultPath), agentKey });
-  const machines = [relay('m', '/home/u/workspace')];
+  const keyed = (id: string, defaultPath: string): MachineConfig => ({ ...machine(id, defaultPath), agentKey });
+  const machines = [keyed('m', '/home/u/workspace')];
   const list = [
     ws({ id: '1', machineId: 'm', projectPath: '/home/u/workspace/perch' }),
     ws({ id: '2', machineId: 'm', projectPath: '/home/u/workspace/bar/baz' }),
@@ -211,12 +211,12 @@ describe('pruneStaleFilter', () => {
   it("keeps another machine's folder while that machine has not listed", () => {
     // One machine online, the other offline or slower to answer: its folders are missing from
     // the list only because its workspaces are, and pruning would forget them for good.
-    const two = [...machines, relay('mac', '/Users/u/code')];
+    const two = [...machines, keyed('mac', '/Users/u/code')];
     expect(pruneStaleFilter(new Set(['perch', 'shop']), list, two, ['m'])).toEqual(['perch', 'shop']);
   });
 
   it('prunes once every connectable machine has listed, ignoring a switched-off one', () => {
-    const two = [...machines, { ...relay('mac', '/Users/u/code'), enabled: false }];
+    const two = [...machines, { ...keyed('mac', '/Users/u/code'), enabled: false }];
     expect(pruneStaleFilter(new Set(['perch', 'shop']), list, two, ['m'])).toEqual(['perch']);
   });
 

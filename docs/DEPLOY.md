@@ -3,14 +3,12 @@
 Perch runs an **agent** on each machine and a **PWA**, Tarfa, that your phone installs from
 tarfa.app. Each agent listens on a loopback **phone port** (`PERCH_PHONE_PORT`, default 8797)
 that its operator publishes (`tailscale serve`, Funnel or a proxy; see "The phone port" below),
-and the PWA connects there directly, end to end encrypted with a device key. Machines not yet
-moved off them still reach older PWAs through **relays** the agent dials out to
-([relay runbook](relay-cf-runbook.md)). Both listeners bind `127.0.0.1` only: the hooks endpoint
+and the PWA connects there directly, end to end encrypted with a device key (a Noise IK session
+pinned to the agent's key). Both listeners bind `127.0.0.1` only: the hooks endpoint
 (`PERCH_PORT`) and the phone port.
 
 ## 0. Prerequisites (every machine)
-- A relay to connect to: the Cloudflare Worker or a self-hosted relay (runbook, "Choose your relay host").
-- A machine published with `tailscale serve` or Funnel, and the machine hosting the staging PWA (step 5), need Tailscale with MagicDNS + HTTPS enabled in the tailnet admin (`https://login.tailscale.com/admin/dns`). So does any machine publishing a self-hosted relay there. An agent itself needs no Tailscale.
+- A machine published with `tailscale serve` or Funnel, and the machine hosting the staging PWA (step 5), need Tailscale with MagicDNS + HTTPS enabled in the tailnet admin (`https://login.tailscale.com/admin/dns`). An agent published another way (a reverse proxy) needs no Tailscale.
 - `tmux`, and the toolchain via mise: `mise trust` (the config isn't trusted on a fresh clone), then `mise install`, then `mise exec -- pnpm install` (the postinstall fixes node-pty's `spawn-helper` perms — works on macOS and Linux).
 - Clone the repo on each machine that runs an agent (`deploy/agent.env` is per-machine and gitignored).
 - Verify node-pty: `mise exec -- pnpm --filter @perch/agent test` should pass (real tmux/node-pty). On Ubuntu, `node-pty` prebuilds + the spawn-helper postinstall work without extra build tools.
@@ -37,7 +35,7 @@ An existing `PERCH_PWA_ORIGIN` is kept unless `--pwa` names another (the default
 `https://tarfa.app`). Where Tailscale needs root, it prints `sudo tailscale set --operator=$USER`
 and exits 1. The address it derives, `wss://<node>.<tailnet>.ts.net:<port>/<slug>`, goes first in
 `PERCH_PHONE_ADDRESSES`, then any `--address`; `perch pair` then mints links with all of them, in
-order, and `perch pair --relay <url>` still pairs through a relay.
+order.
 
 Several agents on one node share a Tailscale port under their own `--slug`, each with its own
 `--phone-port` (`setup` refuses a phone port another process holds). The node has one Tailscale
@@ -59,17 +57,15 @@ install -m 600 deploy/agent.env.example deploy/agent.env
 # edit deploy/agent.env: set PERCH_TOKEN (openssl rand -hex 32 — a strong random value, one per machine),
 # PERCH_MACHINE_ID (unique: "mac"/"mini"), PERCH_PROJECT_ROOTS (e.g. ~/workspace), keep PERCH_PORT=8787
 ```
-> The token enrols the relay entries added by hand that carry it (runbook, "Adding the relay
-> machine on the phone by hand"). The local hooks use their own secret, which the agent writes to
+> The token enrols a phone entry added by hand that carries it, while token enrolment is on
+> (`perch devices enrolment`). The local hooks use their own secret, which the agent writes to
 > `~/.perch/token` at each start. A phone paired with `perch pair`
 > holds no token: its enrolled device key is its credential. Use a strong random value either way.
 >
 > `deploy/agent.env` must be readable by you alone: the agent refuses to start while another user
 > can read or change it (it holds the token, which enrols a phone), and says so naming the fix,
 > `chmod 600 deploy/agent.env`. A plain `cp` of the example keeps the checkout's mode, which on
-> most systems is readable by everyone; `install -m 600` does not. `deploy/relay-cf.env`, which
-> holds a Cloudflare relay's join and admin keys, is held to the same rule by
-> `deploy/relay-cf-deploy.sh`.
+> most systems is readable by everyone; `install -m 600` does not.
 >
 > Several agents can share one machine, one per Linux user, each with its own `PERCH_PORT` and
 > `PERCH_MACHINE_ID`: `docs/SETUP-MACHINE.md`, step 13.
@@ -111,24 +107,31 @@ systemctl --user restart perch-agent
 
 Confirm: `curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8787/hooks` prints `401` (server up, auth enforced). A plain `GET /hooks` returns `404` — only `POST /hooks` reaches the auth check, so the liveness probe must use `-X POST`.
 
-## 3. Connect each agent to a relay
-From each machine's checkout, with the command the relay's operator prints (runbook,
-"Connecting a machine and pairing a phone"):
+## 3. Publish the phone port and pair a phone
+`perch setup --tailscale serve|funnel` does this; by hand, publish the phone port and tell the
+agent where phones reach it:
 ```sh
-PERCH_JOIN_KEY=<join key> pnpm perch connect wss://<relay> [--pwa https://<where phones open Perch>]
+tailscale serve --bg --https=10000 --set-path=/me http://127.0.0.1:8797   # or `tailscale funnel`
+# deploy/agent.env: PERCH_PHONE_ADDRESSES=wss://<node>.<tailnet>.ts.net:10000/me
+pnpm perch pair [--pwa https://<where phones open the app>]
 ```
-The key goes in the environment rather than `--key`, which the process list and the shell history
-would show. It registers the machine with the relay, adds the relay to `PERCH_RELAY_URLS` in
-`deploy/agent.env` (after a backup), restarts the agent and prints a pairing QR code and link. The
-link needs the origin phones open Perch at: pass `--pwa` the first time (it is saved as
-`PERCH_PWA_ORIGIN` in `deploy/agent.env`), or set `PERCH_PWA_ORIGIN` there beforehand. Set
-`PERCH_DEFAULT_PATH` there too (an absolute path) and the link hands it to the phone as the new
-entry's default path; a re-scan fills it only on an entry that has none. Without
-one, `connect` still joins and says so, and `perch pair --pwa <origin>` prints the link later. Run it once
-per relay the machine should hold. `journalctl --user -u perch-agent | grep 'socket open'` (or
-`deploy/agent.log` on macOS) then shows one `relay control socket open (<url>)` line per relay.
+`perch pair` prints a one-time pairing QR code and link (ten minutes, one phone) with every
+address in `PERCH_PHONE_ADDRESSES`. The link names the origin phones open the app at,
+`PERCH_PWA_ORIGIN` (default `https://tarfa.app`). Set `PERCH_DEFAULT_PATH` (an absolute path) and
+the link hands it to the phone as the new entry's default path; a re-scan fills it only on an
+entry that has none. `PERCH_RELAY_URLS` from an older setup is ignored with a warning at
+startup; remove it.
 
-The hooks port is never exposed with `tailscale serve`. A machine set up before the relay may
+**Moving a machine off relays.** An agent updated past the relays' removal no longer dials
+them, so a machine phones reached only through a relay is cut off until it is moved: run
+`perch setup` with `--tailscale serve|funnel` (or `--address` for a proxy), remove
+`PERCH_RELAY_URLS` from `deploy/agent.env`, then send each phone a fresh `perch pair` link. The
+entry, known by its agent key, takes the new addresses; its device key stays enrolled. Update the
+agent before phones use a current app: an older agent refuses a new phone's hello ("too old to
+pair"). A self-hosted app built before the change must be redeployed too, and the old relay
+services stopped by hand (their scripts are gone).
+
+The hooks port is never exposed with `tailscale serve`. A machine set up long ago may
 still publish its agent (`tailscale serve status` shows `:8442 -> 127.0.0.1:8787`): remove it
 with `tailscale serve --https=8442 off` (`sudo` on Linux).
 
@@ -137,13 +140,13 @@ The agent logs `perch agent: phones on 127.0.0.1:<port>` at startup. The port ta
 upgrade on any path (`tailscale serve --set-path` strips its prefix) and answers anything else
 404, so `/hooks`, `/unpark` and `/message` are never one proxy away from the network. It is meant to sit behind
 `tailscale serve` or Funnel; the only port to publish is `PERCH_PHONE_PORT`, never `PERCH_PORT`.
-A phone there gets exactly what a relay dial-back gets: the same device roster, revocation and
-pairing codes. Its bounds, as the relay enforced them: 8 unauthenticated sockets per client
+A phone there goes through the agent's device roster, revocation and pairing codes. Its bounds:
+8 unauthenticated sockets per client
 address and 32 in all (the oldest is closed when full), 20 new sockets a minute per address, a
 ping every 30 s, 64 KiB frames, and at most 4 roster or pairing-file reads at once and 10 a minute
 for keys that are not enrolled. The client address is the last hop of `x-forwarded-for` from the
 local proxy. Refusals arrive in band (`4429`). Several agents on one machine need distinct
-phone ports; if the port is taken, the agent logs `no phone port` and keeps its relays.
+phone ports; if the port is taken, the agent logs `no phone port` and keeps serving its hooks.
 Check it with an upgrade (`101`) and a plain request (`404`):
 ```sh
 curl -si --http1.1 -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
@@ -261,8 +264,8 @@ Staging PWA URL: `https://mini.<tailnet>.ts.net:8443/`.
 ## 8. Troubleshooting
 - **`/hooks` 401 from the local hook:** the agent hasn't written `~/.perch/token` yet (start the agent first) or the hook ran before startup. The file holds a hooks-only secret the agent replaces at each start, not `PERCH_TOKEN`.
 - **node-pty `posix_spawnp failed` on Ubuntu:** re-run `pnpm install` (root postinstall chmods `spawn-helper`); confirm `node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/linux-*/spawn-helper` is `+x`.
-- **The phone does not connect:** the entry's message in Settings names the refusal (runbook, "How a refusal reaches the phone"). Check the agent holds the relay (`relay control socket open` in its log) and that the phone reaches the relay (a self-hosted relay on the tailnet needs the phone's Tailscale connected).
+- **The phone does not connect:** the entry's message in Settings names the refusal (an agent refusal: revoked, not enrolled, a spent or expired pairing code, the wrong agent key). Check the agent logs `phones on 127.0.0.1:<port>`, that the publishing entry points at that port (`tailscale serve status`), and that the phone reaches the address (a tailnet address needs the phone's Tailscale connected; a Funnel one does not).
 - **An old direct entry in Settings** ("no longer supported"): delete it and pair the machine again.
-- **PWA loads but no workspaces:** watch the agent log (`journalctl --user -u perch-agent -f` / `tail -f deploy/agent.log`) for `relay client:` lines.
+- **PWA loads but no workspaces:** watch the agent log (`journalctl --user -u perch-agent -f` / `tail -f deploy/agent.log`) for `phone:` lines.
 - **Port already in use:** change `PERCH_PORT` in `deploy/agent.env`, then re-run `install-hooks` (step 4), which bakes the port into the hook command.
 - **`pnpm: command not found` from the service:** the launchd/systemd PATH may not include your pnpm (e.g. mise shims). Verify `which pnpm` in your normal shell; if it's under `~/.local/share/mise` or similar, either add that dir to the plist `PATH`/systemd `Environment=PATH=...`, or edit `deploy/run-agent.sh` to call pnpm by absolute path.

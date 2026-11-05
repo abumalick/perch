@@ -164,13 +164,13 @@ describe('BrowserStream', () => {
     const h = harness();
     const s = online(h);
     s.deliver({ type: 'ended', reason: 'closed' });
-    s.fireClose(); // the relay closes the client socket after ended
+    s.fireClose(); // the agent closes the client socket after ended
     expect(h.reasons).toEqual([]);
     h.clock.fireDelay(BASE_BACKOFF_MS);
     expect(h.sockets.length).toBe(2);
   });
 
-  it('reconnects on a transient ended{error} (relay dial hiccup)', () => {
+  it('reconnects on a transient ended{error} (upstream dial hiccup)', () => {
     const h = harness();
     const s = online(h);
     s.deliver({ type: 'ended', reason: 'error' });

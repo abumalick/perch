@@ -18,7 +18,7 @@ describe('agentEnvFile', () => {
     const path = join(dir, 'agent.env');
     await writeFile(path, 'PERCH_TOKEN=t\n');
     await chmod(path, 0o664);
-    const backup = await agentEnvFile(path).write('PERCH_TOKEN=t\nPERCH_RELAY_URLS=wss://relay.example\n');
+    const backup = await agentEnvFile(path).write('PERCH_TOKEN=t\nPERCH_PHONE_ADDRESSES=wss://box.example.ts.net\n');
     expect((await stat(path)).mode & 0o777).toBe(0o600);
     expect((await stat(backup!)).mode & 0o777).toBe(0o600);
     expect(await readdir(dir)).toHaveLength(2);

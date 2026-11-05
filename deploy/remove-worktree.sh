@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Remove a feature worktree safely. If a live deploy (deploy/pwa-live for the PWA,
-# deploy/agent-live for the agent, deploy/relay-live for the self-hosted relay) is serving
-# that worktree, switch it back to main first — otherwise the symlink would dangle and keep serving a removed checkout.
+# deploy/agent-live for the agent) is serving that worktree, switch it back to main first — otherwise the symlink would dangle and keep serving a removed checkout.
 # See docs/WORKTREES.md.
 #
 #   pnpm worktree:remove <worktree-path>
@@ -15,8 +14,6 @@ LIVE="${REPO}/deploy/pwa-live"
 SERVE_BUILD="${REPO}/deploy/serve-build.sh"
 LIVE_AGENT="${REPO}/deploy/agent-live"
 SERVE_AGENT="${REPO}/deploy/serve-agent.sh"
-LIVE_RELAY="${REPO}/deploy/relay-live"
-SERVE_RELAY="${REPO}/deploy/serve-relay.sh"
 
 WT_ARG="${1:?usage: remove-worktree.sh <worktree-path>}"
 WT="$(cd "${WT_ARG}" && pwd -P)"   # absolutize physically; fails loudly if missing
@@ -26,8 +23,6 @@ LIVE_TARGET=""
 if [ -d "${LIVE}" ]; then LIVE_TARGET="$(cd "${LIVE}" && pwd -P)"; fi
 AGENT_TARGET=""
 if [ -d "${LIVE_AGENT}" ]; then AGENT_TARGET="$(cd "${LIVE_AGENT}" && pwd -P)"; fi
-RELAY_TARGET=""
-if [ -d "${LIVE_RELAY}" ]; then RELAY_TARGET="$(cd "${LIVE_RELAY}" && pwd -P)"; fi
 
 case "${LIVE_TARGET}/" in
   "${WT}/"*)
@@ -43,17 +38,9 @@ case "${AGENT_TARGET}/" in
     ;;
 esac
 
-case "${RELAY_TARGET}/" in
-  "${WT}/"*)
-    echo "Relay is running from '${WT}'; restoring main first…"
-    "${SERVE_RELAY}" --restore
-    ;;
-esac
-
 git -C "${REPO}" worktree remove "${WT}"
 echo "Removed worktree '${WT}'."
 
 # Backstop: heal a still-dangling symlink (e.g. the worktree was already half-gone).
 "${SERVE_BUILD}" --heal
 "${SERVE_AGENT}" --heal
-"${SERVE_RELAY}" --heal

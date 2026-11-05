@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { generatePairingSecret, isMachineUrl, isPairingPath, MAX_ADDRESSES, pairingLink, parsePairingLink } from './pairing-link';
 
 const pairing = {
-  urls: ['wss://relay.example/abcDEF_123-xyz'],
+  urls: ['wss://box.example/abcDEF_123-xyz'],
   agentKey: 'A'.repeat(43),
   secret: generatePairingSecret(),
   name: 'dev box',
@@ -26,9 +26,9 @@ describe('pairing link', () => {
     expect(parsePairingLink(`  ${link}\n`)).toEqual(pairing);
   });
 
-  it('keeps the relay URL readable, and a name with spaces or & intact', () => {
+  it('keeps the address readable, and a name with spaces or & intact', () => {
     const link = pairingLink('https://pwa.example', { ...pairing, name: 'a & b=c' });
-    expect(link).toContain('u=wss://relay.example/abcDEF_123-xyz&');
+    expect(link).toContain('u=wss://box.example/abcDEF_123-xyz&');
     expect(parsePairingLink(link)!.name).toBe('a & b=c');
   });
 
@@ -50,10 +50,10 @@ describe('pairing link', () => {
       variants((q) => q.delete('s')),
       variants((q) => q.set('k', 'short')),
       variants((q) => q.set('s', 'short')),
-      variants((q) => q.set('u', 'https://relay.example/acct')),
-      variants((q) => q.set('u', 'ws://relay.example/acct')),
-      variants((q) => q.set('u', 'wss://relay.example/a/b')),
-      variants((q) => q.set('u', 'wss://relay.example/acct?role=agent')),
+      variants((q) => q.set('u', 'https://box.example/acct')),
+      variants((q) => q.set('u', 'ws://box.example/acct')),
+      variants((q) => q.set('u', 'wss://box.example/a/b')),
+      variants((q) => q.set('u', 'wss://box.example/acct?role=agent')),
       variants((q) => q.set('n', 'x'.repeat(65))),
     ]) {
       expect(parsePairingLink(bad)).toBe(null);
@@ -61,8 +61,8 @@ describe('pairing link', () => {
   });
 
   // Plain ws: would carry the upgrade (the device's signature and enrolment proof) in the clear; it
-  // is kept only for a relay on the phone's own machine, which is what the e2e and a local test use.
-  it('takes a plain ws: relay only on a loopback address', () => {
+  // is kept only for a machine on the phone's own host, which is what the e2e and a local test use.
+  it('takes a plain ws: address only on a loopback address', () => {
     for (const host of ['127.0.0.1:8450', 'localhost:8450', '[::1]:8450']) {
       expect(parsePairingLink(pairingLink('https://pwa.example', { ...pairing, urls: [`ws://${host}/acct`] }))?.urls).toEqual([`ws://${host}/acct`]);
     }

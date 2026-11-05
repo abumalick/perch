@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { b64url, generateAgentKeys } from '@perch/secure-channel';
-import { parseAgentKey } from './relay-key';
+import { parseAgentKey } from './agent-key';
 
 describe('parseAgentKey', () => {
-  it('reads the 32-byte X25519 key `perch relay-key` prints, ignoring surrounding spaces', () => {
+  it('reads the 32-byte X25519 key a pairing link carries, ignoring surrounding spaces', () => {
     const key = generateAgentKeys().x25519.publicKey;
     expect(parseAgentKey(` ${key} `)).toEqual(b64url.decode(key));
   });

@@ -94,7 +94,7 @@ describe('SecureSession', () => {
     expect(() => agent.open(new Uint8Array(0))).toThrow(SecureChannelError);
   });
 
-  it('refuses frames replayed or reordered by the relay', async () => {
+  it('refuses frames replayed or reordered on the way', async () => {
     const { phone, agent } = await pair();
     const [first] = phone.seal(filled(3));
     const [second] = phone.seal(filled(4));
@@ -103,7 +103,7 @@ describe('SecureSession', () => {
     expect(() => agent.open(first!)).toThrow(SecureChannelError);
   });
 
-  it('refuses a frame whose flag the relay flipped', async () => {
+  it('refuses a frame whose flag was flipped on the way', async () => {
     const cut = await pair();
     const [first] = cut.phone.seal(filled(MAX_CHUNK + 1));
     first![0] = FLAG_FINAL;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PerchStore } from '../store.svelte';
-  import { parseAgentKey } from '../core/relay-key';
+  import { parseAgentKey } from '../core/agent-key';
   import { parseAddressLines } from '../core/machine-addresses';
   import { msg } from '../i18n.svelte';
 

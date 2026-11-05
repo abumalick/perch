@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accountId, b64url, generateAgentKeys } from '@perch/secure-channel';
+import { b64url, generateAgentKeys } from '@perch/secure-channel';
 import type { DeviceStorePort } from '../ports/device-store-port';
 import type { PairingStorePort } from '../ports/pairing-store-port';
 import type { Pairing } from '../application/pairing';
@@ -36,7 +36,6 @@ function setup(roster: DeviceRoster) {
   const revokedChecks: Array<(key: string) => boolean> = [];
   const gate = startDeviceGate({
     keys,
-    token: 'token',
     server: { refuseRevokedDevices: (isRevoked) => revokedChecks.push(isRevoked) },
     store,
     pairings: new MemoryPairingStore(),
@@ -47,9 +46,8 @@ function setup(roster: DeviceRoster) {
 }
 
 describe('startDeviceGate', () => {
-  it('serves one account and static key, and hands both kinds of socket the same gate', () => {
+  it('serves one static key, and hands every socket the same gate', () => {
     const { keys, gate } = setup(EMPTY_ROSTER);
-    expect(gate.account).toBe(accountId(keys.ed25519.publicKey));
     expect(gate.staticPrivate).toEqual(b64url.decode(keys.x25519.privateKey));
     const onAuthenticated = () => undefined;
     const a = gate.options({ onAuthenticated });
@@ -71,14 +69,11 @@ describe('startDeviceGate', () => {
     gate.stop();
   });
 
-  it('on a roster edit seen by the monitor, closes revoked sessions and tells every listener', async () => {
+  it('on a roster edit seen by the monitor, closes revoked sessions', async () => {
     const { store, gate, revokedChecks } = setup({ ...EMPTY_ROSTER, devices: [device('a')] });
     await gate.pollRoster();
-    let changes = 0;
-    gate.onRosterChange(() => changes++);
     store.roster = revokeDevice(store.roster, 'a', new Date(0)).roster;
     await gate.pollRoster();
-    expect(changes).toBe(1);
     expect(revokedChecks).toHaveLength(1);
     expect(revokedChecks[0]!('a')).toBe(true);
     expect(revokedChecks[0]!('z')).toBe(false);

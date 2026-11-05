@@ -19,7 +19,7 @@ function setup(machine: Partial<Machine> = {}, overrides: Record<string, unknown
     ...overrides,
   };
   const onClose = vi.fn();
-  const m: Machine = { id: 'mac', name: 'Mac', addresses: ['wss://relay/acct'], token: 't', agentKey: KEY, ...machine };
+  const m: Machine = { id: 'mac', name: 'Mac', addresses: ['wss://box.example/abu'], token: 't', agentKey: KEY, ...machine };
   render(MachineDetail, { props: { store: store as never, machine: m as never, onClose } });
   return { store, onClose };
 }
@@ -49,7 +49,7 @@ describe('MachineDetail', () => {
     await fireEvent.input(screen.getByTestId('edit-default-path'), { target: { value: '/new/root' } });
     await fireEvent.click(screen.getByRole('button', { name: /save/i }));
     expect(store.updateMachine).toHaveBeenCalledWith('mac', {
-      addresses: ['wss://relay/acct'],
+      addresses: ['wss://box.example/abu'],
       token: undefined,
       defaultPath: '/new/root',
       agentKey: undefined,
@@ -69,7 +69,7 @@ describe('MachineDetail', () => {
     const { store } = setup();
     await fireEvent.input(screen.getByTestId('edit-agent-key'), { target: { value: ` ${OTHER_KEY} ` } });
     await fireEvent.click(screen.getByRole('button', { name: /save/i }));
-    expect(store.updateMachine).toHaveBeenLastCalledWith('mac', { addresses: ['wss://relay/acct'], token: undefined, defaultPath: undefined, agentKey: OTHER_KEY });
+    expect(store.updateMachine).toHaveBeenLastCalledWith('mac', { addresses: ['wss://box.example/abu'], token: undefined, defaultPath: undefined, agentKey: OTHER_KEY });
   });
 
   it.each([

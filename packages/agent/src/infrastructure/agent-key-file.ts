@@ -2,10 +2,10 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { generateAgentKeys, type AgentKeys } from '@perch/secure-channel';
 
-// The agent's relay identity (~/.perch/relay-key.json), private keys included: protected like
-// deploy/agent.env. Created on first use; never overwritten, since replacing it changes the
-// account id and breaks every phone that pinned the old key.
-export async function loadOrCreateRelayKeys(path: string): Promise<AgentKeys> {
+// The agent's identity (~/.perch/relay-key.json, named when relays existed), private keys
+// included: protected like deploy/agent.env. Created on first use; never overwritten, since
+// replacing it breaks every phone that pinned the old key.
+export async function loadOrCreateAgentKeys(path: string): Promise<AgentKeys> {
   try {
     return parseKeys(await readFile(path, 'utf8'), path);
   } catch (err) {
@@ -28,7 +28,7 @@ function parseKeys(text: string, path: string): AgentKeys {
   const parsed = JSON.parse(text) as Partial<AgentKeys>;
   for (const pair of [parsed.x25519, parsed.ed25519]) {
     if (!pair || !keyPattern.test(pair.publicKey) || !keyPattern.test(pair.privateKey)) {
-      throw new Error(`relay key file ${path} is malformed; move it aside to create a new identity`);
+      throw new Error(`agent key file ${path} is malformed; move it aside to create a new identity`);
     }
   }
   return parsed as AgentKeys;

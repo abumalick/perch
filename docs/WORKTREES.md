@@ -121,26 +121,9 @@ grabbed the slot — check `readlink deploy/agent-live`. `worktree:remove` only 
 agent if the slot points into the worktree it's removing, so it won't disturb another
 session's serve.
 
-### Serving a worktree's relay
-
-A change to the self-hosted relay (`packages/relay`) is tried the same way, against the real
-agent and phone:
-
-```sh
-pnpm serve:relay .worktrees/<feature>   # run that worktree's relay live, restart perch-relay
-# … test …
-pnpm serve:relay-restore                # run main's relay again
-```
-
-`run-relay.sh` runs the relay from a `deploy/relay-live` symlink (gitignored) when it resolves,
-else from main; its configuration is always `~/.perch/relay/config.json`, so a flip never
-changes the accounts served. The restart drops every relayed connection; the agent's control
-socket and the phones reconnect on their own. Like `agent-live`, it is one global slot, and it
-survives a service restart until restored.
-
 All the `serve:*` commands and `worktree:remove` act on the **main** checkout's `deploy/*-live`
 symlinks wherever they run from, so they work the same from inside a worktree
-(`pnpm serve:relay .`).
+(`pnpm serve:agent .`).
 
 ## Git hooks (auto test + build)
 
@@ -183,10 +166,9 @@ git branch -d <feature>                      # once merged
 
 `pnpm worktree:remove` wraps `git worktree remove` with a deploy safety check: if a live
 symlink is currently serving that worktree — `deploy/pwa-live` (you ran `serve:build`),
-`deploy/agent-live` (you ran `serve:agent`) or `deploy/relay-live` (you ran `serve:relay`) and
-never restored — it flips that deploy back to main **first**, so removing the worktree can't
-leave the PWA, agent or relay pointed at a vanished checkout. It then runs `serve:build --heal`,
-`serve:agent --heal` and `serve:relay --heal` as backstops.
+or `deploy/agent-live` (you ran `serve:agent`) and never restored — it flips that deploy back to
+main **first**, so removing the worktree can't leave the PWA or agent pointed at a vanished
+checkout. It then runs `serve:build --heal` and `serve:agent --heal` as backstops.
 Like plain `git worktree remove`, it refuses if the worktree has uncommitted changes —
 commit them or use `git worktree remove --force` yourself to discard.
 

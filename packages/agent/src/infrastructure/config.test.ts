@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { loadConfig, assertServerConfig, configWarnings } from './config';
 
 const base = { PERCH_MACHINE_ID: 'mini', PERCH_TOKEN: 'secret' };
-const relayed = { ...base, PERCH_RELAY_URLS: 'wss://relay.example.com' };
+const reachable = { ...base, PERCH_PHONE_ADDRESSES: 'wss://a.example.ts.net' };
 
 describe('loadConfig', () => {
   it('takes PERCH_PWA_ORIGIN over the tarfa.app default', () => {
@@ -28,8 +28,7 @@ describe('loadConfig', () => {
       workspaceLogPath: '/home/u/.perch/workspace-log.jsonl',
       parkedStorePath: '/home/u/.perch/parked.json',
       liveSnapshotPath: '/home/u/.perch/live.json',
-      relayUrls: [],
-      relayKeyPath: '/home/u/.perch/relay-key.json',
+      agentKeyPath: '/home/u/.perch/relay-key.json',
       devicesPath: '/home/u/.perch/devices.json',
       pairingPath: '/home/u/.perch/pairing.json',
       claudeSessionsDir: '/home/u/.claude/sessions',
@@ -66,55 +65,31 @@ describe('loadConfig', () => {
     expect(loadConfig({ ...base, PERCH_VOICE_DEVICE: ' plughw:Loopback,0,1 ' }, '/home/u').voiceDevice).toBe('plughw:Loopback,0,1');
   });
 
-  it('has no relay unless PERCH_RELAY_URLS is set; the old PERCH_RELAY_URL is not read', () => {
-    expect(loadConfig(base, '/home/u').relayUrls).toEqual([]);
-    expect(loadConfig({ ...base, PERCH_RELAY_URLS: ' , ' }, '/home/u').relayUrls).toEqual([]);
-    expect(loadConfig({ ...base, PERCH_RELAY_URL: 'wss://relay.example.com' }, '/home/u').relayUrls).toEqual([]);
-    const cfg = loadConfig({ ...base, PERCH_RELAY_URLS: 'wss://relay.example.com' }, '/home/u');
-    expect(cfg.relayUrls).toEqual(['wss://relay.example.com']);
-    expect(cfg.relayKeyPath).toBe('/home/u/.perch/relay-key.json');
+  it('starts with relays still listed, and says once that they are gone', () => {
+    const cases: Array<[Record<string, string>, string]> = [
+      [{ PERCH_RELAY_URLS: 'wss://relay.example.com, ws://127.0.0.1:8450' }, 'PERCH_RELAY_URLS'],
+      [{ PERCH_RELAY_URL: 'wss://relay.example.com' }, 'PERCH_RELAY_URL'],
+      [{ PERCH_RELAY_URLS: 'wss://relay.example.com', PERCH_RELAY_URL: 'wss://old.example.com' }, 'PERCH_RELAY_URLS and PERCH_RELAY_URL'],
+    ];
+    for (const [relays, named] of cases) {
+      const env = { ...reachable, ...relays };
+      expect('relayUrls' in loadConfig(env, '/home/u')).toBe(false);
+      expect(configWarnings(env)).toEqual([`relays are gone; remove ${named} from deploy/agent.env`]);
+    }
+    expect(configWarnings({ ...reachable, PERCH_RELAY_URLS: ' ' })).toEqual([]);
   });
 
-  it('holds every relay listed, comma- or space-separated, once each', () => {
-    const cfg = loadConfig(
-      { ...base, PERCH_RELAY_URLS: 'wss://relay-dev.example.com/, wss://relay.example.com\n ws://127.0.0.1:8450 wss://relay.example.com/' },
-      '/home/u',
-    );
-    expect(cfg.relayUrls).toEqual(['wss://relay-dev.example.com', 'wss://relay.example.com', 'ws://127.0.0.1:8450']);
-  });
-
-  it('drops a ws:// relay that is not on loopback, and says so', () => {
-    const env = { ...base, PERCH_RELAY_URLS: 'ws://relay.example.com wss://relay.example.com ws://127.0.0.1:8450' };
-    expect(loadConfig(env, '/home/u').relayUrls).toEqual(['wss://relay.example.com', 'ws://127.0.0.1:8450']);
-    expect(configWarnings(env)).toEqual([
-      'ws://relay.example.com is ignored: a relay off this machine must be wss://, or its upgrades travel in the clear',
-    ]);
-  });
-
-  it('warns that PERCH_RELAY_URL is ignored, only when it is set', () => {
-    expect(configWarnings(relayed)).toEqual([]);
-    expect(configWarnings({ ...relayed, PERCH_RELAY_URL: 'wss://relay.example.com' })).toEqual([
-      'PERCH_RELAY_URL is ignored: move wss://relay.example.com into PERCH_RELAY_URLS in deploy/agent.env',
-    ]);
-  });
-
-  it('warns that phones reach an agent with no relay and no phone address only once its phone port is published', () => {
+  it('warns that phones reach an agent with no phone address only once its phone port is published', () => {
     expect(configWarnings(base)).toEqual([
-      'no relay in PERCH_RELAY_URLS and no PERCH_PHONE_ADDRESSES: phones reach this agent only once its phone port is published (tailscale serve, a reverse proxy)',
+      'no PERCH_PHONE_ADDRESSES: phones reach this agent only once its phone port is published (tailscale serve, a reverse proxy)',
     ]);
     expect(configWarnings({ ...base, PERCH_PHONE_ADDRESSES: 'wss://a.example.ts.net' })).toEqual([]);
   });
 
   it('warns that a non-loopback PERCH_HOST is ignored', () => {
-    expect(configWarnings({ ...relayed, PERCH_HOST: '127.0.0.1' })).toEqual([]);
-    expect(configWarnings({ ...relayed, PERCH_HOST: '0.0.0.0' })).toEqual([
-      'PERCH_HOST=0.0.0.0 is ignored: the agent listens on 127.0.0.1 only, and phones reach it through its relays or its published phone port',
-    ]);
-  });
-
-  it('warns that PERCH_RELAY_ALLOW_NK no longer does anything', () => {
-    expect(configWarnings({ PERCH_RELAY_ALLOW_NK: 'off', PERCH_RELAY_URLS: 'wss://r' })).toEqual([
-      'PERCH_RELAY_ALLOW_NK is ignored: phones without a device key are no longer served; remove it from deploy/agent.env',
+    expect(configWarnings({ ...reachable, PERCH_HOST: '127.0.0.1' })).toEqual([]);
+    expect(configWarnings({ ...reachable, PERCH_HOST: '0.0.0.0' })).toEqual([
+      'PERCH_HOST=0.0.0.0 is ignored: the agent listens on 127.0.0.1 only, and phones reach it through its published phone port',
     ]);
   });
 

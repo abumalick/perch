@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import encodeQR from 'qr';
 import decodeQR from 'qr/decode.js';
-import { accountId, generateAgentKeys, generatePairingSecret, pairingLink } from '@perch/secure-channel';
+import { generateAgentKeys, generatePairingSecret, pairingLink } from '@perch/secure-channel';
 
 // The decoder the in-app scanner uses must read the codes `perch pair` prints, at their real
 // length. Rendered here the way a camera frame arrives: RGBA pixels, a few per module.
@@ -22,7 +22,7 @@ describe('QR decoding of a pairing link', () => {
   it('reads back the exact link', () => {
     const keys = generateAgentKeys();
     const link = pairingLink('https://perch-host.example-tailnet.ts.net:8443', {
-      urls: [`wss://perch-relay.example.com/${accountId(keys.ed25519.publicKey)}`],
+      urls: ['wss://box.example-tailnet.ts.net:10000/abu'],
       agentKey: keys.x25519.publicKey,
       secret: generatePairingSecret(),
       name: 'dev box',

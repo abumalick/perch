@@ -4,7 +4,7 @@ import type { ClientConnection } from '../ports/client-connection';
 
 // Test support only: a client in plaintext JSON, to exercise what WsServer does with a client
 // without playing a Noise handshake. Phones never reach the agent this way; they come through
-// the relays it dials out to.
+// its phone port, in a Noise session.
 export class PlainClientConnection implements ClientConnection {
   constructor(private readonly socket: WebSocket) {}
 

@@ -17,52 +17,20 @@ export {
 export {
   generateAgentKeys,
   generateDeviceKeys,
-  ed25519Signer,
-  accountId,
   b64url,
+  isEd25519PublicKey,
   type AgentKeys,
   type DeviceKeys,
-} from './keys';
-export { isEd25519PublicKey, signAgentAuth, verifyAgentAuth } from './agent-auth';
-export { generateJoinKey, isJoinKey, signJoinAuth, verifyJoinAuth, JOIN_HEADER, type JoinClaim } from './join-auth';
-export { constantTimeEqual } from './constant-time';
-export {
-  signDeviceAuth,
-  verifyDeviceAuth,
-  enrolKey,
-  enrolProof,
-  verifyEnrolProof,
   type DeviceSigner,
-} from './device-auth';
-export {
-  MAX_POLICY_KEYS,
-  PAIRED,
-  parseAgentControl,
-  parseRelayControl,
-  type RelayControl,
-  type RelayPolicy,
-} from './relay-control';
+} from './keys';
+export { constantTimeEqual } from './constant-time';
 export {
   encodeDeviceHello,
   parseDeviceHello,
   deviceFingerprint,
   sanitizeDeviceName,
-  signDeviceHello,
-  verifyDeviceHello,
   type DeviceHello,
 } from './device-hello';
 export { generatePairingSecret, isMachineUrl, isPairingPath, MAX_ADDRESSES, pairingLink, parsePairingLink, type PairingLink } from './pairing-link';
-export { REFUSAL, IN_BAND_REFUSAL, DEVICE_REFUSED, type Refusal, type AgentRefusal } from './refusal';
-export { generateChallengeKey, mintChallenge, verifyChallenge } from './relay-challenge';
+export { REFUSAL, IN_BAND_REFUSAL, DEVICE_REFUSED, type Refusal } from './refusal';
 export { startTimer } from './timers';
-export {
-  GATE_PARAM,
-  GATE_READY,
-  MAX_GATE_REPLY_BYTES,
-  encodeGateChallenge,
-  encodeGateReply,
-  parseDeviceParams,
-  parseGateChallenge,
-  parseGateReply,
-  type DeviceParams,
-} from './relay-gate';

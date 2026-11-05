@@ -1,6 +1,5 @@
-// deploy/agent.env, edited by `perch connect`. The file is sourced by bash and hand-edited, so
+// deploy/agent.env, edited by `perch setup`. The file is sourced by bash and hand-edited, so
 // edits touch only the one line they are about and keep every other line byte for byte.
-import { withoutTrailingSlash } from './relay-url';
 
 const LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/;
 
@@ -29,16 +28,4 @@ export function setEnvValue(text: string, name: string, value: string): string {
   }
   const base = text === '' || text.endsWith('\n') ? text : `${text}\n`;
   return `${base}${name}=${value}\n`;
-}
-
-const normalize = (url: string) => withoutTrailingSlash(url.trim());
-const listOf = (value: string | undefined) => (value ?? '').split(/[\s,]+/).map(normalize).filter(Boolean);
-
-// Adds a relay to PERCH_RELAY_URLS unless the agent already holds it.
-export function addRelayUrl(text: string, url: string): { text: string; changed: boolean } {
-  const values = parseEnvFile(text);
-  const wanted = normalize(url);
-  const held = listOf(values.PERCH_RELAY_URLS);
-  if (held.includes(wanted)) return { text, changed: false };
-  return { text: setEnvValue(text, 'PERCH_RELAY_URLS', [...held, wanted].join(',')), changed: true };
 }

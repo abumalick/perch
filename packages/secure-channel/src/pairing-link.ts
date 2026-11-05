@@ -5,8 +5,8 @@ import { randomBytes } from '@noble/hashes/utils.js';
 import { b64url } from './keys';
 
 export interface PairingLink {
-  // Where the phone reaches the machine, tried in this order: the agent's own listener
-  // (ws(s)://<host>[:port][/<slug>]) or a relay (ws(s)://<relay>/<account>).
+  // Where the phone reaches the machine's phone port, tried in this order:
+  // ws(s)://<host>[:port][/<slug>].
   urls: string[];
   // The agent's X25519 public key, which the Noise session pins.
   agentKey: string;
@@ -67,9 +67,9 @@ export function parsePairingLink(text: string): PairingLink | null {
   return { urls, agentKey: agentKey!, secret: secret!, name, ...(isPairingPath(defaultPath) ? { defaultPath } : {}) };
 }
 
-// Plain ws: would carry the phone's upgrade in the clear, so only a machine or relay on the phone's
-// own host may use it: a loopback address (the e2e's fakes, or one tried on the same machine). The
-// path is `/` or one segment: a relay account, or the slug `tailscale serve --set-path` routes by.
+// Plain ws: would carry the phone's upgrade in the clear, so only a machine on the phone's own host
+// may use it: a loopback address (the e2e's fakes, or one tried on the same machine). The
+// path is `/` or one segment: the slug `tailscale serve --set-path` routes by.
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
 
 export function isMachineUrl(text: string): boolean {

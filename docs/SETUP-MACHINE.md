@@ -1,31 +1,29 @@
 # Set up your own Perch machine
 
 This walks through one Ubuntu machine (a home server, a VPS, a spare PC) where Claude Code and
-Codex run in tmux workspaces that you drive from your phone. Your phone reaches the machine
-through your own relay on Cloudflare, end to end encrypted, and loads the Perch app from the same
-Cloudflare account. You need:
+Codex run in tmux workspaces that you drive from your phone. Your phone loads the app (Tarfa,
+from tarfa.app or your own copy) and connects to the machine directly, end to end encrypted. You
+need:
 
 - an Ubuntu machine you have sudo on (the steps were written on Ubuntu 26.04);
-- a free Cloudflare account (no domain needed);
+- [Tailscale](https://tailscale.com) on the machine and the phone (or a reverse proxy of your own
+  in front of the agent's phone port);
 - a phone;
 - your own fork of this repository.
 
-Tailscale is optional: it is a convenient way to SSH into the machine and to preview web servers
-from your phone (step 10), but Perch itself does not need it.
-
 ```
-phone (Perch app, https://perch.<subdomain>.workers.dev)
+phone (the app, https://tarfa.app or your own origin)
    │  wss, Noise-encrypted end to end
    ▼
-relay (Cloudflare Worker, wss://perch-relay.<subdomain>.workers.dev)
-   ▲  the agent dials out; nothing on the machine listens for the phone
-   │
+tailscale serve / funnel (https://<machine>.<tailnet>.ts.net:<port>/<slug>)
+   │  proxies to the loopback phone port
+   ▼
 Ubuntu machine: perch-agent (systemd user unit) ── tmux server ── claude / codex workspaces
 ```
 
-This guide gives the commands in order; `docs/DEPLOY.md` and `docs/relay-cf-runbook.md` explain
-them in depth and win wherever they disagree with this page. Placeholders: `<user>`, `<uid>`,
-`<subdomain>` (your account's `workers.dev` subdomain), `<account-id>`, `<Area/City>`.
+This guide gives the commands in order; `docs/DEPLOY.md` explains them in depth and wins wherever
+it disagrees with this page. Placeholders: `<user>`, `<uid>`, `<machine>`, `<tailnet>`,
+`<account-id>`, `<Area/City>`.
 
 ## 1. Prepare the machine (sudo, once)
 
@@ -191,8 +189,7 @@ pnpm perch setup --machine-id <name> --project-roots /home/<user>/workspace \
 It also writes `~/.perch/devices.json` with token enrolment off, so only a `perch pair` code adds
 a phone. With Tailscale on the machine, `--tailscale serve` (tailnet only) or `--tailscale funnel`
 (public, the phone needs no VPN) also publishes the phone port and records its address for
-`perch pair`; that path needs the direct-connection app, which steps 7 and 8 do not use yet.
-`pnpm perch setup --help` explains the flags and the Tailscale admin settings. The tmux drop-in,
+`perch pair` (step 8). `pnpm perch setup --help` explains the flags and the Tailscale admin settings. The tmux drop-in,
 skills and `install-cli.sh` lines above are still yours to run.
 
 **Status hooks** tell your phone whether a session is working or waiting for you. They go into
@@ -200,64 +197,60 @@ skills and `install-cli.sh` lines above are still yours to run.
 creates on its first run: run `install-hooks` again after you first start Codex, then open Codex,
 run `/hooks` and trust them (again after any change). See `docs/DEPLOY.md`, step 4.
 
-## 7. Your relay and app on Cloudflare
+## 7. The app
 
-Both live in your Cloudflare account, on free `workers.dev` hosts. The full procedure and the
-reasons behind it: `docs/relay-cf-runbook.md`, "A relay and PWA in your own Cloudflare account".
-Deploys run from a clean, pushed `main` of your fork.
+Phones load the app from `https://tarfa.app`, the maintainer's copy, which every pairing link
+names unless `PERCH_PWA_ORIGIN` says otherwise. The origin holds every phone's device key, and
+whoever serves it can read what it shows, so if you would rather trust yourself, serve your own
+copy: on a free Cloudflare account it is a static-assets Worker, deployed from a clean, pushed
+`main` of your fork.
 
 ```bash
-# keys: 32 random bytes in base64url each (perch connect refuses hex)
-node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"   # twice
-install -m 600 deploy/relay-cf.env.example ~/.perch/relay-cf.<name>.env
-# fill in CLOUDFLARE_ACCOUNT_ID, RELAY_JOIN_KEY, RELAY_ADMIN_KEY; leave RELAY_DOMAIN unset
-
-(cd packages/relay-cf && pnpm exec wrangler login --device && pnpm exec wrangler whoami)
-
-deploy/relay-cf-deploy.sh --env-file ~/.perch/relay-cf.<name>.env          # the relay
-
-mise exec -- pnpm --filter @perch/pwa build                                 # the app
-(cd packages/pwa && CLOUDFLARE_ACCOUNT_ID=<account-id> ../relay-cf/node_modules/.bin/wrangler deploy \
-  --name perch --assets dist --compatibility-date 2026-09-01)
+install -m 600 deploy/pwa-deploy.env.example ~/.perch/pwa-deploy.<name>.env   # CLOUDFLARE_ACCOUNT_ID
+(cd packages/pwa && pnpm exec wrangler login --device && pnpm exec wrangler whoami)
+deploy/pwa-deploy.sh --env-file ~/.perch/pwa-deploy.<name>.env
 ```
 
 `--device` lets you approve the login from any browser, which a machine with no screen needs. If
 you hold several Cloudflare accounts, give each its own wrangler login with
-`XDG_CONFIG_HOME=<a directory of its own>` on every wrangler and deploy command.
-
-Keep the admin key in your password manager; it lists and removes machines. The join key only
-registers machines; keeping a private copy at `~/.perch/relay-join-key` (mode `600`) makes
-adding your next machine a one-liner.
+`XDG_CONFIG_HOME=<a directory of its own>` on every wrangler and deploy command. Then set
+`PERCH_PWA_ORIGIN` (or pass `--pwa` to `perch setup` / `perch pair`) to your origin. Moving to
+another origin later means pairing every phone again: a new origin has empty storage.
 
 Docs: [Workers static assets](https://developers.cloudflare.com/workers/static-assets/),
-[workers.dev](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/),
 [wrangler login](https://developers.cloudflare.com/workers/wrangler/commands/general/).
 
-## 8. Connect the machine and pair your phone
+## 8. Publish the machine and pair your phone
+
+Install Tailscale on the machine and log in (`sudo tailscale up`), turn on MagicDNS and HTTPS
+certificates in the admin console, and let your user run `tailscale serve` without sudo
+(`sudo tailscale set --operator=$USER`). Then:
 
 ```bash
 cd ~/workspace/perch
-PERCH_JOIN_KEY="$(cat ~/.perch/relay-join-key)" pnpm perch connect \
-  wss://perch-relay.<subdomain>.workers.dev --pwa https://perch.<subdomain>.workers.dev
+pnpm perch setup --machine-id <name> --project-roots /home/<user>/workspace \
+  --default-path /home/<user>/workspace --tailscale serve --pair
 ```
 
-The key travels in the environment, never as `--key`, which the process list and your shell
-history would show. `connect` registers the machine, adds the relay to `deploy/agent.env`,
-restarts the agent and prints a QR code and a link. Check:
-`journalctl --user -u perch-agent | grep 'socket open'`.
+`--tailscale serve` publishes the phone port on your tailnet only: the phone needs Tailscale
+connected. `--tailscale funnel` publishes it on the internet too (the phone needs no VPN; the
+policy file must give the node the `funnel` attribute), at about 0.2 MB/s, which is fine for
+terminals and slow for large previews. `pnpm perch setup --help` has the details. `--pair` prints
+a QR code and a link; check the agent with `journalctl --user -u perch-agent | grep 'phones on'`.
 
-On your phone, open `https://perch.<subdomain>.workers.dev` and install it (iPhone: Share → Add to
-Home Screen; Android: install from the browser menu). Then pair:
+On your phone, open the app's origin and install it (iPhone: Share → Add to Home Screen; Android:
+install from the browser menu). Then pair:
 
 - **iPhone:** scan the QR code from **inside the installed app** (Settings → Scan QR code), or
   copy the link and use **Paste pairing link**. The Camera app opens Safari, whose storage is not
   the installed app's.
-- **Android:** open the link anywhere; it goes straight into the installed app.
+- **Android:** open the link anywhere; it goes straight into the installed app. Chrome asks once
+  whether the app may reach your local network (a tailnet address): allow it.
 
-A code works once, for 10 minutes; `pnpm perch pair` makes another. Once your phones are paired:
+A code works once, for 10 minutes; `pnpm perch pair` makes another. `perch setup` leaves token
+enrolment off, so only a `perch pair` code adds a phone:
 
 ```bash
-pnpm perch devices enrolment off   # only a perch pair code can add a phone from now on
 pnpm perch devices                 # your phones; revoke a lost one by id or key
 ```
 
@@ -270,15 +263,16 @@ cd ~/workspace/perch
 git pull --ff-only && pnpm install --frozen-lockfile && systemctl --user restart perch-agent
 ```
 
-Workspaces survive the restart (the agent runs from source, so there is nothing to build). When
-the wire format changes, redeploy the relay and the app from step 7 too, together. Run
+Workspaces survive the restart (the agent runs from source, so there is nothing to build). If you
+serve your own app, redeploy it from step 7 too when the wire format changes, together with the
+agent. Run
 `install-hooks` again when the hook script changes, and trust the Codex hooks again.
 
 ## 10. Optional: reaching the machine yourself
 
-Perch goes through the relay, so a workspace on your phone is already a shell on the machine, even
-when nothing else works. For SSH and for previewing web servers, [Tailscale](https://tailscale.com/docs/install/linux)
-is the simple path:
+A workspace on your phone is already a shell on the machine. For SSH and for previewing web
+servers, [Tailscale](https://tailscale.com/docs/install/linux), which step 8 set up, is the simple
+path:
 
 - **SSH with keys only.** Cloud-init's `/etc/ssh/sshd_config.d/50-cloud-init.conf` turns password
   login on, and sshd keeps the first value it reads, so put yours in a file that sorts earlier:
@@ -471,13 +465,12 @@ cd ~/workspace/perch && git pull --ff-only
 EOF
 ```
 
-**Steps 3 to 6, 8 and 9 again, as that user** (step 7 is done once per Cloudflare account). The new user needs its own clone (a private fork needs git
+**Steps 3 to 6, 8 and 9 again, as that user** (step 7, if you serve your own app, is done once per Cloudflare account). The new user needs its own clone (a private fork needs git
 credentials of its own). In `deploy/agent.env`, three values differ:
 
 - **`PERCH_PORT` must differ from every other agent's on the machine** (and step 6's check
   `curl`s that port). Each agent listens on `127.0.0.1:<port>` for its hooks, and with the port
-  taken the second agent exits at once and its service restarts it in a loop. Pick 8789 or above
-  (8788 is `wrangler dev`'s). `install-hooks` and the `perch` CLI read the port from
+  taken the second agent exits at once and its service restarts it in a loop. Pick 8789 or above. `install-hooks` and the `perch` CLI read the port from
   `agent.env`; `install-hooks` writes it into each hook, so run it again after changing the port.
 - **`PERCH_MACHINE_ID`** is the name the phone shows: give each agent its own.
 - **`PERCH_STATS`**: each agent shows its own user's memory room on the home screen, which is
@@ -493,20 +486,16 @@ it). To share your Tailscale port under its own path, it runs `--tailscale none 
 for you, the node's operator, to run.
 
 **What not to copy from your account.**
-- **`~/.perch`:** never copy it. Two agents with one agent key take turns on the relay instead of
-  both staying connected (`docs/relay-cf-runbook.md`, "Several relays at once").
+- **`~/.perch`:** never copy it. It holds your agent key and your phones' roster; the new user's
+  agent makes its own.
 - **`~/.claude`:** never copy it whole. It holds your Claude login (`.credentials.json`) and your
   conversations (`projects/`, `history.jsonl`). Copy only what the user should have: the
   instructions in `CLAUDE.md`, chosen skills, `settings.json`. In that `settings.json` `env`, set
   `ENABLE_CLAUDEAI_MCP_SERVERS=false`, or the claude.ai connectors of a shared Claude account
   (mail, drive) come along.
 
-**Relay and phone (step 8).** The same relay is fine: each agent key is its own account there,
-and the phone gets a separate entry for it. The new user has no join key of its own: give it the
-key from your password manager through the environment, as step 8 does, or install a private copy
-in its `~/.perch/relay-join-key` (mode `600`). `perch connect` prints the first pairing code;
-`perch pair` makes more. Turn token enrolment off for this agent too
-(`pnpm perch devices enrolment off`).
+**Pairing the phone (step 8).** The phone gets a separate entry for this agent, under its own
+agent key. `perch setup --pair` prints the first pairing code; `perch pair` makes more.
 
 **Running it from your account.**
 - Its user services: `sudo systemctl --user -M <user>@ <status|restart> perch-agent`.
@@ -519,7 +508,6 @@ in its `~/.perch/relay-join-key` (mode `600`). `perch connect` prints the first 
 
 - **Every new workspace says "No session" (status 127):** `claude` is not on the user services'
   PATH. Step 4, then restart the agent.
-- **`perch connect` refuses the join key:** it was made in hex. Use the base64url one-liner.
 - **`wrangler pages project create` made an empty Worker:** deploy the app as a static-assets
   Worker (step 7).
 - **`wrangler login` hangs on a machine with no screen:** it waits for a redirect to
@@ -532,6 +520,8 @@ in its `~/.perch/relay-join-key` (mode `600`). `perch connect` prints the first 
   `~/.codex` existed, or Codex was started without `--no-daemon` (the app's create form adds it).
 - **Password SSH is still on:** cloud-init's `50-cloud-init.conf` wins unless your file sorts
   before it.
-- **The agent loops on `401` against the relay:** the machine's clock is more than a minute off.
+- **The phone cannot reach the machine:** with `--tailscale serve`, the phone's Tailscale must be
+  connected; on Android, Chrome's local-network permission for the app must be allowed (Site
+  settings → Local network access). `tailscale serve status` shows what is published.
 - **Accents or Arabic show as `_`:** no UTF-8 locale (step 1).
 - **After a reboot the workspaces are gone:** resume conversations with `claude --resume`.

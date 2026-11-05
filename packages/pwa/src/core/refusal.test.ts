@@ -11,19 +11,15 @@ describe('describeRefusal', () => {
   it.each([
     [4403, REFUSAL.codeExpired, paired, 'This pairing code has expired — run `perch pair` on dev box for a new one', true],
     [4403, REFUSAL.codeUsed, paired, 'This pairing code was already used — run `perch pair` on dev box for a new one', true],
-    [4403, REFUSAL.proofInvalid, paired, 'Pairing refused: the code is not valid for this machine — run `perch pair` on dev box for a new one', true],
-    [4403, REFUSAL.proofInvalid, withToken, 'dev box refused the token — check the token in this entry', true],
     [4403, REFUSAL.revoked, enrolled, 'This phone was revoked on dev box', true],
     [4003, REFUSAL.wrongAgentKey, enrolled, "This entry's agent key is not dev box's — pair this machine again", true],
-    [4003, REFUSAL.signature, paired, 'dev box could not verify this phone\'s device key — run `perch pair` there for a new code', true],
-    [4429, REFUSAL.tooManyEnrolments, paired, 'Too many phones are asking to pair with dev box right now — retrying', false],
     [4003, REFUSAL.tokenNotNeeded, withToken, "dev box no longer needs this entry's token: its device key is enrolled — forgetting the token and reconnecting", false],
     [4403, REFUSAL.enrolmentOff, withToken, 'Enrolment is turned off on dev box — pair with `perch pair` instead', true],
     [4003, REFUSAL.enrolmentClosed, paired, 'Enrolment is closed on dev box — run `perch devices enrolment off` there to allow pairing', true],
     [4403, REFUSAL.notEnrolled, enrolled, 'This phone is not enrolled on dev box — run `perch pair` there to pair it again', true],
+    [4003, REFUSAL.signature, paired, 'dev box runs an agent too old to pair this phone — update its agent, then pair again', true],
     [4429, REFUSAL.tooManyPending, enrolled, 'dev box is busy: too many phones are connecting to it', false],
     [4429, REFUSAL.tooManyConnections, enrolled, 'dev box is busy: too many phones are connecting to it', false],
-    [4500, REFUSAL.internal, enrolled, 'dev box failed (internal error) — retrying', false],
   ] as const)('%i %s', (code, reason, context, message, final) => {
     expect(describeRefusal(code, reason, context)).toEqual({ message, final });
   });
@@ -46,9 +42,9 @@ describe('describeRefusal', () => {
     expect(describeRefusal(4418, '', enrolled)).toEqual({ message: 'dev box refused this phone (code 4418)', final: false });
   });
 
-  it('no longer words what only a relay said', () => {
-    for (const reason of [REFUSAL.deviceKeyRequired, REFUSAL.challenge, REFUSAL.unknownAccount, REFUSAL.agentOffline]) {
-      expect(describeRefusal(4401, reason, enrolled)?.message).toBe(`dev box refused this phone (${reason})`);
+  it('words no reason an agent does not send', () => {
+    for (const reason of ['enrolment proof invalid', 'internal error']) {
+      expect(describeRefusal(4403, reason, enrolled)?.message).toBe(`dev box refused this phone (${reason})`);
     }
   });
 

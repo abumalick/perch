@@ -1,14 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_POLICY_KEYS, deviceFingerprint, generateDeviceKeys, parseAgentControl } from '@perch/secure-channel';
+import { deviceFingerprint, generateDeviceKeys } from '@perch/secure-channel';
 import {
   EMPTY_ROSTER,
   enrolDevice,
   enrolmentMode,
   forgetDevice,
-  isRevokedRelayKey,
-  policyWarning,
   withEnrolmentMode,
-  relayPolicy,
   revokeDevice,
   standingOf,
 } from './device-roster';
@@ -35,19 +32,7 @@ describe('device roster', () => {
     const { roster, device } = revokeDevice(enrolled, enrolled.devices[0]!.id.slice(0, 4), AT);
     expect(device?.x25519).toBe(p.x25519);
     expect(standingOf(roster, p.x25519)).toBe('revoked');
-    expect(isRevokedRelayKey(roster, p.ed25519)).toBe(true);
     expect(enrolDevice(roster, p, AT)).toBe(roster);
-  });
-
-  // The relay admits by the Ed25519 key: a new X25519 key must not bring a revoked one back into
-  // the policy, whatever the relay let through.
-  it('refuses a new key that names a revoked relay key', () => {
-    const p = phone();
-    const enrolled = enrolDevice(EMPTY_ROSTER, p, AT);
-    const { roster } = revokeDevice(enrolled, enrolled.devices[0]!.id, AT);
-    const newcomer = { ...phone(), ed25519: p.ed25519 };
-    expect(enrolDevice(roster, newcomer, AT)).toBe(roster);
-    expect(standingOf(enrolDevice(roster, newcomer, AT), newcomer.x25519)).toBe('unknown');
   });
 
   it('forgets a device from either list, so it can enrol again', () => {
@@ -101,35 +86,6 @@ describe('device roster', () => {
       const withRevoked = { ...EMPTY_ROSTER, revoked: [{ ...taken, revokedAt: AT.toISOString() }] };
       expect(enrolDevice(withRevoked, p, AT)).toBe(withRevoked);
     });
-  });
-
-  it('publishes relay keys and the agent settings as the relay policy', () => {
-    const a = phone();
-    const b = phone();
-    const both = enrolDevice(enrolDevice(EMPTY_ROSTER, a, AT), b, AT);
-    const roster = revokeDevice(both, both.devices[1]!.id, AT).roster;
-    expect(relayPolicy(roster)).toEqual({
-      type: 'policy',
-      devices: [a.ed25519],
-      revoked: [b.ed25519],
-      enrol: true,
-      tokenEnrol: true,
-    });
-    expect(relayPolicy(withEnrolmentMode(roster, 'off'))).toMatchObject({ enrol: true, tokenEnrol: false });
-    expect(relayPolicy(withEnrolmentMode(roster, 'closed'))).toMatchObject({ enrol: false, tokenEnrol: false });
-  });
-
-  // A relay parses a policy with at most MAX_POLICY_KEYS keys a list and keeps its old one past
-  // that, without a word: later revocations and enrolments never reach it.
-  it('warns when the policy has more keys than a relay takes, which it would then ignore', () => {
-    const pool = Array.from({ length: MAX_POLICY_KEYS + 3 }, () => generateDeviceKeys().ed25519.publicKey);
-    const keys = (n: number) => pool.slice(0, n);
-    const at = (devices: number, revoked: number) => ({ type: 'policy' as const, devices: keys(devices), revoked: keys(revoked), enrol: true });
-    expect(policyWarning(at(MAX_POLICY_KEYS, MAX_POLICY_KEYS))).toBeNull();
-    expect(parseAgentControl(JSON.stringify(at(MAX_POLICY_KEYS, MAX_POLICY_KEYS)))).not.toBeNull();
-    expect(parseAgentControl(JSON.stringify(at(MAX_POLICY_KEYS + 1, 0)))).toBeNull();
-    expect(policyWarning(at(MAX_POLICY_KEYS + 1, 0))).toMatch(/257 enrolled.*256/);
-    expect(policyWarning(at(0, MAX_POLICY_KEYS + 3))).toMatch(/259 revoked.*forget/);
   });
 
   it('reads the enrolment mode, keeping a roster from before the modes closed if it was off', () => {

@@ -35,7 +35,7 @@ export interface PhoneListener {
 // The port phones reach the agent on, through whatever publishes it (tailscale serve, Funnel, a
 // reverse proxy). It takes a WebSocket upgrade on any path, since `tailscale serve --set-path`
 // strips its prefix before proxying, and answers anything else 404: the hooks routes live on
-// the hooks port only. Every socket runs the same Noise session a relay dial-back does.
+// the hooks port only. Every socket runs the Noise session.
 // A refused socket is upgraded and closed in band (4429), since a browser reports any refused
 // upgrade as 1006.
 export function startPhoneListener(opts: PhoneListenerOptions): Promise<PhoneListener> {

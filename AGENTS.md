@@ -1,9 +1,10 @@
 # Perch — Codex agent guide
 
 Perch is a mobile-first PWA for interacting with terminal sessions (including Claude
-Code and Codex) in tmux workspaces across machines. Each machine's agent dials out to
-relays; the phone reaches it through an end-to-end Noise session keyed by its device
-key. No agent listens on a phone-facing port.
+Code and Codex) in tmux workspaces across machines. Each machine's agent has a loopback
+phone port that its operator publishes (`tailscale serve`, Funnel, a proxy); the phone
+connects there directly, in an end-to-end Noise session keyed by its device key. No agent
+listens off loopback.
 
 ## Instruction sources
 
@@ -19,13 +20,13 @@ do not mechanically rename its commands, hooks, or protocol fields to Codex.
 Useful routes into `CLAUDE.md`:
 
 - **Runtime & deployment:** machine configuration, workspace lifecycle, parking,
-  resource limits, reconnect, relays, Noise, device keys, enrolment and pairing.
-- **CRITICAL: why the PWA is still served from the tailnet:** origin and device-key
-  constraints. Keep the maintainer's PWA on its existing tailnet origin.
+  resource limits, reconnect, the phone port, Noise, device keys, enrolment and pairing.
+- **CRITICAL: the PWA's origin and what it can reach:** tarfa.app, what a public origin
+  can reach, and the device-key trust that follows.
 - **Gotchas already fixed:** terminal input, mobile keyboards, browser typing,
   schema drift, attention hooks (including Codex), media and file uploads.
 - Runbooks: [deployment](docs/DEPLOY.md), [worktrees](docs/WORKTREES.md),
-  [relays](docs/relay-cf-runbook.md), [machine setup](docs/SETUP-MACHINE.md).
+  [machine setup](docs/SETUP-MACHINE.md).
 
 ## Golden rules
 
@@ -43,12 +44,11 @@ Useful routes into `CLAUDE.md`:
 
 - `packages/contracts` (`@perch/contracts`): zod wire schemas and shared types.
   Change the protocol here first, then the agent and PWA. Terminal data is base64.
-- `packages/agent` (`@perch/agent`): tmux and node-pty adapters, relay connections,
-  and a loopback-only `POST /hooks` server. Domain/application in `application/`
+- `packages/agent` (`@perch/agent`): tmux and node-pty adapters, the loopback phone
+  port, and a loopback-only `POST /hooks` server. Domain/application in `application/`
   and `ports/`, adapters in `infrastructure/`, wiring in `server/`.
-- `packages/relay`, `packages/relay-cf`, `packages/secure-channel`: relay core,
-  Node and Cloudflare hosts, and the Noise session implementation. Keep relay core
-  host-agnostic and run the shared conformance suite on both hosts after changes.
+- `packages/secure-channel`: the Noise IK session, framing, device hellos, pairing
+  links and refusals, shared by the agent and the PWA.
 - `packages/pwa` (`@perch/pwa`): Svelte 5 runes, xterm.js, Vite PWA, Playwright.
   Core logic lives in `src/core` and `src/adapters`; `src/lib` contains the UI.
 
@@ -84,8 +84,7 @@ session. Reading or migrating a skill is not an instruction to execute its workf
   The installed app updates in about 60 seconds while foregrounded and shows the
   worktree slug. `pnpm serve:restore` restores main.
 - Protocol changes need the worktree's agent too: `pnpm serve:agent
-  .worktrees/<feature>`; restore with `pnpm serve:agent-restore`. Relay equivalents
-  are `serve:relay` and `serve:relay-restore`. These are shared live slots, not
+  .worktrees/<feature>`; restore with `pnpm serve:agent-restore`. These are shared live slots, not
   isolated previews; inspect existing symlinks before changing them.
 - Propose on-device testing after implementation and local checks are ready. Obtain
   authorization for the live switch if not already given, then wait for the user's
@@ -127,8 +126,8 @@ or red main. Leave changes uncommitted when the task does not authorize a commit
 
 ## Runtime invariants
 
-- Agents bind `127.0.0.1` and accept only hook traffic there. Phones connect through
-  relays with pinned agent keys and Noise IK; never restore plaintext/direct access.
+- Agents bind `127.0.0.1` only: the hooks port and the phone port. Phones connect to the
+  phone port with pinned agent keys and Noise IK; never accept plaintext.
 - Use `childEnv()` for agent-spawned processes; no child may inherit `PERCH_` secrets.
 - Keep `KillMode=process` in the agent service so restarting it preserves workspaces.
 - Never use broad process kills or kill the ambient tmux server. Inspect processes
@@ -138,9 +137,8 @@ or red main. Leave changes uncommitted when the task does not authorize a commit
   to the zod schema too and test parsing: type equality misses optional-field drift.
 - Preserve base64 → bytes → UTF-8 decoding, connection-id routing, and an explicit
   workspace `list` after authentication on every reconnect.
-- Deploy Cloudflare only through `deploy/relay-cf-deploy.sh` and its runbook; production
-  requires clean, up-to-date main. Use a local relay for ordinary development and
-  never start a second agent against production with the same identity.
+- Deploy the PWA only through `deploy/pwa-deploy.sh`; production requires clean,
+  up-to-date main. Never start a second agent with the same identity.
 - Codex hook support already exists in `install-hooks`. Its observed pane attribution
   requires `--no-daemon`; hook changes require installation on each machine and user
   trust in `/hooks`. Do not install or reconfigure runtime hooks just to edit docs.

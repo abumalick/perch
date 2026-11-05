@@ -5,9 +5,7 @@ import {
   SecureSession,
   b64url,
   deviceFingerprint,
-  ed25519Signer,
   encodeDeviceHello,
-  signDeviceHello,
   generateAgentKeys,
   generateDeviceKeys,
   handshakeFrame,
@@ -18,7 +16,7 @@ import {
 import type { FrameSocket } from '../ports/frame-socket';
 import type { DeviceStanding, EnrolmentMode } from '../application/device-roster';
 import { DeviceGateBusy, type DeviceGate, type Redemption } from '../ports/device-gate-port';
-import type { AgentRefusal } from '@perch/secure-channel';
+import type { Refusal } from '@perch/secure-channel';
 import { NoiseClientConnection } from './noise-client-connection';
 
 class FakeFrameSocket implements FrameSocket {
@@ -56,7 +54,7 @@ class FakeGate implements DeviceGate {
   enrolledVia: Array<'pairing' | 'token'> = [];
   pairings = new Set<string>();
   // Secrets this gate knows are dead, and why.
-  dead = new Map<string, AgentRefusal>();
+  dead = new Map<string, Refusal>();
   redeemed: string[] = [];
   burned: Array<{ secret: string; device: string }> = [];
   async redeemPairing(secret: string, _device: string): Promise<Redemption> {
@@ -117,8 +115,12 @@ function setup() {
   return { socket, conn, received, timers, gate, logs, authenticated, pushes, budget };
 }
 
-// Plays a phone with a device key: an IK handshake, then its end of the session. Its hello proves
-// its relay key, unless `hello` says otherwise.
+// What a PWA from before direct connections puts in its hello: an Ed25519 signature for a relay
+// (86 base64url characters). The agent no longer reads it.
+const OLD_RELAY_PROOF = 'A'.repeat(86);
+
+// Plays a phone with a device key: an IK handshake, then its end of the session. `proof` builds the
+// hello as a PWA from before direct connections did, signed for a relay.
 async function ikHandshake(
   socket: FakeFrameSocket,
   device = generateDeviceKeys(),
@@ -130,9 +132,9 @@ async function ikHandshake(
       sig: hello.relayKey ?? device.ed25519.publicKey,
       name: 'test phone',
       ...(hello.push ? { push: true } : {}),
-      ...(hello.proof === false
-        ? {}
-        : { proof: await signDeviceHello(ed25519Signer(device.ed25519.privateKey), b64url.decode(device.x25519.publicKey), hash) }),
+      ...(hello.proof
+        ? { proof: OLD_RELAY_PROOF }
+        : {}),
     });
   socket.deliver(handshakeFrame(await initiator.writeMessage1(payload), 'ik'));
   await settled(socket);
@@ -175,7 +177,7 @@ describe('NoiseClientConnection', () => {
     expect(received).toEqual([{ type: 'input', id: 'w', data }]);
   });
 
-  // Before `auth` is accepted, only small messages are read: a relay or a stranger cannot make
+  // Before `auth` is accepted, only small messages are read: a stranger cannot make
   // the agent buffer 32 MiB on a socket that has proven nothing.
   it('refuses a large message before auth is accepted', async () => {
     const { socket, received, gate } = setup();
@@ -232,7 +234,7 @@ describe('NoiseClientConnection', () => {
   });
 
   it('keeps the deadline running after the handshake until auth succeeds', async () => {
-    // The handshake alone must not let a socket sit on one of the relay's pair slots.
+    // The handshake alone must not let a socket sit on one of the phone port's unauthenticated slots.
     const { socket, conn, timers, gate } = setup();
     const phone = await handshake(socket, gate);
     for (const frame of phone.seal(utf8({ type: 'list' }))) socket.deliver(frame);
@@ -253,7 +255,7 @@ describe('NoiseClientConnection', () => {
     expect(socket.closedWith).toBeNull();
   });
 
-  // The relay link counts a dial-back against its budget until then.
+  // The phone port counts a socket against its unauthenticated slots until then.
   it('reports authentication once the accepted authResult goes out, and only then', async () => {
     const { socket, conn, gate, authenticated } = setup();
     await handshake(socket, gate);
@@ -293,7 +295,7 @@ const replies = (socket: FakeFrameSocket, phone: SecureSession) =>
 
 // A phone whose key is enrolled is authenticated by the handshake alone, so one that asks (`push`
 // in its hello) is served at once: the agent answers `authResult` and the opening requests right
-// behind message 2, a round trip sooner. Message 1 can be replayed by the relay, so the session
+// behind message 2, a round trip sooner. Message 1 can be replayed by whoever saw it, so the session
 // still counts as unauthenticated (deadline, dial-back slot) until the phone itself speaks in it.
 describe('NoiseClientConnection serving an enrolled device at once', () => {
   const enrolledPhone = (gate: FakeGate) => {
@@ -373,25 +375,21 @@ describe('NoiseClientConnection with device keys (IK)', () => {
     expect(logs.join('\n')).toMatch(/device .* "test phone" enrolled/);
   });
 
-  it("refuses an unknown device whose hello does not prove its relay key, or names another phone's", async () => {
-    for (const hello of [{ proof: false }, { relayKey: generateDeviceKeys().ed25519.publicKey }]) {
-      const { socket, gate } = setup();
-      // The phone's side fails once the agent closes without answering.
-      const attempt = ikHandshake(socket, generateDeviceKeys(), hello).catch(() => undefined);
-      await settled(socket);
-      await flush();
-      expect(socket.sent).toEqual([]);
-      expect(socket.closedWith).toEqual({ code: 4003, reason: 'device signature invalid' });
-      expect(gate.enrolled).toEqual([]);
-      await attempt;
+  // Relays admitted a phone by the Ed25519 key its hello names; the agent checks only the IK key.
+  it('answers an unknown device whatever its hello says of an Ed25519 key: no proof, an old relay proof, another phone\'s key', async () => {
+    for (const hello of [{}, { proof: true }, { relayKey: generateDeviceKeys().ed25519.publicKey }]) {
+      const { socket } = setup();
+      await ikHandshake(socket, generateDeviceKeys(), hello);
+      expect(socket.sent).toHaveLength(1);
+      expect(socket.closedWith).toBeNull();
     }
   });
 
-  it('serves an enrolled device whose hello carries no proof, as an older PWA sends it', async () => {
+  it('serves an enrolled device whose hello still carries a relay proof, as an older PWA sends it', async () => {
     const { socket, received, gate } = setup();
     const device = generateDeviceKeys();
     gate.standings.set(device.x25519.publicKey, 'enrolled');
-    const phone = await ikHandshake(socket, device, { proof: false });
+    const phone = await ikHandshake(socket, device, { proof: true });
     deliver(socket, phone, { type: 'auth', token: '' });
     expect(received).toEqual([{ type: 'auth', token: '' }]);
   });
@@ -508,7 +506,7 @@ describe('NoiseClientConnection with device keys (IK)', () => {
 
   // The credential was good at the handshake, but the roster may still refuse the device: nothing
   // sent behind the auth may reach the handler before the roster has answered.
-  // A hostile relay can dial in one stranger after another; the lines they cause go through the
+  // A stranger can open one socket after another; the lines they cause go through the
   // agent's shared limiter, while an enrolled device is named every time.
   it('logs what strangers cause through the shared limiter, and enrolled devices in full', async () => {
     const logs: string[] = [];
@@ -725,8 +723,8 @@ describe('NoiseClientConnection with device keys (IK)', () => {
     expect(logs.join('\n')).not.toContain(secret);
   });
 
-  // While a pairing secret is being redeemed, what the phone sends waits. The relay forwards
-  // whatever the sender pushes meanwhile, so the wait is bounded in attempts and in messages.
+  // While a pairing secret is being redeemed, what the phone sends waits. A sender can push
+  // anything meanwhile, so the wait is bounded in attempts and in messages.
   it('counts auth attempts as they arrive while a pairing secret is being redeemed', async () => {
     const { socket, received, gate } = setup();
     let redeem!: (value: Redemption) => void;
@@ -784,7 +782,7 @@ describe('NoiseClientConnection with device keys (IK)', () => {
     expect(gate.enrolled).toEqual([]);
   });
 
-  it('closes the session with 4003 and why, for a pairing code spent or expired since the relay let it through', async () => {
+  it('closes the session with 4003 and why, for a pairing code spent or expired since the handshake', async () => {
     for (const reason of ['pairing code used', 'pairing code expired', 'enrolment closed'] as const) {
       const { socket, received, gate, logs } = setup();
       const secret = 'p'.repeat(43);

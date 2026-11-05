@@ -1,6 +1,6 @@
 import type { StoragePort } from './ports/storage';
 import type { FilterMode } from './project-folders';
-import { parseAgentKey } from './relay-key';
+import { parseAgentKey } from './agent-key';
 import { normalizeAddress } from './machine-addresses';
 import { parseLanguageChoice, type LanguageChoice } from './i18n/language';
 import { DEFAULT_PRESETS, parsePresets, type DictationPreset } from './dictation-presets';

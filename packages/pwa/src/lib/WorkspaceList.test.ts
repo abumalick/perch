@@ -151,7 +151,6 @@ describe('WorkspaceList', () => {
     render(WorkspaceList, { props: { store: store as never } });
     expect(screen.getByTestId('home-unreachable')).toBeInTheDocument();
     expect(screen.getByText(/each machine's agent is running/i)).toBeInTheDocument();
-    expect(screen.queryByText(/relay/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId('local-network-hint')).not.toBeInTheDocument();
     await fireEvent.click(screen.getByTestId('reconnect-home'));
     expect(store.reconnectAll).toHaveBeenCalled();

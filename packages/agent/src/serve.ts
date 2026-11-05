@@ -40,6 +40,7 @@ import { AgentBrowserCli } from './infrastructure/agent-browser-cli';
 import { connectBrowserUpstream } from './infrastructure/ws-browser-stream-socket';
 import { WsServer } from './server/ws-server';
 import { startRelayLinks } from './server/relay-wiring';
+import { startDeviceGate } from './server/device-gate-wiring';
 import { wsRelayTransport } from './infrastructure/ws-relay-transport';
 import { frameSocketTransport } from './infrastructure/ws-frame-socket';
 import { loadOrCreateRelayKeys } from './infrastructure/relay-key-file';
@@ -154,17 +155,26 @@ async function main(): Promise<void> {
   process.stdout.write(`perch agent: hooks on 127.0.0.1:${server.address().port}\n`);
   // The agent key exists from the first start, so `perch pair` works with no relay configured.
   const keys = await loadOrCreateRelayKeys(config.relayKeyPath);
+  const log = (message: string) => process.stdout.write(`${message}\n`);
+  const store = new FileDeviceStore(config.devicesPath);
+  const gate = startDeviceGate({
+    keys,
+    token: config.token,
+    server,
+    store,
+    pairings: new FilePairingStore(config.pairingPath),
+    log,
+    rosterPollMs: ROSTER_POLL_MS,
+  });
   if (config.relayUrls.length > 0) {
-    const log = (message: string) => process.stdout.write(`${message}\n`);
     const relays = startRelayLinks({
       config,
       keys,
+      gate,
       server,
-      store: new FileDeviceStore(config.devicesPath),
-      pairings: new FilePairingStore(config.pairingPath),
+      store,
       transport: frameSocketTransport(wsRelayTransport),
       log,
-      rosterPollMs: ROSTER_POLL_MS,
     });
     log(`relay account ${relays.account}`);
   }

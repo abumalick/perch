@@ -35,6 +35,7 @@ import { MemoryRegistry } from '@perch/relay/registry';
 import { startRelayServer, type RelayServer } from '@perch/relay/server';
 import { WsServer } from './ws-server';
 import { startRelayLinks, type RelayWiring } from './relay-wiring';
+import { startDeviceGate, type AgentDeviceGate } from './device-gate-wiring';
 import { loadConfig, type AgentConfig } from '../infrastructure/config';
 import { createWsRelayTransport } from '../infrastructure/ws-relay-transport';
 import { frameSocketTransport } from '../infrastructure/ws-frame-socket';
@@ -59,6 +60,7 @@ interface Stack {
   account: string;
   relay: RelayServer;
   relays: RelayWiring;
+  gate: AgentDeviceGate;
   server: WsServer;
   store: FileDeviceStore;
   pairings: FilePairingStore;
@@ -163,15 +165,15 @@ async function startStack(): Promise<Stack> {
     appliedWaiters = [];
     waiters.forEach((w) => w());
   }, dials);
+  const gate = startDeviceGate({ keys, token: TOKEN, server, store, pairings, log: (line) => logs.push(line), rosterPollMs: 60_000 });
   const relays = startRelayLinks({
-    config: { relayUrls: config.relayUrls, token: TOKEN },
+    config: { relayUrls: config.relayUrls },
     keys,
+    gate,
     server,
     store,
-    pairings,
     transport,
     log: (line) => logs.push(line),
-    rosterPollMs: 60_000,
   });
   await firstApplied;
   return {
@@ -180,6 +182,7 @@ async function startStack(): Promise<Stack> {
     account,
     relay,
     relays,
+    gate,
     server,
     store,
     pairings,
@@ -313,6 +316,7 @@ describe('the agent through a real relay', () => {
   afterEach(async () => {
     open.splice(0).forEach((c) => c.close());
     stack.relays.stop();
+    stack.gate.stop();
     await stack.relay.close();
     await rm(stack.home, { recursive: true, force: true });
   });
@@ -349,7 +353,7 @@ describe('the agent through a real relay', () => {
     const setMode = async (mode: EnrolmentMode) => {
       await stack.store.update((roster) => withEnrolmentMode(roster, mode));
       const applied = stack.nextApplied();
-      await stack.relays.pollRoster();
+      await stack.gate.pollRoster();
       await applied;
     };
     await setMode('off');
@@ -408,7 +412,7 @@ describe('the agent through a real relay', () => {
 
     await stack.store.update((roster) => revokeDevice(roster, roster.devices[0]!.id, new Date()).roster);
     const applied = stack.nextApplied();
-    await stack.relays.pollRoster();
+    await stack.gate.pollRoster();
     await applied;
     expect(await refusal(phone(stack, device))).toEqual({ code: IN_BAND_REFUSAL + 403, reason: REFUSAL.revoked });
   });
@@ -424,7 +428,7 @@ describe('the agent through a real relay', () => {
 
     // The monitor notices: the live session is closed and the relay refuses the key from then on.
     const applied = stack.nextApplied();
-    await stack.relays.pollRoster();
+    await stack.gate.pollRoster();
     expect(await liveClosed).toMatchObject({ code: DEVICE_REFUSED });
     await applied;
     expect(await refusal(phone(stack, device))).toEqual({ code: IN_BAND_REFUSAL + 403, reason: REFUSAL.revoked });

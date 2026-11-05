@@ -6,6 +6,7 @@ import { REFUSAL, accountId, generateAgentKeys, generatePairingSecret } from '@p
 import { MemoryRegistry } from '@perch/relay/registry';
 import { startRelayServer } from '@perch/relay/server';
 import { startRelayLinks } from '@perch/agent/src/server/relay-wiring.ts';
+import { startDeviceGate } from '@perch/agent/src/server/device-gate-wiring.ts';
 import { NoiseClientConnection, type NoiseClientConnectionOptions } from '@perch/agent/src/server/noise-client-connection.ts';
 import { frameSocketTransport } from '@perch/agent/src/infrastructure/ws-frame-socket.ts';
 import { createWsRelayTransport } from '@perch/agent/src/infrastructure/ws-relay-transport.ts';
@@ -489,29 +490,30 @@ export async function startFakeAgent(
         for (const type of ['list', 'listKeyterms']) route({ type });
       });
     };
-    const relays = startRelayLinks({
-      config: { relayUrls: [`ws://127.0.0.1:${relay.port}`], token: TOKEN },
-      keys,
-      server: {
-        acceptRelaySocket(socket: FrameSocket, staticPrivate: Uint8Array, options: NoiseClientConnectionOptions) {
-          const conn = new NoiseClientConnection(socket, staticPrivate, options);
-          relayClients.add(conn);
-          conn.onClose(() => relayClients.delete(conn));
-          serve(noiseConn(conn));
-        },
-        refuseRevokedDevices(isRevoked: (x25519: string) => boolean) {
-          for (const conn of relayClients) if (conn.device && isRevoked(conn.device)) conn.refuse('device revoked');
-        },
+    const server = {
+      acceptPhoneSocket(socket: FrameSocket, staticPrivate: Uint8Array, options: NoiseClientConnectionOptions) {
+        const conn = new NoiseClientConnection(socket, staticPrivate, options);
+        relayClients.add(conn);
+        conn.onClose(() => relayClients.delete(conn));
+        serve(noiseConn(conn));
       },
+      refuseRevokedDevices(isRevoked: (x25519: string) => boolean) {
+        for (const conn of relayClients) if (conn.device && isRevoked(conn.device)) conn.refuse('device revoked');
+      },
+    };
+    const gate = startDeviceGate({ keys, token: TOKEN, server, store, pairings, log: () => undefined, rosterPollMs: 60_000 });
+    const relays = startRelayLinks({
+      config: { relayUrls: [`ws://127.0.0.1:${relay.port}`] },
+      keys,
+      gate,
+      server,
       store,
-      pairings,
       transport: watchedTransport(() => {
         const waiters = appliedWaiters;
         appliedWaiters = [];
         waiters.forEach((w) => w());
       }),
       log: () => undefined,
-      rosterPollMs: 60_000,
       // Every test is a fresh browser, so a new device key asking to enrol (as the relay's limit above).
       enrolmentChecksPerMinute: 10_000,
     });
@@ -557,7 +559,7 @@ export async function startFakeAgent(
       revokeAll: async () => {
         await store.update((roster) => roster.devices.reduce((r, d) => revokeDevice(r, d.id, new Date()).roster, roster));
         const applied = nextApplied();
-        await relays.pollRoster();
+        await gate.pollRoster();
         await applied;
       },
       holdList: () => {
@@ -577,6 +579,7 @@ export async function startFakeAgent(
       },
       close: async () => {
         relays.stop();
+        gate.stop();
         await relay.close();
         await rm(home, { recursive: true, force: true });
       },

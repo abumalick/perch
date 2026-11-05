@@ -93,14 +93,21 @@ git -C "${MAIN}" push -q origin main
 
 # --- 4. --dry-run builds and asks wrangler for a dry run, from any checkout ------
 run "${WT}/deploy/pwa-deploy.sh" --dry-run || { cat "${SB}/out"; fail "dry run from a worktree refused"; }
-deployed_with "--env production --dry-run" || fail "dry run not passed to wrangler: $(cat "${FAKE_LOG}")"
+grep -q -- "wrangler deploy --env production --assets .*/.tmp/pwa-deploy-dist --dry-run|" "${FAKE_LOG}" || fail "dry run not passed to wrangler with its own build: $(cat "${FAKE_LOG}")"
+# A build outside production goes to its own directory: main's dist is the staging PWA.
+grep -q -- "--filter @perch/pwa build --outDir .*/.tmp/pwa-deploy-dist --emptyOutDir|" "${FAKE_LOG}" || fail "dry run built into dist: $(cat "${FAKE_LOG}")"
+for combo in "--dry-run --dev" "--dry-run --dev --delete"; do
+  # shellcheck disable=SC2086
+  if run "${WT}/deploy/pwa-deploy.sh" ${combo}; then fail "accepted ${combo}"; fi
+  [ -f "${FAKE_LOG}" ] && fail "${combo} ran pnpm"
+done
 [ -f "${FAKE_LOG}.curl" ] && fail "a dry run checked tarfa.app"
 grep -q "^install" "${FAKE_LOG}" && fail "a dry run reinstalled dependencies"
 
 # --- 5. --dev deploys this checkout to tarfa-dev and prints its URL -------------
 run "${WT}/deploy/pwa-deploy.sh" --dev || { cat "${SB}/out"; fail "--dev from a worktree refused"; }
-deployed_with "--env dev" || fail "--dev did not target env.dev"
-grep -q -- "--filter @perch/pwa build|label=tarfa-dev|" "${FAKE_LOG}" || fail "dev build not labelled tarfa-dev"
+grep -q -- "wrangler deploy --env dev --assets .*/.tmp/pwa-deploy-dist|" "${FAKE_LOG}" || fail "--dev did not deploy its own build to env.dev: $(cat "${FAKE_LOG}")"
+grep -q -- "--filter @perch/pwa build --outDir .*|label=tarfa-dev|" "${FAKE_LOG}" || fail "dev build not labelled tarfa-dev"
 grep -q "https://tarfa-dev.someone.workers.dev" "${SB}/out" || fail "--dev does not print the dev URL"
 grep -q "\-\-dev \-\-delete" "${SB}/out" || fail "--dev does not say how to delete it"
 [ -f "${FAKE_LOG}.curl" ] && fail "--dev checked tarfa.app"
@@ -110,6 +117,18 @@ run "${WT}/deploy/pwa-deploy.sh" --dev --delete || { cat "${SB}/out"; fail "--de
 grep -q -- "wrangler delete --env dev" "${FAKE_LOG}" || fail "--delete did not delete env.dev"
 grep -q "build" "${FAKE_LOG}" && fail "--delete built"
 if run "${MAIN}/deploy/pwa-deploy.sh" --delete; then fail "--delete without --dev was accepted"; fi
+
+# --- 6b. a production check that cannot reach tarfa.app says why --------------
+cat > "${SB}/bin/curl" <<'FAKE'
+#!/usr/bin/env bash
+echo "curl: (6) Could not resolve host: tarfa.app" >&2; exit 6
+FAKE
+if run "${MAIN}/deploy/pwa-deploy.sh"; then fail "succeeded with tarfa.app unreachable"; fi
+grep -q "Could not resolve host" "${SB}/out" || fail "an unreachable tarfa.app is not explained"
+
+# --- 6c. --env-file in a directory that does not exist is named as given ----------
+if run "${WT}/deploy/pwa-deploy.sh" --dev --env-file "${SB}/nowhere/x.env"; then fail "accepted a missing env file"; fi
+grep -q "nowhere/x.env" "${SB}/out" || fail "missing env file not named as given: $(cat "${SB}/out")"
 
 # --- 7. --env-file names another account's file ---------------------------------
 printf 'CLOUDFLARE_ACCOUNT_ID=other-acct\n' > "${SB}/other.env"

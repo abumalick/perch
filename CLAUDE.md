@@ -169,7 +169,9 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   custom domain alone (no workers.dev host, no preview URLs; a test keeps it so); the top level
   is a local Worker of its own, so a bare `wrangler deploy` never reaches production.
   `--dev` deploys any checkout to a throwaway `tarfa-dev` Worker on workers.dev for an
-  on-device test (badge `tarfa-dev`), and `--dev --delete` removes it afterwards. The account is
+  on-device test (badge `tarfa-dev`), and `--dev --delete` removes it afterwards. Both, and
+  `--dry-run`, build into `.tmp/pwa-deploy-dist`, never main's `dist`, which the staging PWA
+  serves; `--dry-run` does not combine with `--dev`. The account is
   `CLOUDFLARE_ACCOUNT_ID` in main's gitignored `deploy/pwa-deploy.env` (or `--env-file`).
   **Its storage keys are `tarfa.*`** (localStorage), `tarfa-device` (IndexedDB) and
   `tarfa-shared` (Cache Storage): it reads nothing an older build stored and needs no migration.

@@ -795,3 +795,40 @@ describe('MachineConnection address walk', () => {
     expect(h.dialed).toEqual([ADDRS[0], ADDRS[1], ADDRS[0], ADDRS[1]]);
   });
 });
+
+describe('MachineConnection address walk failures', () => {
+  it("ignores a late error from an address it has left, so the next one's close is worded on its own", () => {
+    const h = harness(undefined, ADDRS.slice(0, 2));
+    h.conn.connect();
+    h.sockets[0]!.fireClose({ code: 1006 });
+    h.sockets[0]!.fireError();
+    h.sockets[1]!.fireClose({ code: 1001 });
+    expect(h.diagnostics[0]!.message).toBe('connection failed (never opened)');
+  });
+
+  it('stops at a device-key failure: it is the phone, and every address would fail the same way', () => {
+    const h = harness(undefined, ADDRS);
+    h.conn.connect();
+    h.sockets[0]!.fireClose({ reason: 'device key unavailable: no IndexedDB' });
+    expect(h.dialed).toEqual([ADDRS[0]]);
+    expect(h.diagnostics[0]!.message).toBe('connection failed (device key unavailable: no IndexedDB)');
+  });
+
+  it('reports an earlier address whose far end said why, over a later one that only went silent', () => {
+    const h = harness(undefined, ADDRS.slice(0, 2));
+    h.conn.connect();
+    h.sockets[0]!.fireClose({ reason: 'agent key mismatch' });
+    expect(h.dialed).toEqual(ADDRS.slice(0, 2));
+    h.sockets[1]!.fireClose({ code: 1006 });
+    expect(h.diagnostics[0]!.message).toBe('connection failed (agent key mismatch)');
+  });
+
+  it('reports that earlier reason over a later address that timed out', () => {
+    const h = harness(undefined, ADDRS.slice(0, 2));
+    h.conn.connect();
+    h.sockets[0]!.fireClose({ reason: 'agent key mismatch' });
+    live(h.timers).at(-1)!.fn();
+    h.sockets[1]!.fireClose({ code: 1006 });
+    expect(h.diagnostics[0]!.message).toBe('connection failed (agent key mismatch)');
+  });
+});

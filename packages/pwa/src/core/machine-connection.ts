@@ -6,6 +6,8 @@ import { en } from './i18n/en';
 
 // Recorded in English for the connection log; the UI words them in the current language.
 const DIAGNOSTIC = en.status.diagnostic;
+// How noise-socket words a failure of the phone's own device key.
+const DEVICE_KEY_FAILURE = 'device key unavailable';
 
 export type ConnectionStatus = 'connecting' | 'online' | 'offline';
 
@@ -106,6 +108,9 @@ export class MachineConnection {
   private order: string[] = [];
   private index = 0;
   private attemptStarted = 0;
+  // The first reason an earlier address of this attempt gave for failing (say, the wrong key
+  // answered), reported over a later address that only went silent.
+  private walkReason: string | null = null;
   // Per-socket diagnostic state, reset on each dial.
   private opened = false;
   private errored = false;
@@ -143,6 +148,7 @@ export class MachineConnection {
     this.order = preferred && addresses.includes(preferred) ? [preferred, ...addresses.filter((a) => a !== preferred)] : [...addresses];
     this.index = 0;
     this.attemptStarted = this.now();
+    this.walkReason = null;
     this.dial();
   }
 
@@ -187,7 +193,7 @@ export class MachineConnection {
       socket.send(JSON.stringify({ type: 'auth', token: this.token } satisfies ClientMessage));
     });
     socket.onError?.(() => {
-      this.errored = true;
+      if (this.socket === socket) this.errored = true;
     });
     socket.onMessage((data) => {
       if (this.socket !== socket) return;
@@ -217,8 +223,11 @@ export class MachineConnection {
         this.restoreWithheld();
         refusal = { ...refusal, final: false };
       }
-      if (!refusal && !this.opened && !this.timedOut && !this.isLastAddress()) {
-        this.nextAddress(socket, info?.code ? `closed (code ${info.code})` : 'closed');
+      // A failure of the phone's own device key would fail every address the same way.
+      const local = info?.reason?.startsWith(DEVICE_KEY_FAILURE) ?? false;
+      if (!refusal && !local && !this.opened && !this.timedOut && !this.isLastAddress()) {
+        if (info?.reason) this.walkReason ??= info.reason;
+        this.nextAddress(socket, info?.reason ? `closed (${info.reason})` : info?.code ? `closed (code ${info.code})` : 'closed');
         return;
       }
       const diagnostic: ConnectionDiagnostic = refusal
@@ -290,7 +299,10 @@ export class MachineConnection {
     const code = info?.code;
     const reason = info?.reason?.trim();
     let message: string;
-    if (this.timedOut) {
+    if (!this.opened && this.walkReason && !reason) {
+      // An earlier address said why it failed; the last one only went silent or timed out.
+      message = DIAGNOSTIC.failed(this.walkReason);
+    } else if (this.timedOut) {
       // We reaped the socket ourselves after it stalled in CONNECTING.
       message = DIAGNOSTIC.timedOut;
     } else if (!this.opened) {

@@ -29,16 +29,19 @@ while [ $# -gt 0 ]; do
     --delete) delete=1 ;;
     --env-file)
       [ -n "${2:-}" ] || { echo "--env-file needs a path" >&2; exit 2; }
-      env_file="$(cd "$(dirname "$2")" 2>/dev/null && pwd -P)/$(basename "$2")"
+      env_file="$2"
+      [ -d "$(dirname "$2")" ] && env_file="$(cd "$(dirname "$2")" && pwd -P)/$(basename "$2")"
       shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift
 done
 [ "$delete" = 0 ] || [ "$dev" = 1 ] || { echo "--delete removes the dev Worker only: use --dev --delete" >&2; exit 2; }
+[ "$dry_run" = 0 ] || [ "$dev" = 0 ] || { echo "--dry-run checks the production build only; it does not combine with --dev or --delete" >&2; exit 2; }
 
 [ -f "$env_file" ] || { echo "missing $env_file (template: deploy/pwa-deploy.env.example)" >&2; exit 1; }
 # Read in a subshell, so nothing else the file sets reaches wrangler.
+# shellcheck source=/dev/null
 CLOUDFLARE_ACCOUNT_ID="$( (. "$env_file" >/dev/null && printf '%s' "${CLOUDFLARE_ACCOUNT_ID:-}") )"
 [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "set CLOUDFLARE_ACCOUNT_ID in $env_file" >&2; exit 1; }
 export CLOUDFLARE_ACCOUNT_ID
@@ -66,34 +69,46 @@ if [ "$production" = 1 ]; then
 fi
 
 # The build's id names the commit and the time, so the check below can tell this build from the
-# one it replaces. A dev build carries a label, which the app shows as a badge.
+# one it replaces. A dev build carries a label, which the app shows as a badge. Outside
+# production the build goes to its own directory: packages/pwa/dist in the main checkout is
+# what the tailnet staging PWA serves, and a dry run may come from uncommitted work.
 build_id="$(git -C "$root" rev-parse --short=12 HEAD)-$(date +%s)"
 label=main
 [ "$dev" = 1 ] && label=tarfa-dev
-(cd "$root" && PERCH_BUILD_LABEL="$label" PERCH_BUILD_ID="$build_id" pnpm --filter @perch/pwa build)
+assets=()
+build=(pnpm --filter @perch/pwa build)
+if [ "$production" = 0 ]; then
+  out="$root/.tmp/pwa-deploy-dist"
+  assets=(--assets "$out")
+  build+=(--outDir "$out" --emptyOutDir)
+fi
+(cd "$root" && PERCH_BUILD_LABEL="$label" PERCH_BUILD_ID="$build_id" "${build[@]}")
 
 cd "$pwa"
 if [ "$dev" = 1 ]; then
-  out="$(pnpm exec wrangler deploy --env dev | tee /dev/stderr)"
-  url="$(printf '%s\n' "$out" | grep -oE 'https://[A-Za-z0-9.-]+\.workers\.dev' | head -n1 || true)"
+  log="$(pnpm exec wrangler deploy --env dev "${assets[@]}" | tee /dev/stderr)"
+  url="$(printf '%s\n' "$log" | grep -oE 'https://[A-Za-z0-9.-]+\.workers\.dev' | head -n1 || true)"
   echo "tarfa-dev: ${url:-see the wrangler output above}"
   echo "delete it after the test: deploy/pwa-deploy.sh --dev --delete"
   exit 0
 fi
 if [ "$dry_run" = 1 ]; then
-  pnpm exec wrangler deploy --env production --dry-run
+  pnpm exec wrangler deploy --env production "${assets[@]}" --dry-run
   exit 0
 fi
 
 pnpm exec wrangler deploy --env production
 # A new custom-domain version takes a few seconds to answer everywhere.
 deadline=$(( $(date +%s) + ${PWA_DEPLOY_WAIT_S:-60} ))
-served=''
+mkdir -p "$root/.tmp"
+served='' error_text=''
 while :; do
-  served="$(curl -fsS --max-time 10 "https://tarfa.app/version.json?t=$(date +%s)" 2>/dev/null || true)"
+  error="$(mktemp "$root/.tmp/pwa-deploy-curl.XXXXXX")"
+  served="$(curl -fsS --max-time 10 "https://tarfa.app/version.json?t=$(date +%s)" 2>"$error" || true)"
+  error_text="$(cat "$error")"; rm -f "$error"
   case "$served" in *"\"buildId\":\"$build_id\""*) echo "tarfa.app serves $build_id"; exit 0 ;; esac
   [ "$(date +%s)" -lt "$deadline" ] || break
   sleep 2
 done
-echo "deployed, but tarfa.app still serves ${served:-nothing} instead of $build_id" >&2
+echo "deployed, but tarfa.app still serves ${served:-nothing${error_text:+ ($error_text)}} instead of $build_id" >&2
 exit 1

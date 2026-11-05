@@ -12,7 +12,7 @@ export type Paired = { ok: true; machine: MachineConfig } | { ok: false; reason:
 // refused: taking it would point that entry's address at a key whoever made the link may hold. An
 // existing entry keeps its own name and default path; the link's path only fills one it lacks.
 export function pairedMachine(machines: MachineConfig[], link: PairingLink, newId: () => string): Paired {
-  const addresses = link.urls.map((url) => normalizeAddress(url)!);
+  const addresses = link.urls.flatMap((url) => normalizeAddress(url) ?? []);
   const taken = machines.find((m) => m.agentKey?.trim() !== link.agentKey && m.addresses?.some((a) => addresses.includes(normalizeAddress(a) ?? a)));
   if (taken) return { ok: false, reason: msg().pairing.otherKey(taken.name) };
   const existing = machines.find((m) => m.agentKey?.trim() === link.agentKey);

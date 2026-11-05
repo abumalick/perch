@@ -18,6 +18,9 @@ export const REFUSAL = {
   codeExpired: 'pairing code expired',
   codeUsed: 'pairing code used',
   tooManyPending: 'too many pending clients',
+  // Sent only by agents from before the relays were removed, which required a proof in the hello
+  // of a new phone; a current PWA sends none, so such an agent refuses every new phone.
+  signature: 'device signature invalid',
   tooManyConnections: 'too many connections',
 } as const;
 

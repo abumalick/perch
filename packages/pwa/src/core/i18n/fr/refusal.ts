@@ -15,6 +15,7 @@ export const refusal: Messages['refusal'] = {
   enrolmentClosed: (machine) =>
     `L’inscription est fermée sur ${machine} — lancez-y \`perch devices enrolment off\` pour autoriser l’association`,
   notEnrolled: (machine) => `Ce téléphone n’est pas inscrit sur ${machine} — lancez-y \`perch pair\` pour l’associer à nouveau`,
+  agentTooOld: (machine) => `${machine} fait tourner un agent trop ancien pour associer ce téléphone — mettez son agent à jour, puis associez à nouveau`,
   busy: (machine) => `${machine} est saturée : trop de téléphones s’y connectent`,
   other: (machine, detail) => `${machine} a refusé ce téléphone (${detail})`,
   code: (code) => `code ${code}`,

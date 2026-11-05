@@ -13,6 +13,7 @@ export const refusal = {
   enrolmentClosed: (machine: string) =>
     `Enrolment is closed on ${machine} — run \`perch devices enrolment off\` there to allow pairing`,
   notEnrolled: (machine: string) => `This phone is not enrolled on ${machine} — run \`perch pair\` there to pair it again`,
+  agentTooOld: (machine: string) => `${machine} runs an agent too old to pair this phone — update its agent, then pair again`,
   busy: (machine: string) => `${machine} is busy: too many phones are connecting to it`,
   other: (machine: string, detail: string) => `${machine} refused this phone (${detail})`,
   code: (code: number) => `code ${code}`,

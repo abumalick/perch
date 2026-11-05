@@ -614,7 +614,9 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     `REFUSAL` reason (`secure-channel/src/refusal.ts`, the reasons an agent sends); the PWA words
     each one (`core/refusal.ts`) and stops redialing on a final one. The agent keeps spent and
     expired pairing codes for a day so it can say which. A reason is told only to whoever passed
-    the check that produced it.
+    the check that produced it. `REFUSAL.signature` is the one reason no current agent sends: an agent from
+    before the relays' removal refuses a new phone whose hello has no proof, and the PWA words it
+    as final ("agent too old"), so update agents before deploying the app.
   - **A phone that pinned another agent key is told so, finally.** The responder tells a first
     message sealed for another static key (`WrongStaticKeyError`) from any other failure; the
     agent closes it with 4003 "wrong agent key", and the PWA words it as final. "Agent key

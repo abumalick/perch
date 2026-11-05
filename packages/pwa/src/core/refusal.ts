@@ -47,6 +47,8 @@ export function describeRefusal(code: number | undefined, reason: string | undef
       return final(m.enrolmentClosed(machine));
     case REFUSAL.notEnrolled:
       return final(m.notEnrolled(machine));
+    case REFUSAL.signature:
+      return final(m.agentTooOld(machine));
     case REFUSAL.tooManyPending:
     case REFUSAL.tooManyConnections:
       return passing(m.busy(machine));

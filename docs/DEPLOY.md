@@ -122,6 +122,15 @@ the link hands it to the phone as the new entry's default path; a re-scan fills 
 entry that has none. `PERCH_RELAY_URLS` from an older setup is ignored with a warning at
 startup; remove it.
 
+**Moving a machine off relays.** An agent updated past the relays' removal no longer dials
+them, so a machine phones reached only through a relay is cut off until it is moved: run
+`perch setup` with `--tailscale serve|funnel` (or `--address` for a proxy), remove
+`PERCH_RELAY_URLS` from `deploy/agent.env`, then send each phone a fresh `perch pair` link. The
+entry, known by its agent key, takes the new addresses; its device key stays enrolled. Update the
+agent before phones use a current app: an older agent refuses a new phone's hello ("too old to
+pair"). A self-hosted app built before the change must be redeployed too, and the old relay
+services stopped by hand (their scripts are gone).
+
 The hooks port is never exposed with `tailscale serve`. A machine set up long ago may
 still publish its agent (`tailscale serve status` shows `:8442 -> 127.0.0.1:8787`): remove it
 with `tailscale serve --https=8442 off` (`sudo` on Linux).

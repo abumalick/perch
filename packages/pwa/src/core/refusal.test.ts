@@ -17,6 +17,7 @@ describe('describeRefusal', () => {
     [4403, REFUSAL.enrolmentOff, withToken, 'Enrolment is turned off on dev box — pair with `perch pair` instead', true],
     [4003, REFUSAL.enrolmentClosed, paired, 'Enrolment is closed on dev box — run `perch devices enrolment off` there to allow pairing', true],
     [4403, REFUSAL.notEnrolled, enrolled, 'This phone is not enrolled on dev box — run `perch pair` there to pair it again', true],
+    [4003, REFUSAL.signature, paired, 'dev box runs an agent too old to pair this phone — update its agent, then pair again', true],
     [4429, REFUSAL.tooManyPending, enrolled, 'dev box is busy: too many phones are connecting to it', false],
     [4429, REFUSAL.tooManyConnections, enrolled, 'dev box is busy: too many phones are connecting to it', false],
   ] as const)('%i %s', (code, reason, context, message, final) => {
@@ -42,7 +43,7 @@ describe('describeRefusal', () => {
   });
 
   it('words no reason an agent does not send', () => {
-    for (const reason of ['device signature invalid', 'enrolment proof invalid', 'internal error']) {
+    for (const reason of ['enrolment proof invalid', 'internal error']) {
       expect(describeRefusal(4403, reason, enrolled)?.message).toBe(`dev box refused this phone (${reason})`);
     }
   });

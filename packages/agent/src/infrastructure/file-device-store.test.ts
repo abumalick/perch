@@ -10,7 +10,7 @@ let path: string;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'perch-devices-'));
-  path = join(dir, 'perch', 'devices.json');
+  path = join(dir, 'tarfa', 'devices.json');
 });
 
 afterEach(async () => {

@@ -9,4 +9,10 @@ export interface ServiceInstallPort {
   enabled(): Promise<boolean>;
   // Writes it, enables it at boot; returns what it ran, for the report.
   install(text: string): Promise<string[]>;
+  // The service under its name from before the rename (perch-agent, com.perch.agent): whether its
+  // unit or plist is installed, stopping it (tmux and the workspaces keep running), and removing
+  // it once the new one runs. Each returns what it ran.
+  legacyInstalled(): Promise<boolean>;
+  stopLegacy(): Promise<string[]>;
+  removeLegacy(): Promise<string[]>;
 }

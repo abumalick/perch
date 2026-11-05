@@ -1,5 +1,5 @@
 {
-  "name": "@perch/pwa",
+  "name": "@tarfa/pwa",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
@@ -14,8 +14,8 @@
   },
   "dependencies": {
     "@noble/curves": "^2.4.0",
-    "@perch/contracts": "workspace:*",
-    "@perch/secure-channel": "workspace:*",
+    "@tarfa/contracts": "workspace:*",
+    "@tarfa/secure-channel": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^5.5.0",
@@ -24,7 +24,7 @@
     "qr": "^0.7.0"
   },
   "devDependencies": {
-    "@perch/agent": "workspace:*",
+    "@tarfa/cli": "workspace:*",
     "@playwright/test": "^1.49.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@testing-library/jest-dom": "^6.6.0",

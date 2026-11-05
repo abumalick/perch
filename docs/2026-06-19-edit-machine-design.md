@@ -21,7 +21,7 @@ In scope:
 Out of scope (explicitly):
 - Renaming a machine or changing its `id`.
 - Reordering machines.
-- Any change to `@perch/contracts`, the agent, or the wire protocol. This is
+- Any change to `@tarfa/contracts`, the agent, or the wire protocol. This is
   **PWA-local** only.
 
 ## Why this is small
@@ -30,7 +30,7 @@ The persistence + reconnect plumbing already exists and is correct for an in-pla
 
 - `SettingsStore.add()` is an **upsert keyed by `id`** (filters out the matching id,
   re-appends).
-- `PerchStore.addMachine()` persists then calls `ConnectionManager.setMachines()`, which
+- `TarfaStore.addMachine()` persists then calls `ConnectionManager.setMachines()`, which
   closes the stale `MachineConnection` for that id and reconnects with the new url/token.
 
 So an edit is fundamentally "write the same id/name with new url/token, then re-push to
@@ -57,7 +57,7 @@ update(id: string, patch: { url: string; token?: string }): void
 This is preferred over reusing `add` from the UI because it states intent at the call
 site, isolates a clean unit-test target, and is safe against unknown ids.
 
-### Application: `PerchStore.updateMachine`
+### Application: `TarfaStore.updateMachine`
 
 ```
 updateMachine(id: string, patch: { url: string; token?: string }): void

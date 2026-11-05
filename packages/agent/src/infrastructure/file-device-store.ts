@@ -13,9 +13,9 @@ const rosterSchema = z.object({
   revoked: z.array(device.extend({ revokedAt: z.string() })),
 });
 
-// ~/.perch/devices.json. Unlike the other ~/.perch files, a malformed one is an error, never an
+// ~/.tarfa/devices.json. Unlike the other ~/.tarfa files, a malformed one is an error, never an
 // empty list: an empty roster would silently re-open enrolment and forget every revocation.
-// Updates hold a lock file, since the agent (enrolling) and `perch devices` (revoking) write it
+// Updates hold a lock file, since the agent (enrolling) and `tarfa devices` (revoking) write it
 // from different processes, and a lost revocation must not pass silently.
 export class FileDeviceStore implements DeviceStorePort {
   private readonly staleLockMs: number;

@@ -17,7 +17,7 @@ test.afterEach(async ({ page }) => {
 
 async function parkDemo(page: Page): Promise<void> {
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
   await openWorkspaceMenu(page);
   await page.getByRole('button', { name: /status: needs you/i }).click();
   await page.getByRole('option', { name: /parked/i }).click();

@@ -1,4 +1,4 @@
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 import { isConnectable, type MachineConfig } from './settings-store';
 import { displayProjectPath } from './resolve-path';
 

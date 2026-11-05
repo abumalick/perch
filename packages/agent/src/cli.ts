@@ -3,7 +3,8 @@ import { homedir, hostname, userInfo } from 'node:os';
 import { readFile, mkdir, realpath } from 'node:fs/promises';
 import { dirname, join as joinPath, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig, type AgentConfig } from './infrastructure/config';
+import { loadConfig, withLegacyEnv, type AgentConfig } from './infrastructure/config';
+import { STATE_DIR, migrateStateDir, resolveStateDir } from './infrastructure/state-dir';
 import { systemClock, systemPathResolver } from './infrastructure/system';
 import { ShortWorkspaceIds } from './application/short-workspace-ids';
 import { renameWorkspace } from './application/rename-workspace';
@@ -34,7 +35,7 @@ import { loadOrCreateAgentKeys } from './infrastructure/agent-key-file';
 import { FileDeviceStore } from './infrastructure/file-device-store';
 import { enrolmentMode, forgetDevice, revokeDevice, withEnrolmentMode, type Device, type DeviceRoster, type EnrolmentMode } from './application/device-roster';
 import encodeQR from 'qr';
-import { deviceFingerprint, generatePairingSecret, isMachineUrl, MAX_ADDRESSES, parsePairingLink, sanitizeDeviceName } from '@perch/secure-channel';
+import { deviceFingerprint, generatePairingSecret, isMachineUrl, MAX_ADDRESSES, parsePairingLink, sanitizeDeviceName } from '@tarfa/secure-channel';
 import { parseEnvFile } from './application/agent-env';
 import { mintPairingLink, pairingName } from './application/pairing-link';
 import { FilePairingStore } from './infrastructure/file-pairing-store';
@@ -76,7 +77,7 @@ export interface CliIo {
   codex?: CodexSpawnPort;
   // Whether a command resolves through the login shell, as tmux will run it.
   resolveCommand?: (name: string) => Promise<boolean>;
-  // What `setup` reads and changes outside agent.env and ~/.perch.
+  // What `setup` reads and changes outside agent.env and ~/.tarfa.
   setup?: {
     service?: ServiceInstallPort;
     tailscale?: TailscalePort;
@@ -87,9 +88,10 @@ export interface CliIo {
 }
 
 const HOOKS_DIR = joinPath(dirname(fileURLToPath(import.meta.url)), 'hooks');
-const CODEX_NEXT_STEP = 'open Codex and trust the Perch hooks in /hooks; repeat after any hook change';
+const CODEX_NEXT_STEP = 'open Codex and trust the Tarfa hooks in /hooks; repeat after any hook change';
 
-export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo = {}): Promise<string> {
+export async function run(argv: string[], rawEnv: NodeJS.ProcessEnv, home: string, io: CliIo = {}): Promise<string> {
+  const env = withLegacyEnv(rawEnv);
   if (argv[0] === 'setup') return setup(argv.slice(1), env, home, io);
   if (argv[0] === 'connect' || argv[0] === 'relay-key' || (argv[0] === 'pair' && argv.includes('--relay'))) {
     throw new UsageError(RELAYS_GONE);
@@ -119,7 +121,7 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, 
     }
     case 'create': {
       const projectPath = rest[0];
-      if (!projectPath) throw new Error('usage: perch create <projectPath> [command]');
+      if (!projectPath) throw new Error('usage: tarfa create <projectPath> [command]');
       const cmd = rest[1] ?? 'claude';
       const ws = await createWorkspace(
         {
@@ -143,7 +145,7 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, 
     }
     case 'close': {
       const id = rest[0];
-      if (!id) throw new Error('usage: perch close <workspaceId>');
+      if (!id) throw new Error('usage: tarfa close <workspaceId>');
       await closeWorkspace({ tmux }, id);
       return JSON.stringify({ closed: id });
     }
@@ -153,7 +155,7 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, 
     }
     case 'browse': {
       const path = rest[0];
-      if (!path) throw new Error('usage: perch browse <path>');
+      if (!path) throw new Error('usage: tarfa browse <path>');
       const hidden = await hiddenFolders.list();
       return JSON.stringify(await browseDir({ lister, hidden }, path, config.projectRoots), null, 2);
     }
@@ -177,19 +179,19 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv, home: string, 
   }
 }
 
-const LS_USAGE = `usage: perch ls [--json] [--mine] [--parent <workspace id>] [--role ${WORKSPACE_ROLES.join('|')}] [--path <project dir>]`;
-const SPAWN_USAGE = 'usage: perch spawn [--title <title>] [--child] [--model <model>] [--cli claude|codex|pi] <projectPath>   (brief on stdin)';
+const LS_USAGE = `usage: tarfa ls [--json] [--mine] [--parent <workspace id>] [--role ${WORKSPACE_ROLES.join('|')}] [--path <project dir>]`;
+const SPAWN_USAGE = 'usage: tarfa spawn [--title <title>] [--child] [--model <model>] [--cli claude|codex|pi] <projectPath>   (brief on stdin)';
 const SPAWN_CLIS: readonly AgentCli[] = ['claude', 'codex', 'pi'];
-const PEEK_USAGE = 'usage: perch peek <workspace id> [-n <lines>]';
-const UNPARK_USAGE = 'usage: perch unpark <workspace id>...';
-const RENAME_USAGE = 'usage: perch rename [<workspace id>] <title>   (without an id: the workspace this runs in)';
-const SEND_USAGE = 'usage: perch send <workspace id> "<message>"   (or the message on stdin)';
+const PEEK_USAGE = 'usage: tarfa peek <workspace id> [-n <lines>]';
+const UNPARK_USAGE = 'usage: tarfa unpark <workspace id>...';
+const RENAME_USAGE = 'usage: tarfa rename [<workspace id>] <title>   (without an id: the workspace this runs in)';
+const SEND_USAGE = 'usage: tarfa send <workspace id> "<message>"   (or the message on stdin)';
 
 // `ls`, `spawn` and `peek` serve sessions in any repo, so none of them needs deploy/agent.env:
 // it only lends the machine id, and the store paths come from $HOME.
 async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rename' | 'send', argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo): Promise<string> {
   const values = await agentEnvValues(env).catch(() => ({}) as Record<string, string>);
-  const config = loadConfig({ PERCH_MACHINE_ID: hostname().split('.')[0], ...env, ...values }, home);
+  const config = loadConfig({ TARFA_MACHINE_ID: hostname().split('.')[0], ...env, ...values }, home);
   const tmux = io.tmux ?? new TmuxAdapter();
   const claudeSessions = new FileClaudeSessionsStore(config.claudeSessionsDir);
   const args = [...argv];
@@ -249,10 +251,10 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rena
       if (!(await resolveDirectory(projectPath))) throw new Error(`not a directory: ${resolvePath(cwd, projectPath)}`);
       // Without it the pane's command fails at once and the workspace vanishes with no trace.
       if (cli === 'pi' && !(await (io.resolveCommand ?? loginShellResolver())('pi-reviewed'))) {
-        throw new Error('perch spawn --cli pi needs pi-reviewed on PATH');
+        throw new Error('tarfa spawn --cli pi needs pi-reviewed on PATH');
       }
       const parentId = child ? await callerWorkspace(env, tmux, config.sessionPrefix) : undefined;
-      const brief = await (io.stdin ?? (() => readStdin("pass the brief on stdin, e.g. perch spawn <path> <<'EOF'")))();
+      const brief = await (io.stdin ?? (() => readStdin("pass the brief on stdin, e.g. tarfa spawn <path> <<'EOF'")))();
       return spawnWorkspace(
         {
           tmux: withSpawnMethods(tmux),
@@ -267,7 +269,7 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rena
           }),
           nonce: () => randomBytes(6).toString('hex'),
           sleep: io.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
-          spawnDir: joinPath(home, '.perch', 'spawn'),
+          spawnDir: joinPath(config.stateDir, 'spawn'),
           codex: io.codex ?? { versions: codexVersions(), createThread: (input) => new CodexAppServer().createThread(input) },
         },
         {
@@ -286,7 +288,7 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rena
       const [id, ...extra] = args;
       if (!id || extra.length > 0 || !Number.isInteger(lines) || lines < 1) throw new Error(PEEK_USAGE);
       const workspace = (await list()).find((w) => w.id === id);
-      if (!workspace) throw new Error(`no workspace ${id} (see perch ls)`);
+      if (!workspace) throw new Error(`no workspace ${id} (see tarfa ls)`);
       if (workspace.status === 'parked') {
         return `${table([workspace])}\n\n(parked: no pane until it is opened)`;
       }
@@ -298,7 +300,7 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rena
     }
     case 'unpark': {
       if (args.length === 0 || args.some((id) => id.startsWith('-'))) throw new Error(UNPARK_USAGE);
-      const post = agentPost(config.port, home, io.fetch ?? fetch);
+      const post = agentPost(config.port, config.stateDir, io.fetch ?? fetch);
       const lines: string[] = [];
       let failed = false;
       for (const id of args) {
@@ -322,9 +324,9 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rena
       // thread id names the sender instead.
       const codexThread = env.CODEX_THREAD_ID || undefined;
       const pane = env.TMUX_PANE ?? '';
-      if (!pane && !codexThread) throw new Error('not inside a Perch workspace: $TMUX_PANE is unset');
+      if (!pane && !codexThread) throw new Error('not inside a Tarfa workspace: $TMUX_PANE is unset');
       const body = message ?? (await (io.stdin ?? (() => readStdin(`pass the message as an argument or on stdin: ${SEND_USAGE}`)))());
-      const { status, json } = await agentPost(config.port, home, io.fetch ?? fetch)('/message', {
+      const { status, json } = await agentPost(config.port, config.stateDir, io.fetch ?? fetch)('/message', {
         pane,
         pid: process.pid,
         to,
@@ -333,7 +335,7 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rena
       });
       if (status === 200 && json.result === 'delivered') return `delivered to ${to}`;
       if (status === 200 && json.result === 'refused' && typeof json.reason === 'string') throw new Error(json.reason);
-      throw new Error(`the agent answered ${status}${status === 404 ? ' (it predates perch send: restart it)' : ''}${json.error ? ` (${json.error})` : ''}`);
+      throw new Error(`the agent answered ${status}${status === 404 ? ' (it predates tarfa send: restart it)' : ''}${json.error ? ` (${json.error})` : ''}`);
     }
     case 'rename': {
       if (args.length === 0) throw new Error(RENAME_USAGE);
@@ -341,7 +343,7 @@ async function orchestration(command: 'ls' | 'spawn' | 'peek' | 'unpark' | 'rena
       // like an id that names nothing is refused, not taken into the caller's title.
       const named = args.length > 1 && (await list()).some((w) => w.id === args[0]);
       if (args.length > 1 && !named && /^[a-z0-9_][a-z0-9_-]*-(?:\d+|[0-9a-f]{6})$/.test(args[0]!)) {
-        throw new Error(`no workspace ${args[0]} (see perch ls), or quote the title: perch rename "${args.join(' ')}"`);
+        throw new Error(`no workspace ${args[0]} (see tarfa ls), or quote the title: tarfa rename "${args.join(' ')}"`);
       }
       const id = named ? args[0]! : await callerWorkspace(env, tmux, config.sessionPrefix);
       const title = (named ? args.slice(1) : args).join(' ');
@@ -365,14 +367,14 @@ const UNPARK_WORDS: Record<string, string> = {
 // `unpark` and `send` go through the running agent, the one process that writes status.json (it
 // holds it in memory, so a write from here would be overwritten) and parked.json, and the one
 // that tells the phones. It authenticates with the hooks secret the agent writes at each start.
-function agentPost(port: number, home: string, fetchFn: typeof fetch) {
-  const notRunning = `the Perch agent is not running (nothing answered on 127.0.0.1:${port})`;
+function agentPost(port: number, stateDir: string, fetchFn: typeof fetch) {
+  const notRunning = `the Tarfa agent is not running (nothing answered on 127.0.0.1:${port})`;
   let token: Promise<string> | undefined;
   return async (route: string, body: unknown): Promise<{ status: number; json: Record<string, unknown> }> => {
-    token ??= readFile(joinPath(home, '.perch', 'token'), 'utf8').then(
+    token ??= readFile(joinPath(stateDir, 'token'), 'utf8').then(
       (text) => text.trim(),
       () => {
-        throw new Error(`${notRunning}: no ${joinPath(home, '.perch', 'token')}`);
+        throw new Error(`${notRunning}: no ${joinPath(stateDir, 'token')}`);
       },
     );
     const secret = await token;
@@ -386,7 +388,7 @@ function agentPost(port: number, home: string, fetchFn: typeof fetch) {
     } catch {
       throw new Error(notRunning);
     }
-    if (res.status === 401) throw new Error('the agent refused the hooks secret: was it restarted since ~/.perch/token was read?');
+    if (res.status === 401) throw new Error('the agent refused the hooks secret: was it restarted since ~/.tarfa/token was read?');
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     return { status: res.status, json };
   };
@@ -399,15 +401,15 @@ async function callerWorkspace(env: NodeJS.ProcessEnv, tmux: TmuxPort, sessionPr
   const thread = env.CODEX_THREAD_ID;
   if (thread) {
     const session = sessionOfCodexThread(await tmux.listSessions(sessionPrefix), thread);
-    if (!session) throw new Error(`not inside a Perch workspace: no workspace records Codex thread ${thread}`);
+    if (!session) throw new Error(`not inside a Tarfa workspace: no workspace records Codex thread ${thread}`);
     return session.name;
   }
   const pane = env.TMUX_PANE;
-  if (!pane) throw new Error('not inside a Perch workspace: $TMUX_PANE is unset');
+  if (!pane) throw new Error('not inside a Tarfa workspace: $TMUX_PANE is unset');
   const session = tmux.sessionOfPane ? await tmux.sessionOfPane(pane) : null;
   const ours = session !== null && (await tmux.listSessions(sessionPrefix)).some((s) => s.name === session);
   if (!session || !ours) {
-    throw new Error(`not inside a Perch workspace: this pane's tmux session is ${session ?? 'unknown'}`);
+    throw new Error(`not inside a Tarfa workspace: this pane's tmux session is ${session ?? 'unknown'}`);
   }
   return session;
 }
@@ -441,8 +443,8 @@ async function readStdin(ttyError: string): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-const RELAYS_GONE = 'relays are gone: perch setup sets a machine up for phones, and perch pair pairs one';
-const PAIR_USAGE = 'usage: perch pair [--pwa <PWA origin>]';
+const RELAYS_GONE = 'relays are gone: tarfa setup sets a machine up for phones, and tarfa pair pairs one';
+const PAIR_USAGE = 'usage: tarfa pair [--pwa <PWA origin>]';
 
 function takeOption(args: string[], name: string, usage: string): string | undefined {
   const at = args.indexOf(name);
@@ -459,7 +461,7 @@ function pwaOrigin(value: string | undefined): string | undefined {
   try {
     url = new URL(value);
   } catch {
-    throw new Error(`--pwa must be the origin the phone opens Perch at, e.g. https://host:8443 (got ${value})`);
+    throw new Error(`--pwa must be the origin the phone opens Tarfa at, e.g. https://host:8443 (got ${value})`);
   }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error(`--pwa must be an http(s) origin (got ${value})`);
   return url.origin;
@@ -470,14 +472,14 @@ function pwaOrigin(value: string | undefined): string | undefined {
 // service) leaves the environment alone.
 async function agentEnvValues(env: NodeJS.ProcessEnv): Promise<Record<string, string>> {
   try {
-    return parseEnvFile(await readFile(await locateAgentEnv(env), 'utf8'));
+    return withLegacyEnv(parseEnvFile(await readFile(await locateAgentEnv(env), 'utf8'))) as Record<string, string>;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {};
     throw err;
   }
 }
 
-// `perch pair` reads the agent.env the service reads rather than expecting it in the shell's
+// `tarfa pair` reads the agent.env the service reads rather than expecting it in the shell's
 // environment.
 async function pair(argv: string[], env: NodeJS.ProcessEnv, home: string): Promise<string> {
   const args = [...argv];
@@ -487,14 +489,14 @@ async function pair(argv: string[], env: NodeJS.ProcessEnv, home: string): Promi
   try {
     origin ??= pwaOrigin(config.pwaOrigin)!;
   } catch {
-    throw new Error(`PERCH_PWA_ORIGIN in agent.env must be the http(s) origin phones open the app at (got ${config.pwaOrigin})`);
+    throw new Error(`TARFA_PWA_ORIGIN in agent.env must be the http(s) origin phones open the app at (got ${config.pwaOrigin})`);
   }
   if (config.phoneAddresses.length === 0) {
-    throw new Error('this machine has no PERCH_PHONE_ADDRESSES: run perch setup first (perch setup --help)');
+    throw new Error('this machine has no TARFA_PHONE_ADDRESSES: run tarfa setup first (tarfa setup --help)');
   }
   const bad = config.phoneAddresses.find((url) => !isMachineUrl(url));
-  if (bad) throw new Error(`PERCH_PHONE_ADDRESSES holds ${bad}, which a phone refuses: wss://<host>[:port][/<slug>] (run perch setup)`);
-  if (config.phoneAddresses.length > MAX_ADDRESSES) throw new Error(`PERCH_PHONE_ADDRESSES holds more than ${MAX_ADDRESSES} addresses`);
+  if (bad) throw new Error(`TARFA_PHONE_ADDRESSES holds ${bad}, which a phone refuses: wss://<host>[:port][/<slug>] (run tarfa setup)`);
+  if (config.phoneAddresses.length > MAX_ADDRESSES) throw new Error(`TARFA_PHONE_ADDRESSES holds more than ${MAX_ADDRESSES} addresses`);
   const link = await mintPairingLink(
     {
       keys: await loadOrCreateAgentKeys(config.agentKeyPath),
@@ -513,9 +515,9 @@ export class UsageError extends Error {
   readonly exitCode = 2;
 }
 
-export const SETUP_USAGE = `usage: perch setup --machine-id <id> --project-roots <dir,dir> [options]
+export const SETUP_USAGE = `usage: tarfa setup --machine-id <id> --project-roots <dir,dir> [options]
 
-Sets this machine up as a Perch agent, without prompting: deploy/agent.env (backed up first), the
+Sets this machine up as a Tarfa agent, without prompting: deploy/agent.env (backed up first), the
 agent key, a new device roster that admits pairing codes only (an existing one is kept), the service started at boot (systemd
 user unit with linger, or launchd), the Claude Code hooks, and optionally a Tailscale address for
 phones. Rerunning it with the same flags changes nothing. It refuses rather than replace anything
@@ -534,8 +536,8 @@ it did not make (an agent key, a token, another tailscale serve entry).
   --address <wss-url>           another address phones try, after the Tailscale one (repeatable,
                                 4 in all), e.g. a reverse proxy
   --pwa <origin>                where phones open the app (default https://tarfa.app; an existing
-                                PERCH_PWA_ORIGIN is kept unless this is given)
-  --token-enrolment on|off      let PERCH_TOKEN enrol phones (off by default on a new roster)
+                                TARFA_PWA_ORIGIN is kept unless this is given)
+  --token-enrolment on|off      let TARFA_TOKEN enrol phones (off by default on a new roster)
   --pair                        print a pairing link and QR code at the end
   --dry-run                     print the plan and the Tailscale checks; change nothing
 
@@ -555,12 +557,12 @@ on Funnel. Setup refuses to give phones an address while token enrolment is on, 
 --token-enrolment says which way. Run as another user (sudo -u), set XDG_RUNTIME_DIR=/run/user/<uid>.
 
 Example:
-  perch setup --machine-id dev --project-roots ~/workspace --tailscale funnel --slug me --pair`;
+  tarfa setup --machine-id dev --project-roots ~/workspace --tailscale funnel --slug me --pair`;
 
 async function setup(argv: string[], env: NodeJS.ProcessEnv, home: string, io: CliIo): Promise<string> {
   if (argv.includes('--help') || argv.includes('-h')) return SETUP_USAGE;
   const flags = parseSetupFlags(argv);
-  if ('error' in flags) throw new UsageError(`${flags.error}\n\n${SETUP_USAGE.split('\n')[0]}\n(perch setup --help for every option)`);
+  if ('error' in flags) throw new UsageError(`${flags.error}\n\n${SETUP_USAGE.split('\n')[0]}\n(tarfa setup --help for every option)`);
 
   const envPath = await locateAgentEnv(env);
   // The checkout the service runs: the one whose deploy/ holds agent.env.
@@ -569,7 +571,7 @@ async function setup(argv: string[], env: NodeJS.ProcessEnv, home: string, io: C
     if (err.code === 'ENOENT') return null;
     throw err;
   });
-  const config = loadConfig({ ...parseEnvFile(envText ?? ''), PERCH_MACHINE_ID: flags.machineId }, home);
+  const config = loadConfig({ ...withLegacyEnv(parseEnvFile(envText ?? '')), TARFA_MACHINE_ID: flags.machineId }, home);
   const fx = io.setup ?? {};
   const service = fx.service ?? serviceInstall({ repo, home, user: userInfo().username, uid: process.getuid?.() ?? 0 });
   const tailscale = fx.tailscale ?? tailscaleCli();
@@ -586,6 +588,8 @@ async function setup(argv: string[], env: NodeJS.ProcessEnv, home: string, io: C
     hasKey: await readFile(config.agentKeyPath).then(() => true, () => false),
     roster: hasRoster ? enrolmentMode(await devices.read()) : 'absent',
     hooksCurrent: await hooks.current(),
+    legacyService: await service.legacyInstalled(),
+    stateMoved: resolveStateDir(home) === joinPath(home, STATE_DIR),
     phonePortOwner: await owner(flags.phonePort),
     hooksPortOwner: await owner(config.port),
     tailscale: flags.tailscale === 'none' ? null : await tailscale.status(),
@@ -609,6 +613,11 @@ async function setup(argv: string[], env: NodeJS.ProcessEnv, home: string, io: C
         await devices.update((roster) => withEnrolmentMode(roster, mode));
       },
       installUnit: (text) => service.install(text),
+      stopLegacyService: () => service.stopLegacy(),
+      moveState: async () => {
+        await migrateStateDir(home);
+      },
+      removeLegacyService: () => service.removeLegacy(),
       installHooks: async () => {
         const { codex } = await hooks.install();
         if (codex) process.stderr.write(`${CODEX_NEXT_STEP}\n`);
@@ -626,7 +635,7 @@ async function setup(argv: string[], env: NodeJS.ProcessEnv, home: string, io: C
 
 function pairingInstructions(link: string): string {
   return [
-    'On the phone, in Perch: Settings → Scan QR code, then scan this. Or open the link below on the',
+    'On the phone, in Tarfa: Settings → Scan QR code, then scan this. Or open the link below on the',
     'phone (Android opens the installed app; on an iPhone copy it and use Settings → Paste pairing link).',
     '',
     // Half-height blocks: about 60 columns, where `term` needs twice that.
@@ -635,20 +644,20 @@ function pairingInstructions(link: string): string {
     '',
     // The phone asks before pairing and shows this fingerprint: they must match.
     `The phone will show machine key ${deviceFingerprint(parsePairingLink(link)!.agentKey)}; check it matches.`,
-    'It works once, for 10 minutes. `perch pair` makes another.',
+    'It works once, for 10 minutes. `tarfa pair` makes another.',
   ].join('\n');
 }
 
 const DEVICES_USAGE = [
-  'usage: perch devices [list | revoke <id|key> | forget <id|key> | enrolment on|off|closed]',
+  'usage: tarfa devices [list | revoke <id|key> | forget <id|key> | enrolment on|off|closed]',
   '  enrolment on      the token or a pairing code enrols a new phone',
-  '  enrolment off     only a pairing code from `perch pair` enrols one',
+  '  enrolment off     only a pairing code from `tarfa pair` enrols one',
   '  enrolment closed  no new phone can enrol',
 ].join('\n');
 
 const ENROLMENT_MODES: Record<EnrolmentMode, string> = {
   on: 'on (the token or a pairing code enrols a phone)',
-  off: 'off (only a pairing code from `perch pair` enrols a phone)',
+  off: 'off (only a pairing code from `tarfa pair` enrols a phone)',
   closed: 'closed (no new phone can enrol)',
 };
 
@@ -668,13 +677,13 @@ async function devices(store: FileDeviceStore, [action = 'list', arg]: string[])
         return result.roster;
       });
       const { device } = found;
-      if (!device) throw new Error(`no single device matches ${arg}; see perch devices, and name it by its full key if its id is shared`);
-      if (action === 'forget') return `forgot ${device.id} (${sanitizeDeviceName(device.name)}); it can enrol again (a \`perch pair\` code, or the token while enrolment is on)`;
+      if (!device) throw new Error(`no single device matches ${arg}; see tarfa devices, and name it by its full key if its id is shared`);
+      if (action === 'forget') return `forgot ${device.id} (${sanitizeDeviceName(device.name)}); it can enrol again (a \`tarfa pair\` code, or the token while enrolment is on)`;
       const lines = [`revoked ${device.id} (${sanitizeDeviceName(device.name)}); this key stays refused until forgotten`];
       // The lost phone may also hold the token, which can enrol a fresh key while enrolment is on.
       if (enrolmentMode(written) === 'on') {
         lines.push('enrolment is on: whoever holds the token can still enrol a new key.');
-        lines.push('Run `perch devices enrolment off`, or rotate the token, to stop that.');
+        lines.push('Run `tarfa devices enrolment off`, or rotate the token, to stop that.');
       }
       return lines.join('\n');
     }

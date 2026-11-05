@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ClientMessage } from '@perch/contracts';
+import type { ClientMessage } from '@tarfa/contracts';
 import { SessionChannels } from './session-channels';
 
 const batch = { events: [{ sess: 's', seq: 1, t: 1, kind: 'online', online: true, vis: 'visible' }] };

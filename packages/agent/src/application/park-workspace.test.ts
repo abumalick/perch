@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 import { parkWorkspace } from './park-workspace';
 import type { ParkedWorkspace } from '../ports/parked-store-port';
 
@@ -122,7 +122,7 @@ describe('parkWorkspace', () => {
   });
 
   // tmux-continuum restores sessions after a reboot but does not restore custom session
-  // options, so a continuum-revived workspace's `@perch_command` (and therefore
+  // options, so a continuum-revived workspace's `@tarfa_command` (and therefore
   // `workspace.command`) is empty even though it is a live Claude session.
   it('stores "claude" as the command when the command is empty but a session id is known', async () => {
     const { added, deps } = makeDeps();

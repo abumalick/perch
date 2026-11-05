@@ -18,8 +18,8 @@ export async function renameWorkspace(deps: RenameWorkspaceDeps, id: string, tit
   if (/\p{Cc}/u.test(name)) throw new Error('the title has a control character');
   if (name.length > TITLE_MAX) throw new Error(`the title is longer than ${TITLE_MAX} characters`);
   if (!(await deps.tmux.hasSession(id))) {
-    if (await deps.parked.get(id)) throw new Error(`${id} is parked: open it first (perch unpark ${id})`);
-    throw new Error(`no workspace ${id} (see perch ls)`);
+    if (await deps.parked.get(id)) throw new Error(`${id} is parked: open it first (tarfa unpark ${id})`);
+    throw new Error(`no workspace ${id} (see tarfa ls)`);
   }
   const locked = Boolean(deps.tmux.lockPaneTitle && (await deps.tmux.supportsTitleLock?.()));
   if (locked) await deps.tmux.lockPaneTitle!(id);

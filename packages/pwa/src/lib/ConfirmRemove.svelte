@@ -13,7 +13,7 @@
 <div class="panel" role="dialog" aria-modal="true" aria-labelledby="confirm-remove-title">
   <h2 id="confirm-remove-title">{msg().app.confirmRemove.title(name)}</h2>
   <p>{msg().app.confirmRemove.forgetsPrefix}<b>{name}</b>{msg().app.confirmRemove.forgetsSuffix}</p>
-  <p>{msg().app.confirmRemove.getBackPrefix}<code>perch pair</code>{msg().app.confirmRemove.getBackSuffix}</p>
+  <p>{msg().app.confirmRemove.getBackPrefix}<code>tarfa pair</code>{msg().app.confirmRemove.getBackSuffix}</p>
   <div class="buttons">
     <button type="button" class="cancel" bind:this={cancel} onclick={onCancel}>{msg().app.confirmRemove.cancel}</button>
     <button type="button" class="remove" aria-label={msg().app.confirmRemove.removeLabel(name)} onclick={onConfirm}>{msg().app.confirmRemove.remove}</button>

@@ -54,16 +54,16 @@ describe('PiInboxDelivery', () => {
     expect(received).toBe(JSON.stringify({ v: 1, text }));
   });
 
-  it('reports a missing socket as Pi without the Perch inbox', async () => {
-    expect(await new PiInboxDelivery(dir).deliver(target, 'hi')).toEqual({ ok: false, reason: 'Pi without the Perch inbox' });
+  it('reports a missing socket as Pi without the Tarfa inbox', async () => {
+    expect(await new PiInboxDelivery(dir).deliver(target, 'hi')).toEqual({ ok: false, reason: 'Pi without the Tarfa inbox' });
   });
 
-  it('reports a stale socket file nobody listens on as Pi without the Perch inbox', async () => {
+  it('reports a stale socket file nobody listens on as Pi without the Tarfa inbox', async () => {
     await listen('perch-c', () => {});
     await new Promise<void>((done) => server!.close(() => done()));
     server = undefined;
     await writeFile(join(dir, 'perch-c.sock'), '');
-    expect(await new PiInboxDelivery(dir).deliver(target, 'hi')).toEqual({ ok: false, reason: 'Pi without the Perch inbox' });
+    expect(await new PiInboxDelivery(dir).deliver(target, 'hi')).toEqual({ ok: false, reason: 'Pi without the Tarfa inbox' });
   });
 
   it('passes the inbox refusal through', async () => {

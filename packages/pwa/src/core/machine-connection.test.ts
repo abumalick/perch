@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { ADDRESS_OPEN_MS, MachineConnection, type ConnectionDiagnostic } from './machine-connection';
-import { REFUSAL } from '@perch/secure-channel';
+import { REFUSAL } from '@tarfa/secure-channel';
 import type { CloseInfo, Socket } from './ports/socket';
-import type { AgentMessage } from '@perch/contracts';
+import type { AgentMessage } from '@tarfa/contracts';
 import type { RefusalContext } from './refusal';
 
 function fakeSocket() {
@@ -175,7 +175,7 @@ describe('MachineConnection refusals', () => {
     h.conn.connect();
     h.sockets[0]!.fireClose({ code: 4403, reason: 'pairing code expired' });
     expect(h.diagnostics).toEqual([
-      { message: 'This pairing code has expired — run `perch pair` on dev box for a new one', code: 4403, at: 1000, refused: true, final: true },
+      { message: 'This pairing code has expired — run `tarfa pair` on dev box for a new one', code: 4403, at: 1000, refused: true, final: true },
     ]);
     expect(h.statuses.at(-1)).toBe('offline');
     expect(h.scheduled).toEqual([]);

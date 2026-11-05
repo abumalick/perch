@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { SettingsStore, isConnectable } from './settings-store';
 import { DEFAULT_PRESETS } from './dictation-presets';
 import type { StoragePort } from './ports/storage';
-import { generateAgentKeys } from '@perch/secure-channel';
+import { generateAgentKeys } from '@tarfa/secure-channel';
 
 const agentKey = generateAgentKeys().x25519.publicKey;
 
@@ -290,9 +290,9 @@ describe('SettingsStore', () => {
     const storage = memStorage();
     const store = new SettingsStore(storage);
     store.setFolderHidden(['acme']);
-    store.setFolderFilter(['perch']);
+    store.setFolderFilter(['tarfa']);
     expect(store.folderHidden()).toEqual(['acme']);
-    expect(store.folderFilter()).toEqual(['perch']);
+    expect(store.folderFilter()).toEqual(['tarfa']);
   });
 
   it('defaults the filter mode to show-only', () => {

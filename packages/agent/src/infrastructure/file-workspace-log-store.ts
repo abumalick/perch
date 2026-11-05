@@ -2,7 +2,7 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { WorkspaceLogEntry, WorkspaceLogPort } from '../ports/workspace-log-port';
 
-// Appends closed-workspace records to a JSONL file (default ~/.perch/workspace-log.jsonl),
+// Appends closed-workspace records to a JSONL file (default ~/.tarfa/workspace-log.jsonl),
 // one self-contained record per line. Append-only, no rotation — matches client-log.jsonl.
 export class FileWorkspaceLogStore implements WorkspaceLogPort {
   constructor(private readonly filePath: string) {}

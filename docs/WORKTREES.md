@@ -11,9 +11,9 @@ Almost everything already binds an ephemeral port, so parallel worktrees are saf
 - **Unit / integration tests** (`pnpm -r test`): the agent's `ws-server` tests and the
   PWA's `e2e/fake-agent.ts` bind `port: 0` — the OS hands out a free port that the test
   reads back. Run them in as many worktrees at once as you like, no coordination needed.
-- **Vite dev server** (`pnpm --filter @perch/pwa dev`): defaults to 5173 and
+- **Vite dev server** (`pnpm --filter @tarfa/pwa dev`): defaults to 5173 and
   auto-increments to the next free port when one is taken.
-- **Playwright e2e** (`pnpm --filter @perch/pwa e2e`): the **only** fixed port. The
+- **Playwright e2e** (`pnpm --filter @tarfa/pwa e2e`): the **only** fixed port. The
   config runs `vite preview --port ${E2E_PORT:-4173} --strictPort`, so two checkouts both
   defaulting to 4173 collide. Assign each its own `E2E_PORT`.
 
@@ -37,7 +37,7 @@ Almost everything already binds an ephemeral port, so parallel worktrees are saf
 Pass it on the command line (or export it once per shell in that worktree):
 
 ```sh
-E2E_PORT=4175 pnpm --filter @perch/pwa e2e
+E2E_PORT=4175 pnpm --filter @tarfa/pwa e2e
 ```
 
 ## Recipe
@@ -53,8 +53,8 @@ pnpm install                       # node_modules is per-worktree (not committed
 pnpm -s test                       # safe to run in parallel with other worktrees
 
 # e2e: vite preview serves dist/, which is gitignored, so build first
-pnpm --filter @perch/pwa build
-E2E_PORT=4175 pnpm --filter @perch/pwa e2e   # use this worktree's assigned port
+pnpm --filter @tarfa/pwa build
+E2E_PORT=4175 pnpm --filter @tarfa/pwa e2e   # use this worktree's assigned port
 ```
 
 Notes:
@@ -83,9 +83,9 @@ pnpm serve:restore                      # point back at main's build
 ```
 
 `run-pwa.sh` serves a `deploy/pwa-live` symlink (gitignored); `serve:build` rebuilds the
-worktree's PWA with `PERCH_BUILD_LABEL=<slug>` and flips the symlink at it. While a test
+worktree's PWA with `TARFA_BUILD_LABEL=<slug>` and flips the symlink at it. While a test
 build is live, the home header shows the slug as a badge (production `main` shows none), so
-you always know what the device is serving. Restarting the `perch-pwa` service does **not**
+you always know what the device is serving. Restarting the `tarfa-pwa` service does **not**
 restore main: on start `run-pwa.sh` runs `serve-build.sh --ensure`, which re-points the
 symlink at main only when it is absent or dangling, so an active worktree deploy survives a
 restart. Run `serve:restore` to flip back.
@@ -105,12 +105,12 @@ pnpm serve:agent-restore                # run main's agent again
 `run-agent.sh` runs the agent from a `deploy/agent-live` symlink (gitignored) when it
 resolves, else from main; secrets are always sourced from main's `deploy/agent.env`, so the
 worktree needs no `agent.env` of its own. `serve:agent` flips the symlink at the worktree and
-restarts the service (`systemctl --user restart perch-agent`, or `launchctl kickstart` on
+restarts the service (`systemctl --user restart tarfa-agent`, or `launchctl kickstart` on
 macOS). The restart is safe: `KillMode=process` keeps the tmux server and its sessions alive
 (the agent re-discovers them via `tmux list-sessions`), each session keeps its status (it is
-stored in `~/.perch/status.json`), and the PWA briefly reconnects.
+stored in `~/.tarfa/status.json`), and the PWA briefly reconnects.
 The worktree must have its deps installed (`pnpm install`) since the agent runs from its
-source. Restarting the `perch-agent` service does **not** restore main on its own (same as
+source. Restarting the `tarfa-agent` service does **not** restore main on its own (same as
 the PWA) — the symlink persists across restarts; run `serve:agent-restore` (or
 `worktree:remove`, below) to flip back.
 
@@ -151,7 +151,7 @@ What they do:
   — the phone auto-updates) and committing in a feature worktree rebuilds *that*
   worktree's `dist` without touching the live deploy. `post-merge` covers merges
   (including fast-forwards, which create no commit), so merging a worktree into `main`
-  rebuilds main. Skip a build with `PERCH_NO_BUILD=1 git commit …`.
+  rebuilds main. Skip a build with `TARFA_NO_BUILD=1 git commit …`.
 
 A feature-worktree build only produces that worktree's `dist`; it does **not** repoint
 the live deploy. To actually serve it on the phone, still use `pnpm serve:build` (above).
@@ -174,5 +174,5 @@ commit them or use `git worktree remove --force` yourself to discard.
 
 If a worktree build ever does get removed out-of-band (raw `git worktree remove`, a
 deleted directory), `pnpm serve:heal` restores main whenever the live symlink dangles;
-restarting the `perch-pwa` service does the same (on start it re-points a dangling or missing
+restarting the `tarfa-pwa` service does the same (on start it re-points a dangling or missing
 symlink at main, and leaves a healthy one alone).

@@ -1,4 +1,4 @@
-import type { ClientLogBatch } from '@perch/contracts';
+import type { ClientLogBatch } from '@tarfa/contracts';
 import type { ConnectionLog } from './connection-log';
 
 // Delivers one batch to the agent; resolves true only once the agent has stored it. Never

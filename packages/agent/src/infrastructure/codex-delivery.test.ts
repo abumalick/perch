@@ -37,7 +37,7 @@ describe('CodexDelivery', () => {
     const { delivery } = fake();
     expect(await delivery.deliver({ ...target, codexThread: undefined }, 'hi')).toEqual({
       ok: false,
-      reason: 'no Codex thread recorded for perch-c (only perch spawn --cli codex workspaces take messages)',
+      reason: 'no Codex thread recorded for perch-c (only tarfa spawn --cli codex workspaces take messages)',
     });
   });
 

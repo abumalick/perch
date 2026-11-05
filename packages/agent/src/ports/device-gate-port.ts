@@ -1,4 +1,4 @@
-import type { Refusal } from '@perch/secure-channel';
+import type { Refusal } from '@tarfa/secure-channel';
 import type { DeviceStanding, EnrolmentMode } from '../application/device-roster';
 
 // `fresh`: spent just now, rather than presented again by the device that spent it.

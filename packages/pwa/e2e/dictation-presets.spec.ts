@@ -15,7 +15,7 @@ test.use({ viewport: { width: 390, height: 844 } });
 async function openTerminal(page: Page) {
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 }
 
 function mic(page: Page) {

@@ -77,11 +77,11 @@ describe('NodePtyAdapter (real node-pty + tmux)', () => {
 
   // The attach client's environment reaches the session through tmux's update-environment, and
   // whatever the pty runs inherits it: the agent's secrets stay behind.
-  it('spawns without the agent\'s PERCH_ variables', async () => {
-    const saved = process.env.PERCH_TOKEN;
-    process.env.PERCH_TOKEN = 'leaked-token';
+  it('spawns without the agent\'s TARFA_ variables', async () => {
+    const saved = process.env.TARFA_TOKEN;
+    process.env.TARFA_TOKEN = 'leaked-token';
     try {
-      openSession = new NodePtyAdapter().spawn({ command: 'sh', args: ['-c', 'echo "token=[${PERCH_TOKEN:-none}]"'], cols: 80, rows: 24 });
+      openSession = new NodePtyAdapter().spawn({ command: 'sh', args: ['-c', 'echo "token=[${TARFA_TOKEN:-none}]"'], cols: 80, rows: 24 });
       const output = await new Promise<string>((resolve) => {
         let buf = '';
         openSession!.onData((d) => {
@@ -92,8 +92,8 @@ describe('NodePtyAdapter (real node-pty + tmux)', () => {
       });
       expect(output).toContain('token=[none]');
     } finally {
-      if (saved === undefined) delete process.env.PERCH_TOKEN;
-      else process.env.PERCH_TOKEN = saved;
+      if (saved === undefined) delete process.env.TARFA_TOKEN;
+      else process.env.TARFA_TOKEN = saved;
     }
   });
 });

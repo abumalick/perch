@@ -10,7 +10,7 @@ const exec = promisify(execFile);
 // The agent.env the service reads: the main checkout's (deploy/run-agent.sh sources it from
 // there even when a worktree is being served), wherever this CLI runs from.
 export async function locateAgentEnv(env: NodeJS.ProcessEnv): Promise<string> {
-  if (env.PERCH_AGENT_ENV) return env.PERCH_AGENT_ENV;
+  if (env.TARFA_AGENT_ENV) return env.TARFA_AGENT_ENV;
   const here = dirname(fileURLToPath(import.meta.url));
   try {
     const { stdout } = await exec('git', ['-C', here, 'rev-parse', '--path-format=absolute', '--git-common-dir']);
@@ -28,7 +28,7 @@ export function agentEnvFile(path: string, now: () => Date = () => new Date()): 
         return await readFile(path, 'utf8');
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-          throw new Error(`no agent config at ${path}: set the agent up first (docs/DEPLOY.md), or set PERCH_AGENT_ENV`);
+          throw new Error(`no agent config at ${path}: set the agent up first (docs/DEPLOY.md), or set TARFA_AGENT_ENV`);
         }
         throw err;
       }

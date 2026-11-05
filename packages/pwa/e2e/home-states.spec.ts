@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { generateAgentKeys } from '@perch/secure-channel';
+import { generateAgentKeys } from '@tarfa/secure-channel';
 
 // These cover the home screen when there are no workspaces to show, for reasons other than
 // "a machine is online but empty": no machines configured, and machines that can't be reached

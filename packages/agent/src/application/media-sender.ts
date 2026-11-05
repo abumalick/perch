@@ -1,4 +1,4 @@
-import type { AgentMessage, MediaResult } from '@perch/contracts';
+import type { AgentMessage, MediaResult } from '@tarfa/contracts';
 import type { ReadServableFileResult } from './read-servable-file';
 
 // One chunk stays inside a single Noise frame once base64'd into its JSON message (a frame

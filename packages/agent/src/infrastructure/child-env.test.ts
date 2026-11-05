@@ -2,12 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { childEnv } from './child-env';
 
 describe('childEnv', () => {
-  it('drops every PERCH_ variable and keeps the rest', () => {
+  it('drops every TARFA_ and PERCH_ variable and keeps the rest', () => {
     const env = childEnv({
-      PERCH_TOKEN: 'secret',
-      PERCH_JOIN_KEY: 'join',
-      PERCH_ADMIN_KEY: 'admin',
-      PERCH_PHONE_ADDRESSES: 'wss://box.example.ts.net',
+      TARFA_TOKEN: 'secret',
+      PERCH_TOKEN: 'legacy',
+      TARFA_PHONE_ADDRESSES: 'wss://box.example.ts.net',
       HOME: '/home/u',
       PATH: '/bin',
       LANG: 'C.UTF-8',
@@ -16,8 +15,8 @@ describe('childEnv', () => {
   });
 
   it('does not change the environment it is given', () => {
-    const source = { PERCH_TOKEN: 'secret', HOME: '/home/u' };
+    const source = { TARFA_TOKEN: 'secret', HOME: '/home/u' };
     childEnv(source);
-    expect(source.PERCH_TOKEN).toBe('secret');
+    expect(source.TARFA_TOKEN).toBe('secret');
   });
 });

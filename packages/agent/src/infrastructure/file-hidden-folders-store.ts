@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import type { HiddenFoldersPort } from '../ports/hidden-folders-port';
 
-// Reads a JSON array of folder names from a file (default ~/.perch/hidden-folders.json).
+// Reads a JSON array of folder names from a file (default ~/.tarfa/hidden-folders.json).
 // A missing or unreadable/malformed file yields an empty list, so filtering is opt-in by
 // simply creating the file — and a bad file can never break workspace listing.
 export class FileHiddenFoldersStore implements HiddenFoldersPort {

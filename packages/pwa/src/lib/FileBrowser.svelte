@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { PerchStore } from '../store.svelte';
+  import type { TarfaStore } from '../store.svelte';
   import { basename, parent } from '../core/browse-path';
   import { msg } from '../i18n.svelte';
 
-  let { store }: { store: PerchStore } = $props();
+  let { store }: { store: TarfaStore } = $props();
 
   let entries = $derived(store.dirEntries);
   let atRoot = $derived(!!entries && entries.path === store.browserRoot);

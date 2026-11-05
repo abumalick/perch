@@ -23,7 +23,7 @@ test('a .pdf the agent answers as text/html is refused, and its script never run
   await seedMachine(page, agent);
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await openWorkspaceMenu(page);
   await page.getByRole('button', { name: /files/i }).click();

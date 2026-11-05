@@ -2,7 +2,7 @@
 // "previous" and end-of-track auto-advance follow the natural track order (track2 before
 // track10). Pure; the folder's file list (dirEntries.files) is already in memory when the
 // viewer is open. Reuses the generic `neighbor`/`position` from image-nav.
-import { audioMediaType } from '@perch/contracts';
+import { audioMediaType } from '@tarfa/contracts';
 import { basename } from './browse-path';
 
 export function audioFiles(files: string[]): string[] {

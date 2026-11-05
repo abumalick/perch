@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { generateAgentKeys, type AgentKeys } from '@perch/secure-channel';
+import { generateAgentKeys, type AgentKeys } from '@tarfa/secure-channel';
 
-// The agent's identity (~/.perch/relay-key.json, named when relays existed), private keys
+// The agent's identity (~/.tarfa/agent-key.json), private keys
 // included: protected like deploy/agent.env. Created on first use; never overwritten, since
 // replacing it breaks every phone that pinned the old key.
 export async function loadOrCreateAgentKeys(path: string): Promise<AgentKeys> {

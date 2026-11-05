@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { webcrypto } from 'node:crypto';
 import { ed25519 } from '@noble/curves/ed25519.js';
-import { IkInitiator, IkResponder, b64url, generateAgentKeys } from '@perch/secure-channel';
+import { IkInitiator, IkResponder, b64url, generateAgentKeys } from '@tarfa/secure-channel';
 import { DeviceKeyError, UnreadableDeviceKeyError } from '../core/ports/device-identity';
 import {
   indexedDbIdentityStore,

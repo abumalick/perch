@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createConnectionLog, type ConnectionLog } from './connection-log';
-import type { ClientLogBatch } from '@perch/contracts';
+import type { ClientLogBatch } from '@tarfa/contracts';
 import { flushConnectionLog } from './connection-log-flush';
 
 function makeLog(): ConnectionLog {

@@ -1,4 +1,4 @@
-import type { ClientLogBatch } from '@perch/contracts';
+import type { ClientLogBatch } from '@tarfa/contracts';
 
 export interface ClientLogPort {
   // Appends a client's flushed connection-log batch to durable storage. Each event becomes one

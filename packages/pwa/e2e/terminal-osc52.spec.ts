@@ -17,7 +17,7 @@ test('a program setting the clipboard is offered as a tap to copy', async ({ pag
   await seedMachine(page, agent);
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await page.evaluate(() => {
     const w = window as unknown as { __copied: string[] };

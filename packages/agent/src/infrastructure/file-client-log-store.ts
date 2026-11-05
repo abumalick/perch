@@ -1,9 +1,9 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { ClientLogBatch } from '@perch/contracts';
+import type { ClientLogBatch } from '@tarfa/contracts';
 import type { ClientLogPort } from '../ports/client-log-port';
 
-// Appends client connection-log batches to a JSONL file (default ~/.perch/client-log.jsonl),
+// Appends client connection-log batches to a JSONL file (default ~/.tarfa/client-log.jsonl),
 // one self-contained record per event: the event fields plus the batch's ua/shell and a server
 // receive time (`rt`). Append-only — read/dedup (by sess,seq) happens offline at analysis time.
 export class FileClientLogStore implements ClientLogPort {

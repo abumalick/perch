@@ -23,7 +23,7 @@ agent after recovery, so the drops can be analysed offline from a file on the bo
 - Events survive a full app kill (not just backgrounding).
 - After a machine reconnects, its buffered events (plus app-global visibility/online
   transitions) are POSTed to that machine's agent and appended to
-  `~/.perch/client-log.jsonl`.
+  `~/.tarfa/client-log.jsonl`.
 - The whole core is unit-tested with fakes; adapters are thin.
 
 ## Non-goals (YAGNI)
@@ -123,7 +123,7 @@ Pure, DOM-free, injected clock/env/store.
 ## Client adapters — `packages/pwa/src/adapters`
 
 - **`local-storage-log-store.ts`** — `LocalStorageLogStore` reads/writes the
-  `PersistedLogState` JSON under `perch.connlog`. Synchronous → survives iOS killing the
+  `PersistedLogState` JSON under `tarfa.connlog`. Synchronous → survives iOS killing the
   PWA. Malformed/absent → `null` (fresh start). A quota/serialize failure is swallowed
   (logging must never break the app).
 - Real `fetch` is passed straight through (a `typeof fetch` param) — no bespoke adapter.
@@ -147,9 +147,9 @@ Pure, DOM-free, injected clock/env/store.
 - **`ports/client-log-port.ts`** — `{ append(batch: ClientLogBatch): Promise<void> }`.
 - **`infrastructure/file-client-log-store.ts`** — `FileClientLogStore` implements `append`
   by `appendFile`ing one JSON line per event (each event merged with the batch's `ua`/`shell`
-  + a server `rt` receive-timestamp) to `clientLogPath`. `mkdir -p` the `.perch` dir first,
+  + a server `rt` receive-timestamp) to `clientLogPath`. `mkdir -p` the `.tarfa` dir first,
   like the other file stores.
-- **`infrastructure/config.ts`** — add `clientLogPath = ~/.perch/client-log.jsonl`.
+- **`infrastructure/config.ts`** — add `clientLogPath = ~/.tarfa/client-log.jsonl`.
 - **`server/ws-server.ts` `handleHttp`** — add:
   - `OPTIONS /clientlog` → 204 with CORS headers (ACAO:\*, `POST, OPTIONS`,
     `authorization, content-type`).
@@ -180,14 +180,14 @@ Pure, DOM-free, injected clock/env/store.
 ## Deploy / rollout
 
 New agent endpoint → each agent must be rebuilt + restarted (`pnpm serve:agent
-.worktrees/<feature>` to test before merge, or restart `perch-agent.service` after it). Until the
+.worktrees/<feature>` to test before merge, or restart `tarfa-agent.service` after it). Until the
 agent has the endpoint, the client's flush just gets a non-2xx and keeps the events
 buffered — **no data lost**, it drains once the new agent is live. The PWA change is
 backward-safe against an old agent (buffers, retries).
 
 ## Reading the log
 
-`~/.perch/client-log.jsonl` on each agent machine — one JSON event per line. Dedup by
+`~/.tarfa/client-log.jsonl` on each agent machine — one JSON event per line. Dedup by
 `(sess, seq)` at read (a global event may appear once per machine it was flushed to).
 Analysed on the box on demand (grep/jq); no UI.
 

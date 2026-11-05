@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Perch PreToolUse guard for Claude Code and Codex: refuse Bash commands that kill processes by
+# Tarfa PreToolUse guard for Claude Code and Codex: refuse Bash commands that kill processes by
 # name or en masse from inside a workspace, and the plain commands that would post into another
-# session's message socket or set the tmux options Perch reads a workspace's orchestrator and
+# session's message socket or set the tmux options Tarfa reads a workspace's orchestrator and
 # Codex thread from (docs/MESSAGING.md).
 #
 # The tmux server, the agent and every workspace's CLI run as the same user, so a pattern kill
@@ -29,12 +29,12 @@ cmd=${cmd//\\\"/\"}
 cmd=${cmd//$'\x01'/\\}
 
 deny() {
-  printf 'Blocked by Perch: %s The tmux server, the Perch agent and every other workspace run as this same user, so a kill by name or en masse can end all of them at once. Look first with `pgrep -af <pattern>`, then `kill <pid>` the explicit pids that belong to this task.\n' "$1" >&2
+  printf 'Blocked by Tarfa: %s The tmux server, the Tarfa agent and every other workspace run as this same user, so a kill by name or en masse can end all of them at once. Look first with `pgrep -af <pattern>`, then `kill <pid>` the explicit pids that belong to this task.\n' "$1" >&2
   exit 2
 }
 
 refuse() {
-  printf 'Blocked by Perch: %s Every workspace runs as this same user, so a receiving session cannot tell such a message from a real one. Message a workspace with `perch send <id> "…"` and start a child with `perch spawn --child`.\n' "$1" >&2
+  printf 'Blocked by Tarfa: %s Every workspace runs as this same user, so a receiving session cannot tell such a message from a real one. Message a workspace with `tarfa send <id> "…"` and start a child with `tarfa spawn --child`.\n' "$1" >&2
   exit 2
 }
 
@@ -45,11 +45,11 @@ kill_others_re="[[:space:]]kill-session([[:space:]].*)?[[:space:]]-a$word_end"
 shell_c_re='^([^[:space:]]*/)?(ba|z|da)?sh([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-[a-zA-Z]*c[[:space:]]+'
 has_socket_flag() { [[ $1 =~ (^|[[:space:]])-[A-Za-z]*[SL]([[:space:]]|[^[:space:]]|$) ]]; }
 
-# Another session's message socket: Claude Code's, the Perch inbox Pi reads, the Codex app server.
-inbox_re='(cc-socks/|\.perch/inbox/|app-server-control/)'
+# Another session's message socket: Claude Code's, the Tarfa inbox Pi reads, the Codex app server.
+inbox_re='(cc-socks/|\.(tarfa|perch)/inbox/|app-server-control/)'
 # tmux takes `set`, `setw` and any prefix of `set-option` or `set-window-option`; a window option
-# answers `#{@perch_parent}` as well as a session option does.
-reparent_re='[[:space:]](set|setw|set-o[a-z]*|set-w[a-z-]*)[[:space:]].*@perch_(parent|codex_thread)([^[:alnum:]_]|$)'
+# answers `#{@tarfa_parent}` as well as a session option does.
+reparent_re='[[:space:]](set|setw|set-o[a-z]*|set-w[a-z-]*)[[:space:]].*@(tarfa|perch)_(parent|codex_thread)([^[:alnum:]_]|$)'
 
 # A pid list computed from a name is a kill by name.
 pgrep_kill_re='(^|[^[:alnum:]_-])kill[[:space:]][^;&|]*(\$\(|`)[[:space:]]*(pgrep|pidof)([[:space:]]|$)'
@@ -133,11 +133,11 @@ while IFS= read -r seg; do
       done
       ;;
     nc | nc.* | ncat | netcat | socat | curl | websocat)
-      [[ $s =~ $inbox_re ]] && refuse "$word would write to another session's message socket directly, past the header and sender check that perch send puts on every message."
+      [[ $s =~ $inbox_re ]] && refuse "$word would write to another session's message socket directly, past the header and sender check that tarfa send puts on every message."
       ;;
     tmux)
       has_socket_flag "$s" && continue
-      [[ $s =~ $reparent_re ]] && refuse 'Setting @perch_parent or @perch_codex_thread by hand changes which workspace the agent treats as an orchestrator or a Codex thread, so messages would carry authority nobody granted.'
+      [[ $s =~ $reparent_re ]] && refuse 'Setting @tarfa_parent or @tarfa_codex_thread by hand changes which workspace the agent treats as an orchestrator or a Codex thread, so messages would carry authority nobody granted.'
       [[ $s =~ $kill_server_re ]] && deny 'tmux kill-server without -S/-L ends the shared tmux server every workspace runs in.'
       [[ $s =~ $kill_others_re ]] && deny 'tmux kill-session -a kills every other workspace; kill one by its exact name with -t '\''=<name>'\''.'
       ;;

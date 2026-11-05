@@ -1,4 +1,4 @@
-import type { MachineStats } from '@perch/contracts';
+import type { MachineStats } from '@tarfa/contracts';
 
 const GIB = 1024 ** 3;
 const MIB = 1024 ** 2;

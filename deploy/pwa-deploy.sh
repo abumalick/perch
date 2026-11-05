@@ -76,13 +76,13 @@ build_id="$(git -C "$root" rev-parse --short=12 HEAD)-$(date +%s)"
 label=main
 [ "$dev" = 1 ] && label=tarfa-dev
 assets=()
-build=(pnpm --filter @perch/pwa build)
+build=(pnpm --filter @tarfa/pwa build)
 if [ "$production" = 0 ]; then
   out="$root/.tmp/pwa-deploy-dist"
   assets=(--assets "$out")
   build+=(--outDir "$out" --emptyOutDir)
 fi
-(cd "$root" && PERCH_BUILD_LABEL="$label" PERCH_BUILD_ID="$build_id" "${build[@]}")
+(cd "$root" && TARFA_BUILD_LABEL="$label" TARFA_BUILD_ID="$build_id" "${build[@]}")
 
 cd "$pwa"
 if [ "$dev" = 1 ]; then

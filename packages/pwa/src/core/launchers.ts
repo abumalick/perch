@@ -29,7 +29,7 @@ const BUILTINS: Builtin[] = [
     id: 'codex',
     label: 'Codex',
     // Codex's shared daemon runs hooks outside the workspace's pane, where they cannot tell
-    // which workspace they belong to, so Perch statuses only work without it.
+    // which workspace they belong to, so Tarfa statuses only work without it.
     base: 'codex --no-daemon',
     models: [
       { value: 'gpt-6.1-sol', label: 'gpt-6.1-sol' },

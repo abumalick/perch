@@ -58,7 +58,7 @@ async function ghOwnerType(owner: string): Promise<'user' | 'org' | undefined> {
 async function httpOwnerType(owner: string): Promise<'user' | 'org' | undefined> {
   try {
     const res = await fetch(`https://api.github.com/users/${encodeURIComponent(owner)}`, {
-      headers: { accept: 'application/vnd.github+json', 'user-agent': 'perch-agent' },
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'tarfa-agent' },
       signal: AbortSignal.timeout(2500),
     });
     if (!res.ok) return undefined;

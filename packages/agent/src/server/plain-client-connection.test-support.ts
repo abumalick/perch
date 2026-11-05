@@ -1,5 +1,5 @@
 import type { WebSocket } from 'ws';
-import type { AgentMessage } from '@perch/contracts';
+import type { AgentMessage } from '@tarfa/contracts';
 import type { ClientConnection } from '../ports/client-connection';
 
 // Test support only: a client in plaintext JSON, to exercise what WsServer does with a client

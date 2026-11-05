@@ -34,7 +34,7 @@ import { connectBrowserUpstream } from '../infrastructure/ws-browser-stream-sock
 import { wsFrameSocket } from '../infrastructure/ws-frame-socket';
 import type { HookEventEntry } from '../ports/hook-event-log-port';
 import type { MessageLogEntry } from '../ports/message-log-port';
-import type { AgentMessage } from '@perch/contracts';
+import type { AgentMessage } from '@tarfa/contracts';
 import {
   SecureSession,
   IkInitiator,
@@ -47,7 +47,7 @@ import {
   readHandshakeFrame,
   type DeviceKeys,
   type TransportPair,
-} from '@perch/secure-channel';
+} from '@tarfa/secure-channel';
 import { FileDeviceStore } from '../infrastructure/file-device-store';
 import { RosterDevices } from '../application/device-gate';
 import { FilePairingStore } from '../infrastructure/file-pairing-store';
@@ -175,6 +175,7 @@ const LOADED_WAIT = { timeout: 15_000 };
 
 function testConfig(home: string, overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
+    stateDir: home,
     machineId: 'test',
     token: 'secret',
     port: 0,
@@ -193,7 +194,7 @@ function testConfig(home: string, overrides: Partial<AgentConfig> = {}): AgentCo
     workspaceLogPath: join(home, 'workspace-log.jsonl'),
     parkedStorePath: join(home, 'parked.json'),
     liveSnapshotPath: join(home, 'live.json'),
-    agentKeyPath: join(home, 'relay-key.json'),
+    agentKeyPath: join(home, 'agent-key.json'),
     devicesPath: join(home, 'devices.json'),
     pairingPath: join(home, 'pairing.json'),
     claudeSessionsDir: join(home, 'claude-sessions'),
@@ -203,7 +204,7 @@ function testConfig(home: string, overrides: Partial<AgentConfig> = {}): AgentCo
   };
 }
 
-// The hooks-only secret the agent writes for perch-hook.sh; deliberately not PERCH_TOKEN.
+// The hooks-only secret the agent writes for tarfa-hook.sh; deliberately not TARFA_TOKEN.
 const HOOK_TOKEN = 'hook-secret';
 
 function makeServerDeps(config: AgentConfig, clientLog: ClientLogPort) {
@@ -444,7 +445,7 @@ describe('WsServer (E2E, real tmux)', () => {
   });
 
   it('delivers a hook-driven workspaceUpdated to a connected client', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'perch-hook-'));
+    const home = await mkdtemp(join(tmpdir(), 'tarfa-hook-'));
     dirs.push(home);
     const config = testConfig(home);
     server = new WsServer({
@@ -1019,7 +1020,7 @@ describe('WsServer (E2E, real tmux)', () => {
     ]);
   });
 
-  // `perch unpark` asks the running agent: it owns status.json in memory and writes parked.json,
+  // `tarfa unpark` asks the running agent: it owns status.json in memory and writes parked.json,
   // so a CLI writing either itself would race it.
   it('unparks a workspace over POST /unpark, restoring its name', async () => {
     const home = await mkdtemp(join(tmpdir(), 'perch-unpark-'));
@@ -1049,7 +1050,7 @@ describe('WsServer (E2E, real tmux)', () => {
     expect(await res.json()).toEqual({ result: 'unparked' });
     expect(await deps.parked.get(name)).toBeUndefined();
     expect(deps.status.get(name)).toBe('idle');
-    const { stdout } = await exec('tmux', ['display-message', '-p', '-t', name, '#{pane_title}|#{@perch_parent}']);
+    const { stdout } = await exec('tmux', ['display-message', '-p', '-t', name, '#{pane_title}|#{@tarfa_parent}']);
     expect(stdout.trim()).toBe('✳ audit workflows #1077|perch-orch');
     expect(await (await post({ id: name })).json()).toEqual({ result: 'not-parked' });
   });
@@ -1088,7 +1089,7 @@ describe('WsServer (E2E, real tmux)', () => {
       body: JSON.stringify({ sessionName: 'perch-x', event: 'Stop' }),
     });
     expect(wrong.status).toBe(401);
-    // PERCH_TOKEN enrols phones; a hook leaking its secret must not leak that one, so it is no
+    // TARFA_TOKEN enrols phones; a hook leaking its secret must not leak that one, so it is no
     // hooks credential.
     const machineToken = await fetch(`http://127.0.0.1:${port}/hooks`, {
       method: 'POST',
@@ -1255,11 +1256,11 @@ describe('WsServer (E2E, real tmux)', () => {
 
     const name = `perch-${Date.now()}-park`;
     sessions.push(name);
-    // `@perch_command` mirrors what TmuxAdapter.createSession sets on a real workspace —
+    // `@tarfa_command` mirrors what TmuxAdapter.createSession sets on a real workspace —
     // FileParkedStore.list() drops any entry with an empty `command` field, so a parked
     // record for a session missing this option is silently unparseable.
     await exec('tmux', ['new-session', '-d', '-s', name, '-c', tmpdir(), 'sleep 300']);
-    await exec('tmux', ['set-option', '-t', name, '@perch_command', 'sleep 300']);
+    await exec('tmux', ['set-option', '-t', name, '@tarfa_command', 'sleep 300']);
 
     const socket = new WebSocket(await clientUrl());
     await new Promise((r) => socket.once('open', r));
@@ -1303,9 +1304,9 @@ describe('WsServer (E2E, real tmux)', () => {
     });
   });
 
-  it('parks a continuum-restored session (no @perch_command) when a claude session id is known', async () => {
+  it('parks a continuum-restored session (no @tarfa_command) when a claude session id is known', async () => {
     // tmux-continuum restores sessions after a reboot but does not restore custom session
-    // options, so a continuum-revived workspace has an empty `@perch_command`/command even
+    // options, so a continuum-revived workspace has an empty `@tarfa_command`/command even
     // though it is a live, resumable Claude session (its id lives in the status store, set
     // by a prior hook event).
     const home = await mkdtemp(join(tmpdir(), 'perch-park-continuum-'));
@@ -1342,7 +1343,7 @@ describe('WsServer (E2E, real tmux)', () => {
 
     const name = `perch-${Date.now()}-continuum`;
     sessions.push(name);
-    // No `@perch_command` set — this is what a continuum-restored session looks like.
+    // No `@tarfa_command` set — this is what a continuum-restored session looks like.
     await exec('tmux', ['new-session', '-d', '-s', name, '-c', tmpdir(), 'sleep 300']);
     status.setClaudeSessionId(name, 'sess-continuum');
 
@@ -1372,7 +1373,7 @@ describe('WsServer (E2E, real tmux)', () => {
     });
   });
 
-  it('refuses to park a continuum-restored session (no @perch_command, no known session id), leaving it alive', async () => {
+  it('refuses to park a continuum-restored session (no @tarfa_command, no known session id), leaving it alive', async () => {
     const home = await mkdtemp(join(tmpdir(), 'perch-park-continuum-refused-'));
     dirs.push(home);
     const config = testConfig(home);
@@ -1406,7 +1407,7 @@ describe('WsServer (E2E, real tmux)', () => {
 
     const name = `perch-${Date.now()}-continuum-refused`;
     sessions.push(name);
-    // No `@perch_command`, and no session id was ever recorded either — nothing to restore.
+    // No `@tarfa_command`, and no session id was ever recorded either — nothing to restore.
     await exec('tmux', ['new-session', '-d', '-s', name, '-c', tmpdir(), 'sleep 300']);
 
     const socket = new WebSocket(await clientUrl());
@@ -1557,7 +1558,7 @@ describe('WsServer hooks route', () => {
   // The route must hand the hook's `agent` on: without it a Codex session id is recorded as a
   // Claude one, and the workspace becomes parkable with nothing `claude --resume` can open.
   it('records a Claude session id but not a Codex one', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'perch-hook-agent-'));
+    const home = await mkdtemp(join(tmpdir(), 'tarfa-hook-agent-'));
     dirs.push(home);
     const deps = makeServerDeps(testConfig(home), noClientLog);
     server = new WsServer(deps);
@@ -2047,7 +2048,7 @@ describe('WsServer browser-session cascade', () => {
 
     // Let the poller record the session as present before it disappears.
     await new Promise((r) => setTimeout(r, 200));
-    // The inner process exits → tmux destroys the session, no Perch `close` message is sent.
+    // The inner process exits → tmux destroys the session, no Tarfa `close` message is sent.
     await exec('tmux', ['kill-session', '-t', name]);
 
     // The disappearance poll must cascade-stop the workspace's sessions (but not a
@@ -2324,7 +2325,7 @@ describe('WsServer lost-workspace tracking', () => {
   });
 });
 
-// `perch send` asks the agent, which proves the caller runs inside the pane it names and holds
+// `tarfa send` asks the agent, which proves the caller runs inside the pane it names and holds
 // the marks the send sets.
 describe('WsServer POST /message', () => {
   const sockets: WebSocket[] = [];
@@ -2409,7 +2410,7 @@ describe('WsServer POST /message', () => {
     expect(logged).toMatchObject([{ from: 'perch-child-1', to: 'perch-orch-1', relation: 'child', outcome: 'delivered' }]);
     expect(await pushed).toMatchObject({ type: 'workspaceUpdated', workspace: { id: 'perch-child-1', waitingOn: 'parent' } });
 
-    // The Bash call that ran perch send ends, then the turn does: the child is still waiting.
+    // The Bash call that ran tarfa send ends, then the turn does: the child is still waiting.
     expect((await post('/hooks', { sessionName: 'perch-child-1', event: 'PostToolUse', claude: { tool_name: 'Bash' } })).status).toBe(204);
     expect((await post('/hooks', { sessionName: 'perch-child-1', event: 'Stop', claude: {} })).status).toBe(204);
     expect(status.get('perch-child-1')).toBe('working');
@@ -2433,7 +2434,7 @@ describe('WsServer POST /message', () => {
     const { status, delivered, post } = await messagingServer(false);
     const res = await post('/message', send);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ result: 'refused', reason: 'not run from a Perch workspace' });
+    expect(await res.json()).toEqual({ result: 'refused', reason: 'not run from a Tarfa workspace' });
     expect(delivered).toEqual([]);
     expect(status.getMessagedLast('perch-child-1')).toBe(false);
   });

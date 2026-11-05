@@ -1,6 +1,6 @@
 import { exactTarget } from '../infrastructure/tmux-adapter';
-import { REFUSAL, constantTimeEqual } from '@perch/secure-channel';
-import { parseClientMessage, isWorkspaceStatus, type BrowserSession, type ClientMessage, type Workspace, type MachineStats } from '@perch/contracts';
+import { REFUSAL, constantTimeEqual } from '@tarfa/secure-channel';
+import { parseClientMessage, isWorkspaceStatus, type BrowserSession, type ClientMessage, type Workspace, type MachineStats } from '@tarfa/contracts';
 import type { ClientConnection } from '../ports/client-connection';
 import type { PtyPort, PtySession } from '../ports/pty-port';
 import type { ViewerRegistry, Viewer } from './viewer-registry';
@@ -41,7 +41,7 @@ import { makeDir } from '../application/make-dir';
 import { readFile } from '../application/read-file';
 import { storePastedFile } from '../application/store-pasted-file';
 import type { ClaudeVoice, VoiceSession } from '../application/claude-voice';
-import { runsClaude } from '@perch/contracts';
+import { runsClaude } from '@tarfa/contracts';
 import type { FileWriterPort } from '../ports/file-writer-port';
 import type { ClientLogPort } from '../ports/client-log-port';
 import type { ConnectUpstream } from '../ports/browser-stream-port';
@@ -384,7 +384,7 @@ export class ConnectionHandler {
                 type: 'error',
                 code: 'not-restorable',
                 message:
-                  "Can't park yet: Perch hasn't seen a Claude session id for this workspace. Send it a message first, then park.",
+                  "Can't park yet: Tarfa hasn't seen a Claude session id for this workspace. Send it a message first, then park.",
               });
             }
           }
@@ -568,7 +568,7 @@ export class ConnectionHandler {
   }
 
   // The set of paths a client may browse/read: the configured roots ∪ the live workspaces'
-  // project paths, so a workspace's own tree is reachable even outside PERCH_PROJECT_ROOTS.
+  // project paths, so a workspace's own tree is reachable even outside TARFA_PROJECT_ROOTS.
   private async sendLaunchers(): Promise<void> {
     const [detected, custom] = await Promise.all([this.deps.detectInstalled(KNOWN_CLIS), this.deps.launchers.list()]);
     this.conn.send({ type: 'launchers', detected, custom });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { b64url, generateAgentKeys } from '@perch/secure-channel';
+import { b64url, generateAgentKeys } from '@tarfa/secure-channel';
 import type { DeviceStorePort } from '../ports/device-store-port';
 import type { PairingStorePort } from '../ports/pairing-store-port';
 import type { Pairing } from '../application/pairing';

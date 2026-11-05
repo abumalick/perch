@@ -1,4 +1,4 @@
-import type { AgentMessage, ClientMessage } from '@perch/contracts';
+import type { AgentMessage, ClientMessage } from '@tarfa/contracts';
 import { MachineConnection, type ConnectionDiagnostic, type ConnectionStatus } from './machine-connection';
 import type { SocketFactory } from './ports/socket';
 import type { WorkspaceAggregator } from './workspace-aggregator';
@@ -80,7 +80,7 @@ export class ConnectionManager {
         refusalContext: { machine: config.name, credential: credentialKind(config) },
         // The agent only returns workspaces in response to `list` (or pushes them when it serves
         // the phone at once); asking on every (re)connect is what re-syncs the list, and what picks
-        // up an edit to the agent's ~/.perch/keyterms.txt.
+        // up an edit to the agent's ~/.tarfa/keyterms.txt.
         openingRequests: [{ type: 'list' }, { type: 'listKeyterms' }],
         onDiagnostic: (diagnostic) => this.deps.onDiagnostic?.(config.id, diagnostic),
         onMessage: (message) => {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import type { PerchStore } from '../store.svelte';
+  import type { TarfaStore } from '../store.svelte';
   import { scanQrCodes, type QrScan } from '../adapters/qr-camera';
   import { describeError } from '../core/describe-error';
   import { msg } from '../i18n.svelte';
@@ -9,7 +9,7 @@
     store,
     scan = scanQrCodes,
     readClipboard = () => navigator.clipboard.readText(),
-  }: { store: Pick<PerchStore, 'pairFromLink'>; scan?: QrScan; readClipboard?: () => Promise<string> } = $props();
+  }: { store: Pick<TarfaStore, 'pairFromLink'>; scan?: QrScan; readClipboard?: () => Promise<string> } = $props();
 
   let scanning = $state(false);
   let error = $state('');
@@ -91,7 +91,7 @@
     <button type="submit" class="wide" disabled={!link.trim()}>{msg().pairing.pair}</button>
   </form>
   {#if error}<p class="diag" role="alert">{error}</p>{/if}
-  <p class="hint">{msg().pairing.hintBefore}<code>perch pair</code>{msg().pairing.hintAfter}</p>
+  <p class="hint">{msg().pairing.hintBefore}<code>tarfa pair</code>{msg().pairing.hintAfter}</p>
 </div>
 
 <style>

@@ -58,8 +58,8 @@ WT="$(cd "${WT_ARG}" && pwd)"   # absolutize; fails loudly if the path is missin
 SLUG="$(basename "${WT}")"
 WT_DIST="${WT}/packages/pwa/dist"
 
-echo "Building '${SLUG}' PWA (PERCH_BUILD_LABEL=${SLUG})…"
-PERCH_BUILD_LABEL="${SLUG}" "${PNPM[@]}" --filter @perch/pwa --dir "${WT}" build
+echo "Building '${SLUG}' PWA (TARFA_BUILD_LABEL=${SLUG})…"
+TARFA_BUILD_LABEL="${SLUG}" "${PNPM[@]}" --filter @tarfa/pwa --dir "${WT}" build
 
 ln -sfn "${WT_DIST}" "${LIVE}"
 echo "Now serving '${SLUG}'. The PWA updates within ~60s (app must be foregrounded)."

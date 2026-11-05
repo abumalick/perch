@@ -1,4 +1,4 @@
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 import { nestedOrder } from './nest-workspaces';
 
 // The workspace a "Next" tap opens: the first one after `active` in list order that

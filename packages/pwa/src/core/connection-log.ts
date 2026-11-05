@@ -1,4 +1,4 @@
-import type { ClientLogEvent } from '@perch/contracts';
+import type { ClientLogEvent } from '@tarfa/contracts';
 
 // Persisted so the buffer survives a full app kill (iOS may terminate a backgrounded PWA).
 // `seq` is a single monotonic counter that continues across launches — the flush high-water

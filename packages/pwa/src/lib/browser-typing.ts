@@ -11,7 +11,7 @@
 // boundaries, predictions and the space after a swiped word. It starts over whenever the
 // remote caret may have moved without it (Enter, Tab, arrows, a tap on the page, a blur).
 
-import type { BrowserClientMessage } from '@perch/contracts';
+import type { BrowserClientMessage } from '@tarfa/contracts';
 import { editMessages, keyMessages } from '../core/browser-input';
 
 export interface BrowserTyping {

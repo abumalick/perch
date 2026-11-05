@@ -1,4 +1,4 @@
-// What a Perch workspace id looks like: `<folder>-<n>` (`perch-3`, `eng-ops-12`), or the old
+// What a Tarfa workspace id looks like: `<folder>-<n>` (`perch-3`, `eng-ops-12`), or the old
 // `perch-<6 hex>`. Loose on purpose: only an id a listed workspace has becomes a link.
 const WORKSPACE_ID = /\b[a-z0-9_][a-z0-9_-]*-(?:\d+|[0-9a-f]{6})\b/g;
 
@@ -34,7 +34,7 @@ export function findWorkspaceIds(cells: readonly TerminalCell[]): WorkspaceIdMat
 
 // The workspace a tapped id opens. Ids are only unique per machine, so the caller's machine wins
 // a tie. A parked one is left out: opening it unparks it and starts Claude, too much for a tap
-// that can land by accident on `perch ls` output.
+// that can land by accident on `tarfa ls` output.
 export function linkTarget<W extends { machineId: string; id: string; status: string }>(
   workspaces: readonly W[],
   id: string,

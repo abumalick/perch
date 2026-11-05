@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { setLanguage } from '../i18n.svelte';
-import { pairingLink, type PairingLink } from '@perch/secure-channel';
-import { deviceFingerprint } from '@perch/secure-channel';
+import { pairingLink, type PairingLink } from '@tarfa/secure-channel';
+import { deviceFingerprint } from '@tarfa/secure-channel';
 import { acceptPairingLink, outsideInstalledApp, pairedMachine, pairingQuestion, readPairingLink, takePairingFragment } from './pairing';
 import type { MachineConfig } from './settings-store';
 
@@ -121,7 +121,7 @@ describe('readPairingLink', () => {
     expect(readPairingLink(new URL(full).hash, 'https://pwa.example')).toEqual({ ok: true, link });
   });
 
-  // Any page can make a pairing link; one naming another origin was made for another Perch.
+  // Any page can make a pairing link; one naming another origin was made for another Tarfa.
   it("refuses a link for another origin, saying whose it is", () => {
     const result = readPairingLink(pairingLink('https://elsewhere.example', link), 'https://pwa.example');
     expect(result).toEqual({ ok: false, reason: expect.stringContaining('elsewhere.example') });
@@ -175,6 +175,6 @@ describe('readPairingLink in French', () => {
   it('refuses a non-link in French', () => {
     setLanguage('fr');
     const result = readPairingLink('hello', 'https://p');
-    expect(result.ok ? '' : result.reason).toBe('Ce n’est pas un code d’association Tarfa. Lancez `perch pair` sur la machine pour en obtenir un nouveau.');
+    expect(result.ok ? '' : result.reason).toBe('Ce n’est pas un code d’association Tarfa. Lancez `tarfa pair` sur la machine pour en obtenir un nouveau.');
   });
 });

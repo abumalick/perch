@@ -177,7 +177,7 @@ export class CodexAppServer {
       });
       ws.once('close', () => settle(() => reject(new Error('the Codex app server closed the connection'))));
       ws.once('open', () => {
-        c.request('initialize', { clientInfo: { name: 'perch-agent', version: '0.0.0' } })
+        c.request('initialize', { clientInfo: { name: 'tarfa-agent', version: '0.0.0' } })
           .then(() => {
             c.notify('initialized');
             return run(c);

@@ -12,8 +12,8 @@ export function agentService(platform: NodeJS.Platform = process.platform, uid =
     async restart() {
       const [command, args] =
         platform === 'darwin'
-          ? ['launchctl', ['kickstart', '-k', `gui/${uid}/com.perch.agent`]]
-          : ['systemctl', ['--user', 'restart', 'perch-agent']];
+          ? ['launchctl', ['kickstart', '-k', `gui/${uid}/app.tarfa.agent`]]
+          : ['systemctl', ['--user', 'restart', 'tarfa-agent']];
       try {
         await exec(command, args, { env: childEnv() });
       } catch (err) {

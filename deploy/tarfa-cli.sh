@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# `perch` on PATH (deploy/install-cli.sh links it into ~/.local/bin): runs this checkout's agent
-# CLI from the caller's own directory, so `perch spawn .` means the caller's project. Never cd.
+# `tarfa` on PATH (deploy/install-cli.sh links it into ~/.local/bin): runs this checkout's agent
+# CLI from the caller's own directory, so `tarfa spawn .` means the caller's project. Never cd.
 set -euo pipefail
 
 # Follow the symlink chain to the real script (no `readlink -f`: macOS's lacks it before 12.3).
@@ -25,7 +25,7 @@ for mise_bin in "${HOME}/.local/bin/mise" /opt/homebrew/bin/mise /usr/local/bin/
 done
 if [ -z "${node_bin}" ]; then node_bin="$(command -v node || true)"; fi
 if [ -z "${node_bin}" ]; then
-  echo "perch: no node found (install it with mise in ${REPO})" >&2
+  echo "tarfa: no node found (install it with mise in ${REPO})" >&2
   exit 1
 fi
 

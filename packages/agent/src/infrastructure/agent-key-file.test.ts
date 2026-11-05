@@ -10,9 +10,9 @@ afterEach(async () => {
 });
 
 async function keyPath(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'perch-agent-key-'));
+  const dir = await mkdtemp(join(tmpdir(), 'tarfa-agent-key-'));
   dirs.push(dir);
-  return join(dir, '.perch', 'relay-key.json');
+  return join(dir, '.tarfa', 'agent-key.json');
 }
 
 describe('agent key file', () => {

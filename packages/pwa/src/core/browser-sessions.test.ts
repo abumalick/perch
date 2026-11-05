@@ -1,6 +1,6 @@
 import { afterEach, describe, it, expect } from 'vitest';
 import { setLanguage } from '../i18n.svelte';
-import type { BrowserSession, Workspace } from '@perch/contracts';
+import type { BrowserSession, Workspace } from '@tarfa/contracts';
 import { joinBrowserSessions, browserSessionLabel } from './browser-sessions';
 
 function ws(id: string): Workspace {

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { BrowserEndedReason } from '@perch/contracts';
-  import type { PerchStore } from '../store.svelte';
+  import type { BrowserEndedReason } from '@tarfa/contracts';
+  import type { TarfaStore } from '../store.svelte';
   import type { BrowserStream, BrowserStreamState } from '../core/browser-stream';
   import {
     frameScale,
@@ -18,7 +18,7 @@
   import { attachBrowserTyping, type BrowserTyping } from './browser-typing';
   import { msg } from '../i18n.svelte';
 
-  let { store }: { store: PerchStore } = $props();
+  let { store }: { store: TarfaStore } = $props();
 
   let canvas = $state<HTMLCanvasElement>();
   let urlEl = $state<HTMLInputElement>();

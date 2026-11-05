@@ -57,6 +57,8 @@ describe('tailscaleCli', () => {
         hasKey: true,
         roster: 'off',
         hooksCurrent: true,
+        legacyService: false,
+        stateMoved: true,
         phonePortOwner: 'free',
         hooksPortOwner: 'free',
         tailscale: status,

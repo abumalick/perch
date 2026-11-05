@@ -41,7 +41,7 @@ describe('device hello names', () => {
     expect(sanitizeDeviceName('iPhone · Safari')).toBe('iPhone · Safari');
   });
 
-  // The name reaches the agent's journal and `perch devices`: control characters (a newline that
+  // The name reaches the agent's journal and `tarfa devices`: control characters (a newline that
   // forges a log line, an escape that rewrites the terminal) and bidi overrides are replaced.
   it('replaces control characters and bidi overrides', () => {
     expect(sanitizeDeviceName('a\nphone: device ffff enrolled')).toBe('a?phone: device ffff enrolled');

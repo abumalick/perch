@@ -27,7 +27,7 @@ async function openDemo(page: Page): Promise<void> {
   await seedMachine(page, agent);
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 }
 
 test('an image previews through the session', async ({ page }) => {

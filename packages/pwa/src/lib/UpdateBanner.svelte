@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { PerchStore } from '../store.svelte';
+  import type { TarfaStore } from '../store.svelte';
   import { isTestBuild } from '../core/build-label';
   import { msg } from '../i18n.svelte';
 
-  let { store }: { store: PerchStore } = $props();
+  let { store }: { store: TarfaStore } = $props();
 
   // Name the incoming worktree build when it's a test build; otherwise stay generic
   // (a plain `main` production update doesn't need a slug).

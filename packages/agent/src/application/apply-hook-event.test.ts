@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applyHookEvent, markSent } from './apply-hook-event';
-import type { WorkspaceStatus } from '@perch/contracts';
+import type { WorkspaceStatus } from '@tarfa/contracts';
 import type { StatusStorePort } from '../ports/status-store-port';
 import type { HookEventEntry } from '../ports/hook-event-log-port';
 
@@ -291,7 +291,7 @@ describe('applyHookEvent', () => {
       ['perch-aa', 'working'],
     ]);
   });
-  describe('a perch send made inside a tool call', () => {
+  describe('a tarfa send made inside a tool call', () => {
     function setup() {
       const f = fakeStore();
       const deps = {
@@ -341,12 +341,12 @@ describe('applyHookEvent', () => {
       expect(deps.sentDuringTool.has('perch-aa')).toBe(false);
     });
 
-    it('logs the keep as perch-send', async () => {
+    it('logs the keep as tarfa-send', async () => {
       const deps = setup();
       const entries: HookEventEntry[] = [];
       applyHookEvent({ ...deps, log: { append: async (e: HookEventEntry) => void entries.push(e) } }, post);
       await Promise.resolve();
-      expect(entries[0]?.reason).toBe('perch-send');
+      expect(entries[0]?.reason).toBe('tarfa-send');
     });
   });
 });

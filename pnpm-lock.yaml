@@ -17,10 +17,10 @@ importers:
 
   packages/agent:
     dependencies:
-      '@perch/contracts':
+      '@tarfa/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@perch/secure-channel':
+      '@tarfa/secure-channel':
         specifier: workspace:*
         version: link:../secure-channel
       node-pty:
@@ -70,10 +70,10 @@ importers:
       '@noble/curves':
         specifier: ^2.4.0
         version: 2.4.0
-      '@perch/contracts':
+      '@tarfa/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@perch/secure-channel':
+      '@tarfa/secure-channel':
         specifier: workspace:*
         version: link:../secure-channel
       '@xterm/addon-fit':
@@ -95,15 +95,15 @@ importers:
         specifier: ^0.7.0
         version: 0.7.0
     devDependencies:
-      '@perch/agent':
-        specifier: workspace:*
-        version: link:../agent
       '@playwright/test':
         specifier: ^1.49.0
         version: 1.61.0
       '@sveltejs/vite-plugin-svelte':
         specifier: ^5.0.0
         version: 5.1.1(supports-color@10.2.2)(svelte@5.56.3)(vite@7.3.5(@types/node@22.19.21)(terser@5.48.0)(tsx@4.22.4))
+      '@tarfa/cli':
+        specifier: workspace:*
+        version: link:../agent
       '@testing-library/jest-dom':
         specifier: ^6.6.0
         version: 6.9.1

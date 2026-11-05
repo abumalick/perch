@@ -5,11 +5,11 @@ const b64 = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(
 
 describe('parseOsc52', () => {
   it('decodes the text a program asks to copy', () => {
-    expect(parseOsc52(`c;${b64('hello perch')}`)).toBe('hello perch');
+    expect(parseOsc52(`c;${b64('hello tarfa')}`)).toBe('hello tarfa');
   });
 
   it('accepts the empty selection tmux sends', () => {
-    expect(parseOsc52(`;${b64('hello perch')}`)).toBe('hello perch');
+    expect(parseOsc52(`;${b64('hello tarfa')}`)).toBe('hello tarfa');
   });
 
   it('decodes UTF-8, not latin1', () => {

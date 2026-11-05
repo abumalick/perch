@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateAgentKeys, parsePairingLink } from '@perch/secure-channel';
+import { generateAgentKeys, parsePairingLink } from '@tarfa/secure-channel';
 import type { PairingStorePort } from '../ports/pairing-store-port';
 import { mintPairingLink, pairingName, type PairingDeps } from './pairing-link';
 import { PAIRING_TTL_MS, type Pairing } from './pairing';
@@ -49,7 +49,7 @@ describe('mintPairingLink', () => {
     expect(parsePairingLink(await mint('/home/u/workspace'))!.defaultPath).toBe('/home/u/workspace');
     expect(parsePairingLink(await mint())!.defaultPath).toBeUndefined();
     const s = setup({ defaultPath: 'workspace' });
-    await expect(mintPairingLink(s.deps, { phoneUrls: [ADDRESS], pwaOrigin: 'https://pwa.example' })).rejects.toThrow(/PERCH_DEFAULT_PATH.*absolute/);
+    await expect(mintPairingLink(s.deps, { phoneUrls: [ADDRESS], pwaOrigin: 'https://pwa.example' })).rejects.toThrow(/TARFA_DEFAULT_PATH.*absolute/);
     expect(s.pairings()).toEqual([]);
   });
 });

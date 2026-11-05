@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { PtyPort, PtySession } from './pty-port';
 import type { ClientConnection } from './client-connection';
-import type { AgentMessage } from '@perch/contracts';
+import type { AgentMessage } from '@tarfa/contracts';
 
 describe('server ports', () => {
   it('can be implemented by in-memory fakes', () => {

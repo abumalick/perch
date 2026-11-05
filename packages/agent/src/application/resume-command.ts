@@ -22,7 +22,7 @@ export function resumeCommand(command: string, sessionId: string | undefined): s
 }
 
 // An agent that predates `storedCommand` on unpark recorded this function's own output as
-// `@perch_command`. Only that exact shape is unwrapped: the `|| exec` arm equals the first arm
+// `@tarfa_command`. Only that exact shape is unwrapped: the `|| exec` arm equals the first arm
 // without its `--resume`.
 function unwrapResume(command: string): string {
   const at = command.indexOf(' || exec ');

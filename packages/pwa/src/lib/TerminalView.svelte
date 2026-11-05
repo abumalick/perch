@@ -7,7 +7,7 @@
   import { workspaceIdLinkProvider } from './workspace-id-link-provider';
   import { linkTarget } from '../core/workspace-id-links';
   import '@xterm/xterm/css/xterm.css';
-  import type { PerchStore } from '../store.svelte';
+  import type { TarfaStore } from '../store.svelte';
   import { TERMINAL_FONT_MIN, TERMINAL_FONT_MAX, isConnectable } from '../core/settings-store';
   import { displayProjectPath } from '../core/resolve-path';
   import KeyboardBar from './KeyboardBar.svelte';
@@ -33,7 +33,7 @@
   import { inputLog } from '../core/terminal-input-log';
   import { msg } from '../i18n.svelte';
 
-  let { store }: { store: PerchStore } = $props();
+  let { store }: { store: TarfaStore } = $props();
   const activeMachine = $derived(store.machines.find((m) => m.id === store.active?.machineId));
   const showMachine = $derived(store.machines.filter(isConnectable).length > 1);
   const projectLabel = $derived(

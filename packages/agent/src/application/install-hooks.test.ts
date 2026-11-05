@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { installHooks } from './install-hooks';
 
-const HOOK_COMMAND = 'bash ~/.perch/perch-hook.sh';
+const HOOK_COMMAND = 'bash ~/.tarfa/tarfa-hook.sh';
 
 describe('installHooks', () => {
   it('adds the Stop, StopFailure, SessionStart, Notification, UserPromptSubmit, PreToolUse, and PostToolUse hook entries', () => {
@@ -29,7 +29,7 @@ describe('installHooks', () => {
       const command = hooks[event]?.[0]?.hooks?.[0]?.command ?? '';
       expect(command).not.toMatch(/\/(Users|home)\//);
       expect(command).not.toContain('/workspace/');
-      expect(command).toContain('~/.perch/perch-hook.sh');
+      expect(command).toContain('~/.tarfa/tarfa-hook.sh');
     }
   });
 
@@ -41,7 +41,7 @@ describe('installHooks', () => {
     expect(hooks.Notification).toHaveLength(1);
   });
 
-  it('replaces a legacy absolute-path Perch entry with the portable command', () => {
+  it('replaces a legacy absolute-path Tarfa entry with the portable command', () => {
     const existing = {
       hooks: {
         Stop: [
@@ -49,7 +49,7 @@ describe('installHooks', () => {
             hooks: [
               {
                 type: 'command',
-                command: 'bash /Users/u/workspace/perch/packages/agent/src/hooks/perch-hook.sh Stop 8787',
+                command: 'bash /Users/u/workspace/perch/packages/agent/src/hooks/tarfa-hook.sh Stop 8787',
               },
             ],
           },
@@ -62,7 +62,20 @@ describe('installHooks', () => {
     expect(hooks.Stop?.[0]?.hooks?.[0]?.command).toBe(`${HOOK_COMMAND} Stop 8787`);
   });
 
-  it('preserves unrelated existing settings and non-Perch hooks', () => {
+  it('replaces the hooks installed under their old Perch names instead of adding beside them', () => {
+    const old = installHooks(
+      { settings: {} },
+      { hookCommand: 'bash ~/.perch/perch-hook.sh', guardCommand: 'bash ~/.perch/perch-guard.sh', port: 8787 },
+    );
+    const result = installHooks({ settings: old }, { hookCommand: HOOK_COMMAND, guardCommand: 'bash ~/.tarfa/tarfa-guard.sh', port: 8787 });
+    const hooks = result.hooks as Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+    const commands = Object.values(hooks).flat().map((entry) => entry.hooks[0]?.command ?? '');
+    expect(commands.filter((command) => command.includes('perch'))).toEqual([]);
+    expect(hooks.Stop).toHaveLength(1);
+    expect(hooks.PreToolUse?.map((entry) => entry.hooks[0]?.command)).toEqual([`${HOOK_COMMAND} PreToolUse 8787`, 'bash ~/.tarfa/tarfa-guard.sh']);
+  });
+
+  it('preserves unrelated existing settings and non-Tarfa hooks', () => {
     const existing = {
       model: 'claude-opus',
       hooks: {
@@ -73,19 +86,19 @@ describe('installHooks', () => {
     const result = installHooks({ settings: existing }, { hookCommand: HOOK_COMMAND, port: 8787 });
     expect(result.model).toBe('claude-opus');
     const hooks = result.hooks as Record<string, Array<{ hooks: Array<{ command: string }> }>>;
-    // PreToolUse is now a Perch event too: the unrelated `echo hi` is kept and the
-    // Perch entry is appended.
+    // PreToolUse is now a Tarfa event too: the unrelated `echo hi` is kept and the
+    // Tarfa entry is appended.
     expect(hooks.PreToolUse).toHaveLength(2);
     expect(hooks.PreToolUse?.some((e) => e.hooks[0]?.command === 'echo hi')).toBe(true);
     expect(hooks.PreToolUse?.some((e) => e.hooks[0]?.command === `${HOOK_COMMAND} PreToolUse 8787`)).toBe(true);
-    // The unrelated notify.sh hook is kept; the Perch entry is appended.
+    // The unrelated notify.sh hook is kept; the Tarfa entry is appended.
     expect(hooks.Stop).toHaveLength(2);
     expect(hooks.Stop?.some((e) => e.hooks[0]?.command === '~/.claude/hooks/notify.sh')).toBe(true);
     expect(hooks.Stop?.some((e) => e.hooks[0]?.command === `${HOOK_COMMAND} Stop 8787`)).toBe(true);
   });
 
   describe('the kill guard', () => {
-    const GUARD = 'bash ~/.perch/perch-guard.sh';
+    const GUARD = 'bash ~/.tarfa/tarfa-guard.sh';
 
     function guardEntries(result: Record<string, unknown>) {
       const hooks = result.hooks as Record<string, Array<{ matcher?: string; hooks: Array<{ command: string }> }>>;

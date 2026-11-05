@@ -1,7 +1,7 @@
-import { generateAgentKeys, pairingLink } from '@perch/secure-channel';
-import { audioMediaType, imageMediaType, pdfMediaType } from '@perch/contracts';
+import { generateAgentKeys, pairingLink } from '@tarfa/secure-channel';
+import { audioMediaType, imageMediaType, pdfMediaType } from '@tarfa/contracts';
 import { describe, it, expect, vi } from 'vitest';
-import { PerchStore, VOICE_REPLY_MS } from './store.svelte';
+import { TarfaStore, VOICE_REPLY_MS } from './store.svelte';
 import { setLanguage } from './i18n.svelte';
 import { ConnectionManager } from './core/connection-manager';
 import { WorkspaceAggregator } from './core/workspace-aggregator';
@@ -95,14 +95,14 @@ function build(
     onCredentialsSpent: (id, scope) => store.forgetCredentials(id, scope),
     schedule: () => undefined,
   });
-  const store = new PerchStore({ settings, manager, aggregator, applyUpdate, startTimer, origin: 'https://pwa.example', ...prompts, ...log, ...ask });
+  const store = new TarfaStore({ settings, manager, aggregator, applyUpdate, startTimer, origin: 'https://pwa.example', ...prompts, ...log, ...ask });
   return { store, sockets, manager, storage, aggregator };
 }
 
 const agentKey = generateAgentKeys().x25519.publicKey;
 const mac = { id: 'mac', name: 'Mac', addresses: ['wss://mac'], token: 't', agentKey };
 
-describe('PerchStore pairing', () => {
+describe('TarfaStore pairing', () => {
   const link = pairingLink('https://pwa.example', {
     urls: ['wss://box.example/abu'],
     agentKey: generateAgentKeys().x25519.publicKey,
@@ -127,7 +127,7 @@ describe('PerchStore pairing', () => {
     expect(store.machines).toEqual([expect.objectContaining({ id: 'mac', token: '' })]);
   });
 
-  it('refuses a pairing link made for another Perch, and stores nothing', () => {
+  it('refuses a pairing link made for another Tarfa, and stores nothing', () => {
     const { store } = build();
     store.start();
     const foreign = link.replace('https://pwa.example', 'https://elsewhere.example');
@@ -227,7 +227,7 @@ describe('PerchStore pairing', () => {
   });
 });
 
-describe('PerchStore', () => {
+describe('TarfaStore', () => {
   it('starts, connects machines, and reflects pushed workspaces', () => {
     const { store, sockets } = build([mac]);
     store.start();
@@ -787,7 +787,7 @@ describe('PerchStore', () => {
       onStatus: () => undefined,
       schedule: () => undefined,
     });
-    const store = new PerchStore({ settings, manager, aggregator, ...prompts });
+    const store = new TarfaStore({ settings, manager, aggregator, ...prompts });
     store.start();
     expect(store.lastCommand).toBeNull();
     store.requestCreate('mac', '/p', 'codex');
@@ -807,7 +807,7 @@ describe('PerchStore', () => {
       onStatus: () => undefined,
       schedule: () => undefined,
     });
-    const store = new PerchStore({ settings, manager, aggregator, ...prompts });
+    const store = new TarfaStore({ settings, manager, aggregator, ...prompts });
     store.start();
     expect(store.lastCommand).toBe('zsh');
   });
@@ -846,7 +846,7 @@ describe('PerchStore', () => {
   });
 });
 
-describe('PerchStore file browser', () => {
+describe('TarfaStore file browser', () => {
   function openWorkspace() {
     const { store, sockets } = build([mac]);
     store.start();
@@ -953,7 +953,7 @@ describe('PerchStore file browser', () => {
   });
 });
 
-describe('PerchStore folder picker', () => {
+describe('TarfaStore folder picker', () => {
   function connected() {
     const { store, sockets } = build([mac]);
     store.start();
@@ -1099,16 +1099,16 @@ describe('PerchStore folder picker', () => {
 
   it('stores the dictation vocabulary a machine reports', () => {
     const { store } = connected();
-    store.handleMessage('mac', { type: 'keyterms', keyterms: ['Perch', 'HeliBoard'] });
-    expect(store.machineKeyterms['mac']).toEqual(['Perch', 'HeliBoard']);
+    store.handleMessage('mac', { type: 'keyterms', keyterms: ['Tarfa', 'HeliBoard'] });
+    expect(store.machineKeyterms['mac']).toEqual(['Tarfa', 'HeliBoard']);
   });
 
   // Every machine links the same dotfiles vocabulary, so the union is what goes to the API.
   it('unions the machines vocabularies for a dictation request, without duplicates', () => {
     const { store } = connected();
-    store.handleMessage('mac', { type: 'keyterms', keyterms: ['Perch', 'worktree'] });
-    store.handleMessage('mini', { type: 'keyterms', keyterms: ['perch', 'tmux'] });
-    expect(store.keyterms()).toEqual(['Perch', 'worktree', 'tmux']);
+    store.handleMessage('mac', { type: 'keyterms', keyterms: ['Tarfa', 'worktree'] });
+    store.handleMessage('mini', { type: 'keyterms', keyterms: ['tarfa', 'tmux'] });
+    expect(store.keyterms()).toEqual(['Tarfa', 'worktree', 'tmux']);
   });
 
   it('has an empty vocabulary before any machine replies', () => {
@@ -1175,7 +1175,7 @@ describe('PerchStore folder picker', () => {
   });
 });
 
-describe('PerchStore file viewer', () => {
+describe('TarfaStore file viewer', () => {
   function openWorkspace() {
     const { store, sockets } = build([mac]);
     store.start();
@@ -1408,7 +1408,7 @@ describe('PerchStore file viewer', () => {
       onStatus: () => undefined,
       schedule: () => undefined,
     });
-    const store = new PerchStore({ settings, manager, aggregator, ...prompts });
+    const store = new TarfaStore({ settings, manager, aggregator, ...prompts });
     store.start();
     store.setFileWrap(false);
     expect(store.fileWrap).toBe(false);
@@ -1432,7 +1432,7 @@ describe('PerchStore file viewer', () => {
       onStatus: () => undefined,
       schedule: () => undefined,
     });
-    const store = new PerchStore({ settings, manager, aggregator, ...prompts });
+    const store = new TarfaStore({ settings, manager, aggregator, ...prompts });
     store.start();
     store.setFolderFilter(['api']);
     expect(store.folderFilter).toEqual(['api']);
@@ -1457,7 +1457,7 @@ describe('PerchStore file viewer', () => {
       onStatus: () => undefined,
       schedule: () => undefined,
     });
-    const store = new PerchStore({ settings, manager, aggregator, ...prompts });
+    const store = new TarfaStore({ settings, manager, aggregator, ...prompts });
     store.start();
     store.setFolderHidden(['acme']);
     store.setFolderFilterMode('hide');
@@ -1485,7 +1485,7 @@ describe('PerchStore file viewer', () => {
       onStatus: () => undefined,
       schedule: () => undefined,
     });
-    const store = new PerchStore({ settings, manager, aggregator, ...prompts });
+    const store = new TarfaStore({ settings, manager, aggregator, ...prompts });
     store.start();
     store.setTerminalFontSize(18);
     expect(store.terminalFontSize).toBe(18);
@@ -1497,7 +1497,7 @@ describe('PerchStore file viewer', () => {
   });
 });
 
-describe('PerchStore dictation', () => {
+describe('TarfaStore dictation', () => {
   function build(transcript: string, transcriber: { transcribe: () => Promise<string> } = { transcribe: () => Promise.resolve(transcript) }) {
     const sent: string[] = [];
     const aggregator = new WorkspaceAggregator();
@@ -1519,7 +1519,7 @@ describe('PerchStore dictation', () => {
       start: () => Promise.resolve(),
       stop: () => Promise.resolve(new Blob(['x'], { type: 'audio/webm' })),
     };
-    const store = new PerchStore({ settings, manager, aggregator, recorder, transcriber, ...prompts });
+    const store = new TarfaStore({ settings, manager, aggregator, recorder, transcriber, ...prompts });
     store.start();
     const ws = { machineId: 'mac', id: 'perch-a', name: 'a', projectPath: '/a', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'idle' as const };
     store.open(ws);
@@ -1573,7 +1573,7 @@ describe('PerchStore dictation', () => {
   });
 });
 
-describe('PerchStore update banner', () => {
+describe('TarfaStore update banner', () => {
   it('starts with no update pending', () => {
     const { store } = build();
     expect(store.updateReady).toBe(false);
@@ -1696,7 +1696,7 @@ describe('PerchStore update banner', () => {
   });
 });
 
-describe('PerchStore browser view', () => {
+describe('TarfaStore browser view', () => {
   function connected() {
     const { store, sockets } = build([mac]);
     store.start();
@@ -1786,7 +1786,7 @@ describe('PerchStore browser view', () => {
 
 const mini = { id: 'mini', name: 'Mini', addresses: ['wss://mini'], token: 't', agentKey };
 
-describe('PerchStore home view', () => {
+describe('TarfaStore home view', () => {
   it('prompts to add a machine when none are configured, with no grace timer', () => {
     const timer = manualTimer();
     const { store } = build([], undefined, timer.startTimer);
@@ -1943,7 +1943,7 @@ describe('PerchStore home view', () => {
   });
 });
 
-describe('PerchStore connection logging', () => {
+describe('TarfaStore connection logging', () => {
   function fakeLog() {
     const pushed: { machineId: string | null; kind: string; extra?: { code?: number; reason?: string } }[] = [];
     // A flush starts by reading the machine's pending events, so those reads are the flushes.
@@ -2043,7 +2043,7 @@ describe('PerchStore connection logging', () => {
   });
 });
 
-describe('PerchStore reconnect UX', () => {
+describe('TarfaStore reconnect UX', () => {
   it('reconnectAll leaves a machine that is already connecting alone (no interrupt)', () => {
     const { store, manager } = build([mac]);
     store.start();
@@ -2080,13 +2080,13 @@ describe('PerchStore reconnect UX', () => {
   });
 });
 
-describe('PerchStore machines carry the side channels inside the session', () => {
+describe('TarfaStore machines carry the side channels inside the session', () => {
   const key = 'A'.repeat(42) + 'Q';
   const keyedMac = { ...mac, addresses: ['wss://box.example/abu'], agentKey: key };
   const ws = { machineId: 'mac', id: 'perch-a', name: 'a', projectPath: '/home/u/proj', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'idle' as const };
   const settle = () => new Promise((r) => setTimeout(r, 0));
 
-  function buildKeyed(extra: Partial<ConstructorParameters<typeof PerchStore>[0]> = {}) {
+  function buildKeyed(extra: Partial<ConstructorParameters<typeof TarfaStore>[0]> = {}) {
     const sent: Array<Record<string, unknown>> = [];
     let deliver: (m: unknown) => void = () => undefined;
     let open: () => void = () => undefined;
@@ -2109,7 +2109,7 @@ describe('PerchStore machines carry the side channels inside the session', () =>
       onStatus: (id, s) => store.setStatus(id, s),
       schedule: () => undefined,
     });
-    const store = new PerchStore({ settings, manager, aggregator, ...prompts, ...extra });
+    const store = new TarfaStore({ settings, manager, aggregator, ...prompts, ...extra });
     store.start();
     open();
     deliver({ type: 'authResult', ok: true });
@@ -2214,7 +2214,7 @@ describe('PerchStore machines carry the side channels inside the session', () =>
   });
 });
 
-describe('PerchStore device key', () => {
+describe('TarfaStore device key', () => {
   type Info = import('./store.svelte').DeviceKeyInfo;
   const make = (deviceKey: () => Promise<Info>, replaceDeviceKey?: () => Promise<Info>, machines: MachineConfig[] = []) => {
     const aggregator = new WorkspaceAggregator();
@@ -2226,7 +2226,7 @@ describe('PerchStore device key', () => {
       schedule: () => undefined,
     });
     const settings = new SettingsStore(memStorage(machines));
-    const store = new PerchStore({ settings, manager, aggregator, deviceKey, replaceDeviceKey, ...prompts });
+    const store = new TarfaStore({ settings, manager, aggregator, deviceKey, replaceDeviceKey, ...prompts });
     return Object.assign(store, { reconnected: vi.spyOn(manager, 'reconnect') });
   };
   const settle = async () => {
@@ -2287,7 +2287,7 @@ describe('PerchStore device key', () => {
   });
 });
 
-describe('PerchStore dictation presets', () => {
+describe('TarfaStore dictation presets', () => {
   it('starts on the first preset, and remembers the one picked', () => {
     const { store, storage } = build();
     store.start();
@@ -2345,7 +2345,7 @@ describe('PerchStore dictation presets', () => {
   });
 });
 
-describe('PerchStore orchestrator folds', () => {
+describe('TarfaStore orchestrator folds', () => {
   it('starts every orchestrator folded and toggles each one on its own', () => {
     const { store } = build();
     expect(store.expandedParents.has('mac:perch-o')).toBe(false);

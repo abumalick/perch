@@ -7,7 +7,7 @@ import PairMachine from './PairMachine.svelte';
 function fakeStore(accepts: (text: string) => boolean = () => true) {
   return {
     pairFromLink: vi.fn((text: string) =>
-      accepts(text) ? { name: 'dev' } : { error: 'That is not a Tarfa pairing code. Run `perch pair` on the machine for a fresh one.' },
+      accepts(text) ? { name: 'dev' } : { error: 'That is not a Tarfa pairing code. Run `tarfa pair` on the machine for a fresh one.' },
     ),
   };
 }

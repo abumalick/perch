@@ -1,5 +1,5 @@
 export const refusal = {
-  newCode: (machine: string) => `run \`perch pair\` on ${machine} for a new one`,
+  newCode: (machine: string) => `run \`tarfa pair\` on ${machine} for a new one`,
   badToken: (machine: string) => `${machine} refused the token — check the token in this entry`,
   codeExpired: (newCode: string) => `This pairing code has expired — ${newCode}`,
   codeUsed: (newCode: string) => `This pairing code was already used — ${newCode}`,
@@ -9,10 +9,10 @@ export const refusal = {
   revoked: (machine: string) => `This phone was revoked on ${machine}`,
   tokenNotNeeded: (machine: string) =>
     `${machine} no longer needs this entry's token: its device key is enrolled — forgetting the token and reconnecting`,
-  enrolmentOff: (machine: string) => `Enrolment is turned off on ${machine} — pair with \`perch pair\` instead`,
+  enrolmentOff: (machine: string) => `Enrolment is turned off on ${machine} — pair with \`tarfa pair\` instead`,
   enrolmentClosed: (machine: string) =>
-    `Enrolment is closed on ${machine} — run \`perch devices enrolment off\` there to allow pairing`,
-  notEnrolled: (machine: string) => `This phone is not enrolled on ${machine} — run \`perch pair\` there to pair it again`,
+    `Enrolment is closed on ${machine} — run \`tarfa devices enrolment off\` there to allow pairing`,
+  notEnrolled: (machine: string) => `This phone is not enrolled on ${machine} — run \`tarfa pair\` there to pair it again`,
   agentTooOld: (machine: string) => `${machine} runs an agent too old to pair this phone — update its agent, then pair again`,
   busy: (machine: string) => `${machine} is busy: too many phones are connecting to it`,
   other: (machine: string, detail: string) => `${machine} refused this phone (${detail})`,

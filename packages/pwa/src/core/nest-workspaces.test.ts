@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sortByStatus, type Workspace, type WorkspaceStatus } from '@perch/contracts';
+import { sortByStatus, type Workspace, type WorkspaceStatus } from '@tarfa/contracts';
 import { nestWorkspaces, nestedOrder } from './nest-workspaces';
 
 const ws = (

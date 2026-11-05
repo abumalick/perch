@@ -27,7 +27,7 @@ async function openBrowserView(page: Page, entry: Record<string, unknown> = {}):
   await seedMachine(page, agent, entry);
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
   // The single-session BrowserPicker opens the viewer directly. Wide: inline in the header;
   // phone: inside the drawer. Its accessible name is "Browser".
   if (!isWideViewport(page)) {
@@ -132,7 +132,7 @@ test('Close session sends closeSession and exits to the workspace', async ({ pag
   await page.getByRole('button', { name: 'Close session', exact: true }).click();
   await expect.poll(() => agent.browserReceived.some((r) => r.message.type === 'closeSession')).toBe(true);
   // Back on the workspace terminal (the view was opened from it).
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
   await expect(page.getByLabel('URL')).toHaveCount(0);
 });
 

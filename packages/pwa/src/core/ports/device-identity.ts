@@ -1,4 +1,4 @@
-import type { DeviceSigner, StaticKey } from '@perch/secure-channel';
+import type { DeviceSigner, StaticKey } from '@tarfa/secure-channel';
 
 // Where a private key lives: a non-extractable WebCrypto key (the page can use it, never read
 // it), or raw bytes in IndexedDB where the browser has no WebCrypto X25519/Ed25519.

@@ -1,4 +1,4 @@
-import { sortByStatus, type AgentMessage, type Workspace } from '@perch/contracts';
+import { sortByStatus, type AgentMessage, type Workspace } from '@tarfa/contracts';
 
 export class WorkspaceAggregator {
   private readonly byMachine = new Map<string, Workspace[]>();
@@ -11,7 +11,7 @@ export class WorkspaceAggregator {
     switch (message.type) {
       case 'workspaces':
         // Stamp each workspace with the CONNECTION's id (the PWA's machine config id),
-        // not the agent's internal PERCH_MACHINE_ID. The UI routes attach/input/close and
+        // not the agent's internal TARFA_MACHINE_ID. The UI routes attach/input/close and
         // the status dot by workspace.machineId, which must match the connection key — else
         // a machine named differently from the agent's id can list but never attach.
         this.byMachine.set(

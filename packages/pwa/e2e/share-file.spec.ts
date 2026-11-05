@@ -56,7 +56,7 @@ test('a shared file surfaces a Home banner and attaches only once the user confi
   // Opening a session sends nothing: the share target cannot prove the file came from the OS
   // share sheet, so the session asks first, naming the file and where it would go.
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible(BOOT);
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible(BOOT);
   const confirm = page.getByTestId('shared-file-confirm');
   await expect(confirm).toContainText('shared.png');
   await expect(confirm).toContainText('demo');
@@ -78,7 +78,7 @@ test('the attach-file button uploads a picked file and types the saved path', as
   await page.goto('/');
   await expect(page.getByText('demo', { exact: true })).toBeVisible(BOOT);
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible(BOOT);
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible(BOOT);
 
   await page.setInputFiles('input[type="file"]', {
     name: 'pic.png',
@@ -95,7 +95,7 @@ test('the attach-file button uploads a non-image file', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('demo', { exact: true })).toBeVisible(BOOT);
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible(BOOT);
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible(BOOT);
 
   await expect(page.locator('input[type="file"]')).not.toHaveAttribute('accept', /.*/);
 

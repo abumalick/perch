@@ -4,7 +4,7 @@ import { findWorkspaceIds, linkTarget } from './workspace-id-links';
 const cells = (text: string) => [...text].map((chars) => ({ chars, width: 1 }));
 
 describe('findWorkspaceIds', () => {
-  it('finds a perch id and its cell columns', () => {
+  it('finds a tarfa id and its cell columns', () => {
     expect(findWorkspaceIds(cells('spawned perch-39a7f6 ok'))).toEqual([
       { id: 'perch-39a7f6', startCol: 8, endCol: 19 },
     ]);

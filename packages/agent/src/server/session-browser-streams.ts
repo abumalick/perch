@@ -1,4 +1,4 @@
-import type { AgentMessage } from '@perch/contracts';
+import type { AgentMessage } from '@tarfa/contracts';
 import type { BrowserStreamSocket } from '../ports/browser-stream-port';
 
 // Browser views one connection may hold at once. The PWA shows one; a few more cover a view

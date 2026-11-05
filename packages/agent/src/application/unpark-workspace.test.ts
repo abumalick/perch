@@ -66,7 +66,7 @@ describe('unparkWorkspace', () => {
     });
   });
 
-  // Without this the child would come back with no `@perch_parent`, and lose its orchestrator.
+  // Without this the child would come back with no `@tarfa_parent`, and lose its orchestrator.
   it('recreates the session with its parent link', async () => {
     const { deps } = makeDeps({ ...record, parent: 'perch-p' });
     await unparkWorkspace(deps, 'perch-a');

@@ -98,7 +98,7 @@ describe('pairing link', () => {
   });
 });
 
-// The vector the agent's `perch setup` and the PWA are both held to.
+// The vector the agent's `tarfa setup` and the PWA are both held to.
 describe('pairing link with several addresses', () => {
   const agentKey = 'K'.repeat(43);
   const secret = 'S'.repeat(43);

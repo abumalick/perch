@@ -1,4 +1,4 @@
-import { deviceFingerprint, parsePairingLink, type PairingLink } from '@perch/secure-channel';
+import { deviceFingerprint, parsePairingLink, type PairingLink } from '@tarfa/secure-channel';
 import type { MachineConfig } from './settings-store';
 import { addressHost, normalizeAddress } from './machine-addresses';
 import { msg } from '../i18n.svelte';
@@ -23,7 +23,7 @@ export function pairedMachine(machines: MachineConfig[], link: PairingLink, newI
 }
 
 // What the owner is asked before a pairing link adds anything: any page can open such a link. It
-// names every host the entry will dial, and the machine key's fingerprint that `perch pair` prints
+// names every host the entry will dial, and the machine key's fingerprint that `tarfa pair` prints
 // beside the code, to compare by eye.
 export function pairingQuestion(link: PairingLink): string {
   return msg().pairing.question(link.name, link.urls.map(addressHost).join(', '), deviceFingerprint(link.agentKey));
@@ -47,7 +47,7 @@ export function acceptPairingLink(machines: MachineConfig[], link: PairingLink, 
 }
 
 // A pairing link pasted, scanned or tapped. A full link must name this app's own origin: one
-// made for another Perch is not this app's to take. A bare fragment names none.
+// made for another Tarfa is not this app's to take. A bare fragment names none.
 export function readPairingLink(text: string, ownOrigin: string): { ok: true; link: PairingLink } | { ok: false; reason: string } {
   const link = parsePairingLink(text);
   if (!link) return { ok: false, reason: msg().pairing.notALink };

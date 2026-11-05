@@ -4,7 +4,7 @@ import { runSetup, type SetupEffects } from './run-setup';
 import type { SetupStep } from './setup-machine';
 
 const ALL: SetupStep[] = [
-  { kind: 'write-env', text: 'PERCH_TOKEN=x\n', changes: ['PERCH_TOKEN=(generated)'] },
+  { kind: 'write-env', text: 'TARFA_TOKEN=x\n', changes: ['TARFA_TOKEN=(generated)'] },
   { kind: 'create-key' },
   { kind: 'write-roster', mode: 'off' },
   { kind: 'install-unit', text: '[Service]\n' },
@@ -28,10 +28,13 @@ function fakes(fail?: { at: string; error?: Error }) {
     writeEnv: act('write-env', '/repo/deploy/agent.env.bak-1') as SetupEffects['writeEnv'],
     createKey: act('create-key') as SetupEffects['createKey'],
     writeRoster: act('write-roster') as SetupEffects['writeRoster'],
-    installUnit: act('install-unit', ['systemctl --user enable perch-agent']) as SetupEffects['installUnit'],
+    installUnit: act('install-unit', ['systemctl --user enable tarfa-agent']) as SetupEffects['installUnit'],
+    stopLegacyService: act('stop-legacy-service', ['systemctl --user stop perch-agent']) as SetupEffects['stopLegacyService'],
+    moveState: act('move-state') as SetupEffects['moveState'],
+    removeLegacyService: act('remove-legacy-service', ['removed perch-agent.service']) as SetupEffects['removeLegacyService'],
     installHooks: act('install-hooks') as SetupEffects['installHooks'],
     serve: act('tailscale-serve') as SetupEffects['serve'],
-    restart: act('restart', 'systemctl --user restart perch-agent') as SetupEffects['restart'],
+    restart: act('restart', 'systemctl --user restart tarfa-agent') as SetupEffects['restart'],
     checkListener: (async () => {
       calls.push('check-listener');
       return fail?.at !== 'check-listener';

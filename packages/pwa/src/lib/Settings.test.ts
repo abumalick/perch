@@ -2,7 +2,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import { tick } from 'svelte';
 import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent, within } from '@testing-library/svelte';
-import { generateAgentKeys } from '@perch/secure-channel';
+import { generateAgentKeys } from '@tarfa/secure-channel';
 import Settings from './Settings.svelte';
 
 import { inputLog } from '../core/terminal-input-log';
@@ -173,7 +173,7 @@ describe('Settings — dictation', () => {
 });
 
 describe('Settings — device key and diagnostics', () => {
-  it('shows this device key fingerprint and where it is kept, to match against perch devices', () => {
+  it('shows this device key fingerprint and where it is kept, to match against tarfa devices', () => {
     const store = fakeStore({ deviceKey: { fingerprint: 'a1b2-c3d4-e5f6', storage: { x25519: 'webcrypto', ed25519: 'noble' } } });
     render(Settings, { props: { store: store as never } });
     expect(screen.getByTestId('device-key')).toHaveTextContent(

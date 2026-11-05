@@ -1,5 +1,5 @@
-import { audioMediaType, imageMediaType, pdfMediaType, type AgentMessage, type ClientMessage, type MediaResult } from '@perch/contracts';
-import { startTimer } from '@perch/secure-channel';
+import { audioMediaType, imageMediaType, pdfMediaType, type AgentMessage, type ClientMessage, type MediaResult } from '@tarfa/contracts';
+import { startTimer } from '@tarfa/secure-channel';
 
 // The largest file the agent serves (audio, 30 MB). A header announcing more is refused
 // outright rather than buffered.

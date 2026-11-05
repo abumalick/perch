@@ -15,7 +15,7 @@ export default defineConfig({
     reuseExistingServer: false,
   },
   use: { baseURL: `http://localhost:${port}` },
-  // The Perch client is exclusively WebKit (iPhone/iPad/Safari, all iOS browsers). Run the
+  // The Tarfa client is exclusively WebKit (iPhone/iPad/Safari, all iOS browsers). Run the
   // suite on WebKit only — Chromium would exercise an engine no user actually runs, and it
   // missed a WebKit-specific bug (send on a still-CONNECTING socket throws). Desktop Safari
   // keeps the 1280x720 desktop viewport the specs assume; narrow specs set their own.

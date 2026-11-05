@@ -5,7 +5,7 @@ import { writeFileAtomic } from './file-lock';
 
 export const MAX_LAUNCHERS = 20;
 
-// Reads/writes the custom commands launched on this machine (default ~/.perch/launchers.json).
+// Reads/writes the custom commands launched on this machine (default ~/.tarfa/launchers.json).
 // Read fresh on every call. A missing or malformed file yields an empty list, so a bad file can
 // never break the create form.
 export class FileLaunchersStore implements LaunchersPort {

@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { ParkedStorePort, ParkedWorkspace } from '../ports/parked-store-port';
 
-// Reads/writes a JSON array of parked workspaces (default ~/.perch/parked.json). Read fresh
+// Reads/writes a JSON array of parked workspaces (default ~/.tarfa/parked.json). Read fresh
 // from disk on every call, like FileHiddenFoldersStore — no caching, so a hand-edit takes
 // effect immediately. A missing or malformed file yields an empty list, so a bad file can
 // never break workspace listing; entries missing required fields are dropped individually.

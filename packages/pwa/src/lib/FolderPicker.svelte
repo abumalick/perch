@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { PerchStore } from '../store.svelte';
+  import type { TarfaStore } from '../store.svelte';
   import { basename, parent } from '../core/browse-path';
   import { isValidFolderName } from '../core/folder-name';
   import { msg } from '../i18n.svelte';
@@ -11,7 +11,7 @@
     onpick,
     oncancel,
   }: {
-    store: PerchStore;
+    store: TarfaStore;
     roots: string[];
     machineId: string;
     onpick: (path: string) => void;

@@ -32,9 +32,9 @@ echo "${1:-test-gate}: running typecheck + unit tests…"
 # Playwright e2e: serve the built PWA on a free port (the default 4173 is the
 # standing deploy on the host running run-pwa.sh) so the gate never clashes with a
 # live preview. Requires WebKit once per machine:
-# `pnpm --filter @perch/pwa exec playwright install webkit`.
+# `pnpm --filter @tarfa/pwa exec playwright install webkit`.
 echo "${1:-test-gate}: building PWA + running e2e…"
-"${PNPM[@]}" --dir "${REPO}" --filter @perch/pwa build
+"${PNPM[@]}" --dir "${REPO}" --filter @tarfa/pwa build
 # console.log(String(port)), not console.log(port): a bare number goes through
 # util.inspect, which Node auto-colors with ANSI escape codes whenever stdout looks
 # like a TTY (as it can when this hook runs under an agent harness's pseudo-terminal).
@@ -42,4 +42,4 @@ echo "${1:-test-gate}: building PWA + running e2e…"
 # result in playwright.config.ts becomes NaN, and the webServer URL construction
 # throws "TypeError: Invalid URL" instead of a clear port-selection failure.
 E2E_PORT="$("${RUN[@]}" node -e 'const s=require("net").createServer();s.listen(0,()=>{console.log(String(s.address().port));s.close()})')" \
-  "${PNPM[@]}" --dir "${REPO}" --filter @perch/pwa e2e
+  "${PNPM[@]}" --dir "${REPO}" --filter @tarfa/pwa e2e

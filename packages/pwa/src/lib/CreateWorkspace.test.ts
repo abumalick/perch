@@ -189,9 +189,9 @@ describe('CreateWorkspace', () => {
   it('resolves a relative path against the machine default path', async () => {
     const store = fakeStoreWithDefault();
     render(CreateWorkspace, { props: { store: store as never } });
-    await fireEvent.input(screen.getByTestId('path'), { target: { value: 'perch' } });
+    await fireEvent.input(screen.getByTestId('path'), { target: { value: 'tarfa' } });
     await fireEvent.click(create());
-    expect(store.requestCreate).toHaveBeenCalledWith('box', '/home/u/workspace/perch', "claude --model 'opus[1m]'", false);
+    expect(store.requestCreate).toHaveBeenCalledWith('box', '/home/u/workspace/tarfa', "claude --model 'opus[1m]'", false);
   });
 
   it('still accepts an absolute path as an escape hatch when a default is set', async () => {
@@ -206,8 +206,8 @@ describe('CreateWorkspace', () => {
     const store = fakeStoreWithDefault();
     render(CreateWorkspace, { props: { store: store as never } });
     expect(screen.getByText(/relative to \/home\/u\/workspace/)).toBeInTheDocument();
-    await fireEvent.input(screen.getByTestId('path'), { target: { value: 'perch' } });
-    expect(screen.getByTestId('resolved-preview')).toHaveTextContent('/home/u/workspace/perch');
+    await fireEvent.input(screen.getByTestId('path'), { target: { value: 'tarfa' } });
+    expect(screen.getByTestId('resolved-preview')).toHaveTextContent('/home/u/workspace/tarfa');
   });
 
   it('opens the default root when the path is left empty', async () => {
@@ -246,16 +246,16 @@ describe('CreateWorkspace', () => {
   });
 
   it('fills the path relative to the default when a folder is picked', async () => {
-    const store = fakeStoreWithDefault({ dirEntries: { path: '/home/u/workspace/perch', subdirs: [], files: [] } });
+    const store = fakeStoreWithDefault({ dirEntries: { path: '/home/u/workspace/tarfa', subdirs: [], files: [] } });
     render(CreateWorkspace, { props: { store: store as never } });
     await fireEvent.click(screen.getByRole('button', { name: /browse/i }));
     await fireEvent.click(screen.getByRole('button', { name: /use this folder/i }));
     // Back on the form: the input now holds the picked folder relative to the default.
     const pathInput = screen.getByTestId('path') as HTMLInputElement;
-    expect(pathInput.value).toBe('perch');
-    expect(screen.getByTestId('resolved-preview')).toHaveTextContent('/home/u/workspace/perch');
+    expect(pathInput.value).toBe('tarfa');
+    expect(screen.getByTestId('resolved-preview')).toHaveTextContent('/home/u/workspace/tarfa');
     await fireEvent.click(create());
-    expect(store.requestCreate).toHaveBeenCalledWith('box', '/home/u/workspace/perch', "claude --model 'opus[1m]'", false);
+    expect(store.requestCreate).toHaveBeenCalledWith('box', '/home/u/workspace/tarfa', "claude --model 'opus[1m]'", false);
   });
 
   it('fills an absolute path when the picked folder is outside the default', async () => {

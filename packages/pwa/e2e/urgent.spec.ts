@@ -13,7 +13,7 @@ test.afterAll(async () => {
 
 // Marking a workspace urgent from the drawer round-trips through the agent (setUrgent →
 // workspaceUpdated) and surfaces as a star marker on the list row. The within-group sort is
-// unit-tested in @perch/contracts; here we cover the UI wiring end to end.
+// unit-tested in @tarfa/contracts; here we cover the UI wiring end to end.
 test('mark urgent from the drawer, then see the star on the list row and clear it', async ({ page }) => {
   await seedMachine(page, agent);
   await page.goto('/');
@@ -23,7 +23,7 @@ test('mark urgent from the drawer, then see the star on the list row and clear i
   await expect(otherRow.locator('.urgent-star')).toHaveCount(0);
 
   await page.getByText('other', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await openWorkspaceMenu(page);
   await page.getByRole('button', { name: /mark urgent/i }).click();
@@ -36,7 +36,7 @@ test('mark urgent from the drawer, then see the star on the list row and clear i
 
   // Clearing it removes the marker again.
   await page.getByText('other', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
   await openWorkspaceMenu(page);
   await page.getByRole('button', { name: /urgent/i, pressed: true }).click();
   await page.getByRole('button', { name: 'Dismiss menu' }).click();

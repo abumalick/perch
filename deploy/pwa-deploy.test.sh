@@ -20,9 +20,9 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 mkdir -p "${SB}/bin"
 cat > "${SB}/bin/pnpm" <<'FAKE'
 #!/usr/bin/env bash
-printf '%s|label=%s|id=%s|account=%s|cwd=%s\n' "$*" "${PERCH_BUILD_LABEL:-}" "${PERCH_BUILD_ID:-}" "${CLOUDFLARE_ACCOUNT_ID:-}" "$(basename "$PWD")" >> "${FAKE_LOG}"
+printf '%s|label=%s|id=%s|account=%s|cwd=%s\n' "$*" "${TARFA_BUILD_LABEL:-}" "${TARFA_BUILD_ID:-}" "${CLOUDFLARE_ACCOUNT_ID:-}" "$(basename "$PWD")" >> "${FAKE_LOG}"
 case "$*" in
-  *build*) printf '%s' "${PERCH_BUILD_ID:-}" > "${FAKE_LOG}.built" ;;
+  *build*) printf '%s' "${TARFA_BUILD_ID:-}" > "${FAKE_LOG}.built" ;;
   *"wrangler deploy --env dev"*) echo "Deployed tarfa-dev triggers" ; echo "  https://tarfa-dev.someone.workers.dev" ;;
 esac
 FAKE
@@ -65,7 +65,7 @@ grep -q "pwa-deploy.env" "${SB}/out" || fail "missing-env message does not name 
 printf 'CLOUDFLARE_ACCOUNT_ID=acct-123\n' > "${MAIN}/deploy/pwa-deploy.env"
 run "${MAIN}/deploy/pwa-deploy.sh" || { cat "${SB}/out"; fail "clean main did not deploy"; }
 grep -q "^install --frozen-lockfile|" "${FAKE_LOG}" || fail "no frozen install before a production deploy"
-build="$(grep -- "--filter @perch/pwa build|" "${FAKE_LOG}")" || fail "no build"
+build="$(grep -- "--filter @tarfa/pwa build|" "${FAKE_LOG}")" || fail "no build"
 case "${build}" in *"|label=main|"*) ;; *) fail "production build label: ${build}" ;; esac
 sha="$(git -C "${MAIN}" rev-parse --short=12 HEAD)"
 case "${build}" in *"|id=${sha}-"*) ;; *) fail "build id does not start with the commit: ${build}" ;; esac
@@ -95,7 +95,7 @@ git -C "${MAIN}" push -q origin main
 run "${WT}/deploy/pwa-deploy.sh" --dry-run || { cat "${SB}/out"; fail "dry run from a worktree refused"; }
 grep -q -- "wrangler deploy --env production --assets .*/.tmp/pwa-deploy-dist --dry-run|" "${FAKE_LOG}" || fail "dry run not passed to wrangler with its own build: $(cat "${FAKE_LOG}")"
 # A build outside production goes to its own directory: main's dist is the staging PWA.
-grep -q -- "--filter @perch/pwa build --outDir .*/.tmp/pwa-deploy-dist --emptyOutDir|" "${FAKE_LOG}" || fail "dry run built into dist: $(cat "${FAKE_LOG}")"
+grep -q -- "--filter @tarfa/pwa build --outDir .*/.tmp/pwa-deploy-dist --emptyOutDir|" "${FAKE_LOG}" || fail "dry run built into dist: $(cat "${FAKE_LOG}")"
 for combo in "--dry-run --dev" "--dry-run --dev --delete"; do
   # shellcheck disable=SC2086
   if run "${WT}/deploy/pwa-deploy.sh" ${combo}; then fail "accepted ${combo}"; fi
@@ -107,7 +107,7 @@ grep -q "^install" "${FAKE_LOG}" && fail "a dry run reinstalled dependencies"
 # --- 5. --dev deploys this checkout to tarfa-dev and prints its URL -------------
 run "${WT}/deploy/pwa-deploy.sh" --dev || { cat "${SB}/out"; fail "--dev from a worktree refused"; }
 grep -q -- "wrangler deploy --env dev --assets .*/.tmp/pwa-deploy-dist|" "${FAKE_LOG}" || fail "--dev did not deploy its own build to env.dev: $(cat "${FAKE_LOG}")"
-grep -q -- "--filter @perch/pwa build --outDir .*|label=tarfa-dev|" "${FAKE_LOG}" || fail "dev build not labelled tarfa-dev"
+grep -q -- "--filter @tarfa/pwa build --outDir .*|label=tarfa-dev|" "${FAKE_LOG}" || fail "dev build not labelled tarfa-dev"
 grep -q "https://tarfa-dev.someone.workers.dev" "${SB}/out" || fail "--dev does not print the dev URL"
 grep -q "\-\-dev \-\-delete" "${SB}/out" || fail "--dev does not say how to delete it"
 [ -f "${FAKE_LOG}.curl" ] && fail "--dev checked tarfa.app"

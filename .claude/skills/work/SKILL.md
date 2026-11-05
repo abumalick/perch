@@ -1,11 +1,11 @@
 ---
 name: work
-description: Use to implement any Perch feature, fix, or change. Enforces the project development flow — brainstorm first, mandatory git worktree for code changes, TDD on a clean/hexagonal architecture, an on-device deploy-test gate, then a direct local merge to main with worktree cleanup. Use whenever the user asks to build, add, implement, fix, or change behavior in Perch.
+description: Use to implement any Tarfa feature, fix, or change. Enforces the project development flow — brainstorm first, mandatory git worktree for code changes, TDD on a clean/hexagonal architecture, an on-device deploy-test gate, then a direct local merge to main with worktree cleanup. Use whenever the user asks to build, add, implement, fix, or change behavior in Tarfa.
 ---
 
-# Work — Perch development flow
+# Work — Tarfa development flow
 
-A thin orchestrator. It owns the **sequence** and the Perch-specific glue; each phase
+A thin orchestrator. It owns the **sequence** and the Tarfa-specific glue; each phase
 delegates to the existing superpowers skill. Do not restate TDD/worktree rules here —
 invoke the real skills so they stay the source of truth.
 
@@ -34,7 +34,7 @@ Decide from the agreed scope:
 - **Anything else** — any code or config file in scope makes a worktree **mandatory**.
   When in doubt, use a worktree (safe default).
 
-Create it via `superpowers:using-git-worktrees`, following Perch's convention:
+Create it via `superpowers:using-git-worktrees`, following Tarfa's convention:
 
 ```bash
 git worktree add .worktrees/<feature> -b <feature>
@@ -46,7 +46,7 @@ the worktree.
 
 ## Phase 3 — Implement (TDD + clean architecture)
 
-Invoke `superpowers:test-driven-development`. While implementing, honor Perch's
+Invoke `superpowers:test-driven-development`. While implementing, honor Tarfa's
 hexagonal layering: pure domain + application (`application/`, `ports/`), all I/O behind
 infrastructure adapters (`infrastructure/`), wiring in `server/`. Unit-test the core with
 fakes. Keep `pnpm -s test` green; add tests with every change.
@@ -77,7 +77,7 @@ After running it, **stop and wait** for the user's verdict. Do not proceed.
 ```bash
 pnpm serve:restore                       # flip the live deploy back to main
 git checkout main
-git merge <feature>                      # direct local merge (Perch has no remote CI)
+git merge <feature>                      # direct local merge (Tarfa has no remote CI)
 pnpm worktree:remove .worktrees/<feature>  # restores main if it was still deployed, then removes
 git branch -d <feature>
 ```

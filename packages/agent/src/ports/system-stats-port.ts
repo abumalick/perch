@@ -1,4 +1,4 @@
-import type { MachineStats } from '@perch/contracts';
+import type { MachineStats } from '@tarfa/contracts';
 
 // The machine's current CPU/memory load, as shown by the PWA's load strip.
 export interface SystemStatsPort {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { recordWorkspaceClosed } from './record-workspace-closed';
 import type { WorkspaceLogEntry, WorkspaceLogPort } from '../ports/workspace-log-port';
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 
 const workspace: Workspace = {
   machineId: 'dev',

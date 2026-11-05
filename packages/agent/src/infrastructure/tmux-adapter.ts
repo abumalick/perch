@@ -17,16 +17,20 @@ export const tmux = (args: string[]) => exec('tmux', args, { env: childEnv() });
 // rewrite and is vanishingly unlikely to occur in a session name, path, or command.
 // pane_title is last so it can contain the separator harmlessly (it's the remainder). The
 // pane_program_* fields come from a tmux patched for OSC 7501; a stock tmux expands them to ''.
+// Each @tarfa_ option is read beside its pre-rename @perch_ name, which a session tagged by an
+// older agent carries until retagLegacyOptions copies it over.
 const SEP = '|:|';
+const OPTIONS = ['command', 'parent', 'codex_thread'] as const;
 const FORMAT = [
   '#{session_name}',
   '#{session_path}',
   '#{session_created}',
   '#{host}',
   '#{host_short}',
-  '#{@perch_command}',
-  '#{@perch_parent}',
-  '#{@perch_codex_thread}',
+  '#{@tarfa_command}',
+  '#{@tarfa_parent}',
+  '#{@tarfa_codex_thread}',
+  ...OPTIONS.map((option) => `#{@perch_${option}}`),
   '#{pane_program_state}',
   '#{pane_program_time}',
   '#{pane_title}',
@@ -64,9 +68,12 @@ export function isMissingSession(err: unknown): boolean {
 function parseLine(line: string): TmuxSessionInfo | null {
   const parts = line.split(SEP);
   if (parts.length < 3) return null;
-  const [name, startPath, created, host, hostShort, command, parent, codexThread, programState, programTime] = parts;
+  const [name, startPath, created, host, hostShort, tarfaCommand, tarfaParent, tarfaThread, perchCommand, perchParent, perchThread, programState, programTime] = parts;
   if (!name || !startPath || !created) return null;
-  const title = parts.slice(10).join(SEP);
+  const command = tarfaCommand || perchCommand;
+  const parent = tarfaParent || perchParent;
+  const codexThread = tarfaThread || perchThread;
+  const title = parts.slice(13).join(SEP);
   return {
     name,
     startPath,
@@ -141,6 +148,31 @@ export class TmuxAdapter implements TmuxPort {
       .filter((s): s is TmuxSessionInfo => s !== null && (s.command !== '' || s.name.startsWith(prefix)));
   }
 
+  // Copies each @perch_ option onto its @tarfa_ name on every session that has the old one and
+  // not the new one, so the old read can go once no machine has any left. Returns how many
+  // options it set.
+  async retagLegacyOptions(): Promise<number> {
+    let set = 0;
+    for (const option of OPTIONS) {
+      let stdout: string;
+      try {
+        // The value last: it may hold the separator.
+        stdout = (await this.tmux(['list-sessions', '-F', ['#{session_name}', `#{?@tarfa_${option},1,0}`, `#{@perch_${option}}`].join(SEP)])).stdout;
+      } catch (err) {
+        if (isNoServer(err)) return set;
+        throw err;
+      }
+      for (const line of stdout.split('\n')) {
+        const [name, hasNew, ...rest] = line.split(SEP);
+        const value = rest.join(SEP);
+        if (!name || hasNew !== '0' || value === '') continue;
+        await this.tmux(['set-option', '-t', exactTarget(name), `@tarfa_${option}`, value]);
+        set++;
+      }
+    }
+    return set;
+  }
+
   async createSession(input: { name: string; cwd: string; command: string; parent?: string; storedCommand?: string; codexThread?: string }): Promise<void> {
     try {
       await this.tmux(['new-session', '-d', '-s', input.name, '-c', input.cwd, input.command]);
@@ -148,9 +180,9 @@ export class TmuxAdapter implements TmuxPort {
       if (((err as { stderr?: string }).stderr ?? '').includes('duplicate session')) throw new DuplicateSessionError(input.name);
       throw err;
     }
-    await this.tmux(['set-option', '-t', exactTarget(input.name), '@perch_command', input.storedCommand ?? input.command]);
-    if (input.parent) await this.tmux(['set-option', '-t', exactTarget(input.name), '@perch_parent', input.parent]);
-    if (input.codexThread) await this.tmux(['set-option', '-t', exactTarget(input.name), '@perch_codex_thread', input.codexThread]);
+    await this.tmux(['set-option', '-t', exactTarget(input.name), '@tarfa_command', input.storedCommand ?? input.command]);
+    if (input.parent) await this.tmux(['set-option', '-t', exactTarget(input.name), '@tarfa_parent', input.parent]);
+    if (input.codexThread) await this.tmux(['set-option', '-t', exactTarget(input.name), '@tarfa_codex_thread', input.codexThread]);
   }
 
   async killSession(name: string): Promise<void> {

@@ -12,7 +12,7 @@ const secret = (c: string) => c.repeat(43);
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'perch-pairing-'));
-  path = join(dir, 'perch', 'pairing.json');
+  path = join(dir, 'tarfa', 'pairing.json');
 });
 afterEach(() => rm(dir, { recursive: true, force: true }));
 

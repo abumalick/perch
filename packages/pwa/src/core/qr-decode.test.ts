@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import encodeQR from 'qr';
 import decodeQR from 'qr/decode.js';
-import { generateAgentKeys, generatePairingSecret, pairingLink } from '@perch/secure-channel';
+import { generateAgentKeys, generatePairingSecret, pairingLink } from '@tarfa/secure-channel';
 
-// The decoder the in-app scanner uses must read the codes `perch pair` prints, at their real
+// The decoder the in-app scanner uses must read the codes `tarfa pair` prints, at their real
 // length. Rendered here the way a camera frame arrives: RGBA pixels, a few per module.
 function render(text: string, scale = 4) {
   const matrix = encodeQR(text, 'raw', { ecc: 'low', border: 4 });

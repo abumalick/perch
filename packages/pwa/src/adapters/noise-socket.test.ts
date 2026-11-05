@@ -7,7 +7,7 @@ import {
   handshakeFrame,
   parseDeviceHello,
   readHandshakeFrame,
-} from '@perch/secure-channel';
+} from '@tarfa/secure-channel';
 import type { CloseInfo } from '../core/ports/socket';
 import type { FrameSocket } from '../core/ports/frame-socket';
 import { DeviceKeyError, type DeviceIdentity } from '../core/ports/device-identity';

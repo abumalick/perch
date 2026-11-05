@@ -1,7 +1,7 @@
 import { mount } from 'svelte';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App.svelte';
-import { PerchStore } from './store.svelte';
+import { TarfaStore } from './store.svelte';
 import { ConnectionManager } from './core/connection-manager';
 import { WorkspaceAggregator } from './core/workspace-aggregator';
 import { SettingsStore } from './core/settings-store';
@@ -12,7 +12,7 @@ import { browserFrameSocketFactory } from './adapters/browser-frame-socket';
 import { noiseSocketFactory } from './adapters/noise-socket';
 import { indexedDbIdentityStore, loadDeviceIdentity, replaceUnreadableDeviceIdentity } from './adapters/device-keys';
 import { deviceName } from './core/device-name';
-import { deviceFingerprint } from '@perch/secure-channel';
+import { deviceFingerprint } from '@tarfa/secure-channel';
 import type { DeviceIdentity } from './core/ports/device-identity';
 import { MediaRecorderAudio } from './adapters/media-recorder-audio';
 import { ElevenLabsTranscriber } from './adapters/elevenlabs-transcriber';
@@ -99,7 +99,7 @@ const keyInfo = async (load: Promise<DeviceIdentity>) => {
   return { fingerprint: deviceFingerprint(x25519Public), storage, fallback };
 };
 
-let store: PerchStore;
+let store: TarfaStore;
 const manager = new ConnectionManager({
   secureSocketFactory: (agentKey, token, onPhase) =>
     noiseSocketFactory(browserFrameSocketFactory, agentKey, {
@@ -135,7 +135,7 @@ const screenAwakeRecorder = new WakeLockRecorder(recorder, () =>
 );
 // The preset the current dictation started with: the recorder and the transcriber must agree.
 const dictationPreset = () => recorder.startedWith ?? store.currentPreset;
-store = new PerchStore({
+store = new TarfaStore({
   settings,
   manager,
   aggregator,

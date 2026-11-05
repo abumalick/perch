@@ -170,7 +170,7 @@ describe('WorkspaceList', () => {
 
   it('says why a machine refused this phone instead of blaming the network', () => {
     const store = fakeStore([], [], null, 'unreachable');
-    store.refusals = [{ id: 'mac', message: 'This pairing code has expired — run `perch pair` on Mac for a new one' }];
+    store.refusals = [{ id: 'mac', message: 'This pairing code has expired — run `tarfa pair` on Mac for a new one' }];
     render(WorkspaceList, { props: { store: store as never } });
     expect(screen.getByTestId('home-refusal')).toHaveTextContent('This pairing code has expired');
     expect(screen.queryByText(/each machine's agent is running/i)).not.toBeInTheDocument();

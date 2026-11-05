@@ -7,7 +7,7 @@ import {
   HEADROOM_WARN_BYTES,
   HEADROOM_ALERT_BYTES,
 } from './machine-load';
-import type { MachineStats } from '@perch/contracts';
+import type { MachineStats } from '@tarfa/contracts';
 
 const stats: MachineStats = {
   cpuPercent: 12.4,

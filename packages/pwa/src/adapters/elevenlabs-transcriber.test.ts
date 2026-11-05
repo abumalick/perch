@@ -44,17 +44,17 @@ describe('ElevenLabsTranscriber', () => {
   // The API takes a vocabulary as one repeated part per term, not a joined string.
   it('sends each keyterm as its own part, read at call time', async () => {
     const fetchFn = vi.fn().mockResolvedValue(okResponse('ok'));
-    let terms = ['Perch'];
+    let terms = ['Tarfa'];
     const t = new ElevenLabsTranscriber(() => 'sk_live', () => terms, fetchFn);
 
     await t.transcribe(audio);
-    expect((fetchFn.mock.calls[0]![1].body as FormData).getAll('keyterms')).toEqual(['Perch']);
+    expect((fetchFn.mock.calls[0]![1].body as FormData).getAll('keyterms')).toEqual(['Tarfa']);
 
     // A later reconnect can deliver a longer vocabulary; the next request must carry it.
-    terms = ['Perch', 'HeliBoard', 'Claude Code'];
+    terms = ['Tarfa', 'HeliBoard', 'Claude Code'];
     await t.transcribe(audio);
     expect((fetchFn.mock.calls[1]![1].body as FormData).getAll('keyterms')).toEqual([
-      'Perch',
+      'Tarfa',
       'HeliBoard',
       'Claude Code',
     ]);

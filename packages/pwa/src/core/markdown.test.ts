@@ -56,7 +56,7 @@ describe('renderMarkdown', () => {
     expect(renderMarkdown('')).toBe('');
   });
 
-  // Script is not the only harm: a third-party README could paint a full-screen fake Perch
+  // Script is not the only harm: a third-party README could paint a full-screen fake Tarfa
   // screen with a form posting to another host.
   it('strips inline styles and form controls', () => {
     const html = renderMarkdown(

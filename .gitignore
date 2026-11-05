@@ -6,7 +6,7 @@ dist/
 test-results/
 playwright-report/
 deploy/agent.env
-# Backups `perch connect` keeps before editing it.
+# Backups `tarfa connect` keeps before editing it.
 deploy/agent.env.bak-*
 deploy/*.log
 

@@ -1,6 +1,6 @@
-import { parseAgentMessage, type AgentMessage, type ClientMessage } from '@perch/contracts';
+import { parseAgentMessage, type AgentMessage, type ClientMessage } from '@tarfa/contracts';
 import type { CloseInfo, Socket, SocketFactory } from './ports/socket';
-import { REFUSAL } from '@perch/secure-channel';
+import { REFUSAL } from '@tarfa/secure-channel';
 import { describeRefusal, type RefusalContext } from './refusal';
 import { en } from './i18n/en';
 

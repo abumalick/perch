@@ -1,6 +1,6 @@
-# Perch — Codex agent guide
+# Tarfa — Codex agent guide
 
-Perch is a mobile-first PWA for interacting with terminal sessions (including Claude
+Tarfa is a mobile-first PWA for interacting with terminal sessions (including Claude
 Code and Codex) in tmux workspaces across machines. Each machine's agent has a loopback
 phone port that its operator publishes (`tailscale serve`, Funnel, a proxy); the phone
 connects there directly, in an end-to-end Noise session keyed by its device key. No agent
@@ -42,26 +42,26 @@ Useful routes into `CLAUDE.md`:
 
 ## Layout
 
-- `packages/contracts` (`@perch/contracts`): zod wire schemas and shared types.
+- `packages/contracts` (`@tarfa/contracts`): zod wire schemas and shared types.
   Change the protocol here first, then the agent and PWA. Terminal data is base64.
-- `packages/agent` (`@perch/agent`): tmux and node-pty adapters, the loopback phone
+- `packages/agent` (`@tarfa/cli`): tmux and node-pty adapters, the loopback phone
   port, and a loopback-only `POST /hooks` server. Domain/application in `application/`
   and `ports/`, adapters in `infrastructure/`, wiring in `server/`.
 - `packages/secure-channel`: the Noise IK session, framing, device hellos, pairing
   links and refusals, shared by the agent and the PWA.
-- `packages/pwa` (`@perch/pwa`): Svelte 5 runes, xterm.js, Vite PWA, Playwright.
+- `packages/pwa` (`@tarfa/pwa`): Svelte 5 runes, xterm.js, Vite PWA, Playwright.
   Core logic lives in `src/core` and `src/adapters`; `src/lib` contains the UI.
 
 ## Development workflow and skills
 
 Codex discovers this repository's skills in `.agents/skills/`. Use:
 
-- `$work` for Perch features, fixes, and behavior changes. It contains the local
+- `$work` for Tarfa features, fixes, and behavior changes. It contains the local
   design, worktree, testing, on-device verification, and integration workflow;
   it does not require the Claude Superpowers plugin.
-- `$perch-spawn` when asked to launch a separate local Perch workspace. Its
-  launcher, `perch spawn`, starts **Claude Code**, even when called from Codex.
-- `$perch-orchestrate` when asked to coordinate delegated work. Use available Codex
+- `$tarfa-spawn` when asked to launch a separate local Tarfa workspace. Its
+  launcher, `tarfa spawn`, starts **Claude Code**, even when called from Codex.
+- `$tarfa-orchestrate` when asked to coordinate delegated work. Use available Codex
   collaboration tools for Codex subagents; they cannot address arbitrary Claude
   sessions by a tmux workspace id.
 
@@ -79,7 +79,7 @@ session. Reading or migrating a skill is not an instruction to execute its workf
   current branch, as in the existing `work` workflow. It needs no device deploy.
 - Unit/integration tests use ephemeral ports. E2E uses a fixed preview port:
   **4173 is reserved for the standing deploy**. Build first, then choose a free
-  `E2E_PORT`, e.g. `E2E_PORT=4175 pnpm --filter @perch/pwa e2e`.
+  `E2E_PORT`, e.g. `E2E_PORT=4175 pnpm --filter @tarfa/pwa e2e`.
 - `pnpm serve:build .worktrees/<feature>` builds the PWA and changes the live deploy.
   The installed app updates in about 60 seconds while foregrounded and shows the
   worktree slug. `pnpm serve:restore` restores main.
@@ -97,12 +97,12 @@ session. Reading or migrating a skill is not an instruction to execute its workf
 
 - Unit tests: `pnpm -s test` (runs `pnpm -r test`). This alone is **not** the full gate.
 - Types: `pnpm -r typecheck`. Shell/script tests: `pnpm test:scripts`.
-- PWA build: `pnpm --filter @perch/pwa build`.
-- PWA e2e: `E2E_PORT=<free-port> pnpm --filter @perch/pwa e2e` after building.
+- PWA build: `pnpm --filter @tarfa/pwa build`.
+- PWA e2e: `E2E_PORT=<free-port> pnpm --filter @tarfa/pwa e2e` after building.
   The suite uses WebKit and a faithful fake agent in `e2e/fake-agent.ts`.
   Install WebKit once per machine with
-  `pnpm --filter @perch/pwa exec playwright install webkit`.
-- Individual packages: `pnpm --filter @perch/<pkg> test` or `typecheck`.
+  `pnpm --filter @tarfa/pwa exec playwright install webkit`.
+- Individual packages: `pnpm --filter @tarfa/<pkg> test` or `typecheck`.
 - Add meaningful regression coverage for behavior changes. For documentation-only
   edits, validate paths, skill metadata and the diff rather than adding code tests.
 
@@ -110,7 +110,7 @@ The commit, merge, and push hooks in `deploy/git-hooks/` run the shared
 `run-tests.sh` gate: leak checks, types, unit tests, script tests, PWA build and e2e
 on a free port. Never bypass it with `--no-verify`, or integrate by updating
 `refs/heads/main` directly. Fix failures instead. The leak check includes a private
-word list outside the repo (`~/.perch/leak-words.txt` or `PERCH_LEAK_WORDS`); never
+word list outside the repo (`~/.tarfa/leak-words.txt` or `TARFA_LEAK_WORDS`); never
 copy that list into the repository.
 
 There is **no remote test CI**. GitHub only runs a gitleaks scan. Do not wait for a
@@ -128,7 +128,7 @@ or red main. Leave changes uncommitted when the task does not authorize a commit
 
 - Agents bind `127.0.0.1` only: the hooks port and the phone port. Phones connect to the
   phone port with pinned agent keys and Noise IK; never accept plaintext.
-- Use `childEnv()` for agent-spawned processes; no child may inherit `PERCH_` secrets.
+- Use `childEnv()` for agent-spawned processes; no child may inherit `TARFA_` secrets.
 - Keep `KillMode=process` in the agent service so restarting it preserves workspaces.
 - Never use broad process kills or kill the ambient tmux server. Inspect processes
   and target exact PIDs or session ids. Tests that destroy a tmux server must use an

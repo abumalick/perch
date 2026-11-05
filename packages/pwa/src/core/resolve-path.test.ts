@@ -12,11 +12,11 @@ describe('resolveProjectPath', () => {
   });
 
   it('joins a relative input onto the default path', () => {
-    expect(resolveProjectPath('/home/u/workspace', 'perch')).toBe('/home/u/workspace/perch');
+    expect(resolveProjectPath('/home/u/workspace', 'tarfa')).toBe('/home/u/workspace/tarfa');
   });
 
   it('normalizes slashes between the default and the input', () => {
-    expect(resolveProjectPath('/home/u/workspace/', 'perch')).toBe('/home/u/workspace/perch');
+    expect(resolveProjectPath('/home/u/workspace/', 'tarfa')).toBe('/home/u/workspace/tarfa');
     expect(resolveProjectPath('/home/u/workspace/', '/perch')).toBe('/perch');
     expect(resolveProjectPath('/home/u/workspace', 'sub/dir')).toBe('/home/u/workspace/sub/dir');
   });

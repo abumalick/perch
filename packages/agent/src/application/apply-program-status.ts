@@ -1,4 +1,4 @@
-import type { WorkspaceStatus } from '@perch/contracts';
+import type { WorkspaceStatus } from '@tarfa/contracts';
 import type { StatusStorePort } from '../ports/status-store-port';
 import type { HookEventLogPort, HookMarks } from '../ports/hook-event-log-port';
 import type { MarkSet } from './apply-hook-event';

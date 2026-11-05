@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 import { formatAge, formatWorkspaceTable } from './format-workspace-table';
 import type { WorkspaceRole } from './workspace-role';
 

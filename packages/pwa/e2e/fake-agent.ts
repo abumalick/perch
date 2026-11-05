@@ -1,20 +1,20 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
-import { audioMediaType, imageMediaType, pdfMediaType } from '@perch/contracts';
-import { REFUSAL, generateAgentKeys, generatePairingSecret } from '@perch/secure-channel';
-import { NoiseClientConnection, type NoiseClientConnectionOptions } from '@perch/agent/src/server/noise-client-connection.ts';
-import { startDeviceGate } from '@perch/agent/src/server/device-gate-wiring.ts';
-import { startPhoneListener } from '@perch/agent/src/infrastructure/phone-listener.ts';
-import { PhoneAdmission } from '@perch/agent/src/application/phone-admission.ts';
-import { DiskReadLimiter } from '@perch/agent/src/application/disk-read-limiter.ts';
-import { FileDeviceStore } from '@perch/agent/src/infrastructure/file-device-store.ts';
-import { FilePairingStore } from '@perch/agent/src/infrastructure/file-pairing-store.ts';
-import { addPairing } from '@perch/agent/src/application/pairing.ts';
-import { revokeDevice } from '@perch/agent/src/application/device-roster.ts';
-import type { FrameSocket } from '@perch/agent/src/ports/frame-socket.ts';
+import { audioMediaType, imageMediaType, pdfMediaType } from '@tarfa/contracts';
+import { REFUSAL, generateAgentKeys, generatePairingSecret } from '@tarfa/secure-channel';
+import { NoiseClientConnection, type NoiseClientConnectionOptions } from '@tarfa/cli/src/server/noise-client-connection.ts';
+import { startDeviceGate } from '@tarfa/cli/src/server/device-gate-wiring.ts';
+import { startPhoneListener } from '@tarfa/cli/src/infrastructure/phone-listener.ts';
+import { PhoneAdmission } from '@tarfa/cli/src/application/phone-admission.ts';
+import { DiskReadLimiter } from '@tarfa/cli/src/application/disk-read-limiter.ts';
+import { FileDeviceStore } from '@tarfa/cli/src/infrastructure/file-device-store.ts';
+import { FilePairingStore } from '@tarfa/cli/src/infrastructure/file-pairing-store.ts';
+import { addPairing } from '@tarfa/cli/src/application/pairing.ts';
+import { revokeDevice } from '@tarfa/cli/src/application/device-roster.ts';
+import type { FrameSocket } from '@tarfa/cli/src/ports/frame-socket.ts';
 
-// The machine token a seeded entry carries (`machineEntry`), as the agent's PERCH_TOKEN.
+// The machine token a seeded entry carries (`machineEntry`), as the agent's TARFA_TOKEN.
 const TOKEN = 'secret';
 
 // A 1×1 transparent PNG, served as an in-session media read.
@@ -102,9 +102,9 @@ export interface FakeAgent {
   mediaOverrides: Map<string, { type: string; bytes: Buffer }>;
   // Phone sockets the agent took into a session, refused ones included.
   upgrades: number;
-  // Mints a pairing code, as `perch pair` does: live, or already expired or spent.
+  // Mints a pairing code, as `tarfa pair` does: live, or already expired or spent.
   newPairing: (state?: 'live' | 'expired' | 'used') => Promise<string>;
-  // Revokes every enrolled device, as `perch devices revoke` does from another process: resolves
+  // Revokes every enrolled device, as `tarfa devices revoke` does from another process: resolves
   // once the agent has noticed and closed their sessions.
   revokeAll: () => Promise<void>;
   // Holds every `workspaces` reply to `list` until the returned release is called, so a spec
@@ -293,7 +293,7 @@ export async function startFakeAgent(
             send({ type: 'clientLogAck', id: String(msg.id), ok: true });
             break;
           case 'list':
-            // machineId here is the AGENT's PERCH_MACHINE_ID, deliberately DIFFERENT from the
+            // machineId here is the AGENT's TARFA_MACHINE_ID, deliberately DIFFERENT from the
             // PWA's machine config id (seeded as 'test' in the E2E). The client must route
             // attach/input by the connection id, not this value — so the E2E covers that.
             if (heldLists) heldLists.push(() => send({ type: 'workspaces', workspaces, claudeVoice }));
@@ -359,7 +359,7 @@ export async function startFakeAgent(
             // file/doc links) so the E2E can assert it is clickable. Plain-text URLs are
             // covered by the WebLinksAddon; OSC 8 links need the terminal's linkHandler.
             const osc8 = '\x1b]8;;https://example.com/osc8\x1b\\OSC8LINK\x1b]8;;\x1b\\\r\n';
-            send({ type: 'output', workspaceId: attached, data: Buffer.from(`PERCH_READY ${attached}\r\n${osc8}`, 'utf8').toString('base64') });
+            send({ type: 'output', workspaceId: attached, data: Buffer.from(`TARFA_READY ${attached}\r\n${osc8}`, 'utf8').toString('base64') });
             break;
           }
           case 'input':
@@ -417,9 +417,9 @@ export async function startFakeAgent(
           case 'listRoots':
             send({ type: 'roots', roots: ['/home/u/workspace'] });
             break;
-          // Mirrors a machine with a ~/.perch/keyterms.txt dictation vocabulary.
+          // Mirrors a machine with a ~/.tarfa/keyterms.txt dictation vocabulary.
           case 'listKeyterms':
-            send({ type: 'keyterms', keyterms: ['Perch', 'HeliBoard'] });
+            send({ type: 'keyterms', keyterms: ['Tarfa', 'HeliBoard'] });
             break;
           case 'readFile': {
             // Text only — media files are read with readMedia.

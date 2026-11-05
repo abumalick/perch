@@ -1,5 +1,5 @@
 // A short label for this device, sent to the agent when it enrols the device key so that
-// `perch devices` can tell phones apart. Informative only; the key is what is checked.
+// `tarfa devices` can tell phones apart. Informative only; the key is what is checked.
 export function deviceName(userAgent: string): string {
   const platform =
     /iPad/.test(userAgent) ? 'iPad'

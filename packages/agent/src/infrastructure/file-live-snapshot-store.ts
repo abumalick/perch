@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 import type { LiveSnapshot, LiveSnapshotPort, LiveWorkspace } from '../ports/live-snapshot-port';
 import { writeFileAtomic } from './file-lock';
 
-// The live-workspace snapshot (default ~/.perch/live.json). A missing or malformed file is no
+// The live-workspace snapshot (default ~/.tarfa/live.json). A missing or malformed file is no
 // snapshot, which recovers nothing and is rewritten on the next tick. Rewritten only when its
 // content changes, since it is checked on every poll tick.
 export class FileLiveSnapshotStore implements LiveSnapshotPort {
@@ -47,7 +47,7 @@ function parseEntry(value: unknown): LiveWorkspace | undefined {
   const id = str('id');
   const name = str('name');
   const projectPath = str('projectPath');
-  // Empty for a session resurrected without its `@perch_command`; parking falls back to `claude`.
+  // Empty for a session resurrected without its `@tarfa_command`; parking falls back to `claude`.
   const command = str('command');
   const machineId = str('machineId');
   const createdAt = typeof v.createdAt === 'number' ? v.createdAt : undefined;

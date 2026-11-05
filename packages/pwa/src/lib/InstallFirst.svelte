@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { PerchStore } from '../store.svelte';
+  import type { TarfaStore } from '../store.svelte';
   import { msg } from '../i18n.svelte';
 
   let {
     store,
     copy = (text: string) => navigator.clipboard.writeText(text),
-  }: { store: Pick<PerchStore, 'installFirst' | 'pairInBrowser'>; copy?: (text: string) => Promise<void> } = $props();
+  }: { store: Pick<TarfaStore, 'installFirst' | 'pairInBrowser'>; copy?: (text: string) => Promise<void> } = $props();
 
   let copied = $state<'no' | 'yes' | 'failed'>('no');
 
@@ -39,7 +39,7 @@
       <li>{msg().app.installFirst.inSafariTap}<b>{msg().app.installFirst.share}</b> → <b>{msg().app.installFirst.addToHomeScreen}</b>{msg().app.installFirst.alreadyOnHomeScreen}</li>
       <li>{msg().app.installFirst.openTarfa}<b>{msg().app.installFirst.addMachine}</b>{msg().app.installFirst.then}<b>{msg().app.installFirst.pastePairingLink}</b>.</li>
     </ol>
-    <p class="note">{msg().app.installFirst.notUsedYet}<code>perch pair</code>.</p>
+    <p class="note">{msg().app.installFirst.notUsedYet}<code>tarfa pair</code>.</p>
     <button type="button" class="link" onclick={() => store.pairInBrowser()}>{msg().app.installFirst.pairInBrowser}</button>
   </section>
 {/if}

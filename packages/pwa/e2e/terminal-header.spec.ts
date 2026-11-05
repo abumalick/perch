@@ -18,7 +18,7 @@ test('the terminal header names the project above the workspace', async ({ page 
   await page.goto('/');
 
   await page.locator('button.row', { hasText: 'demo' }).first().click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await expect(page.getByTestId('header-project')).toHaveText('demo');
   await expect(page.getByTestId('header-name')).toHaveText('demo');
@@ -38,7 +38,7 @@ for (const { width, inHeader } of [
     await page.goto('/');
 
     await page.locator('button.row', { hasText: 'demo' }).first().click();
-    await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+    await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
     const header = page.locator('.terminal-screen header');
     await expect(header.getByRole('button', { name: /status:/i })).toHaveCount(inHeader ? 1 : 0);
@@ -74,7 +74,7 @@ for (const { width, inHeader } of [
     };
     await next();
     await expect(page.getByTestId('header-name')).toHaveText('other');
-    await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY perch-other' })).toBeVisible();
+    await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY perch-other' })).toBeVisible();
     await next();
     await expect(page.getByTestId('header-name')).toHaveText('demo');
   });

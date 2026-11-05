@@ -23,10 +23,10 @@ describe('SystemdScopeReaper', () => {
 
   // THE safety property. tmux without systemd support (or a pane the agent itself spawned)
   // leaves the process in the agent's OWN unit — returning that would make the close stop
-  // `perch-agent.service`, killing the agent instead of the leftovers.
+  // `tarfa-agent.service`, killing the agent instead of the leftovers.
   it('refuses any cgroup that is not a tmux pane scope', async () => {
     const cases = [
-      '0::/user.slice/user-1000.slice/user@1000.service/app.slice/perch-agent.service\n',
+      '0::/user.slice/user-1000.slice/user@1000.service/app.slice/tarfa-agent.service\n',
       '0::/user.slice/user-1000.slice/user@1000.service/init.scope\n',
       '0::/system.slice/nginx.service\n',
       '0::/\n',
@@ -61,7 +61,7 @@ describe('SystemdScopeReaper', () => {
     const reaper = new SystemdScopeReaper(async () => SCOPE, async () => {
       ran = true;
     });
-    await expect(reaper.stopScope('perch-agent.service')).rejects.toThrow();
+    await expect(reaper.stopScope('tarfa-agent.service')).rejects.toThrow();
     expect(ran).toBe(false);
   });
 });

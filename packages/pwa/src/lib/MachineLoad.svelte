@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { MachineStats } from '@perch/contracts';
+  import type { MachineStats } from '@tarfa/contracts';
   import { describeLoad } from '../core/machine-load';
   import MachineLoadHelp from './MachineLoadHelp.svelte';
   import { msg } from '../i18n.svelte';

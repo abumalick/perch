@@ -2,8 +2,8 @@
   import { isAndroid } from './android-input';
   import { flip } from 'svelte/animate';
   import { slide } from 'svelte/transition';
-  import { imageMediaType, type Workspace } from '@perch/contracts';
-  import type { PerchStore } from '../store.svelte';
+  import { imageMediaType, type Workspace } from '@tarfa/contracts';
+  import type { TarfaStore } from '../store.svelte';
   import ProjectFilterSelect from './ProjectFilterSelect.svelte';
   import MachineLoad from './MachineLoad.svelte';
   import { BUILD_LABEL, isTestBuild } from '../core/build-label';
@@ -18,7 +18,7 @@
 
   const AGE_TICK_MS = 30_000;
 
-  let { store, buildLabel = BUILD_LABEL }: { store: PerchStore; buildLabel?: string } =
+  let { store, buildLabel = BUILD_LABEL }: { store: TarfaStore; buildLabel?: string } =
     $props();
 
   // Suppress intro transitions on the first render. The PWA re-populates the whole

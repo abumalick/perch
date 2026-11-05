@@ -1,4 +1,4 @@
-import { DEVICE_REFUSED, IN_BAND_REFUSAL, REFUSAL } from '@perch/secure-channel';
+import { DEVICE_REFUSED, IN_BAND_REFUSAL, REFUSAL } from '@tarfa/secure-channel';
 import { msg } from '../i18n.svelte';
 
 // What the entry connects with, which is how a refused enrolment is worded: a pairing code,

@@ -144,7 +144,7 @@ describe('attentionDecision', () => {
       });
     });
 
-    // A permission prompt is the highest-value alert Perch has — it must never be swallowed,
+    // A permission prompt is the highest-value alert Tarfa has — it must never be swallowed,
     // even while background work is pending.
     it('needs feedback for a permission prompt even on a deferred session', () => {
       const permission = {

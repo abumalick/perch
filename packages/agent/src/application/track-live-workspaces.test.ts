@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { WorkspaceStatus } from '@perch/contracts';
+import type { WorkspaceStatus } from '@tarfa/contracts';
 import { trackLiveWorkspaces, type TrackLiveWorkspacesDeps } from './track-live-workspaces';
 import type { LiveSnapshot, LiveWorkspace } from '../ports/live-snapshot-port';
 import type { ParkedWorkspace } from '../ports/parked-store-port';
@@ -172,7 +172,7 @@ describe('trackLiveWorkspaces', () => {
     expect(h.logged.map((e) => e.reason)).toEqual(['server-lost']);
   });
 
-  it('parks a session resurrected as a bare shell (no @perch_command) on a new server', async () => {
+  it('parks a session resurrected as a bare shell (no @tarfa_command) on a new server', async () => {
     // tmux-resurrect brings the name back but not the claude inside it; reconcileParked then
     // kills the shell, so the conversation comes back through the parked record instead.
     const h = harness({
@@ -221,7 +221,7 @@ describe('trackLiveWorkspaces', () => {
     expect(await trackLiveWorkspaces(h.deps)).toEqual([]);
   });
 
-  it('ignores sessions without the Perch prefix', async () => {
+  it('ignores sessions without the Tarfa prefix', async () => {
     const h = harness({ serverId: 'srv-1', sessions: [session('main')] });
     h.deps.tmux.listSessions = async (prefix) => [session('main')].filter((s) => s.name.startsWith(prefix));
     await trackLiveWorkspaces(h.deps);

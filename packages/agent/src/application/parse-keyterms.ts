@@ -7,7 +7,7 @@ const MAX_TERM_WORDS = 5;
 // The API rejects these characters inside a keyterm.
 const FORBIDDEN = /[<>{}[\]\\]/;
 
-// Validates the raw text of ~/.perch/keyterms.txt: one term per line, `#` comments and blank
+// Validates the raw text of ~/.tarfa/keyterms.txt: one term per line, `#` comments and blank
 // lines ignored. Hand-edited, so it degrades line by line rather than rejecting the file — a
 // term the API would refuse is dropped, the rest still reach Scribe.
 export function parseKeyterms(raw: string): string[] {

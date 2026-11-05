@@ -1,4 +1,4 @@
-// Applies a `perch setup` plan in order, stopping at the first failure. A dry run applies nothing.
+// Applies a `tarfa setup` plan in order, stopping at the first failure. A dry run applies nothing.
 import { TailscaleOperatorError } from '../ports/tailscale-port';
 import type { EnrolmentMode } from './device-roster';
 import { describeStep, type SetupStep } from './setup-machine';
@@ -10,6 +10,9 @@ export interface SetupEffects {
   createKey(): Promise<void>;
   writeRoster(mode: EnrolmentMode): Promise<void>;
   installUnit(text: string): Promise<string[]>;
+  stopLegacyService(): Promise<string[]>;
+  moveState(): Promise<void>;
+  removeLegacyService(): Promise<string[]>;
   installHooks(): Promise<void>;
   serve(entry: { port: number; path: string; target: string; funnel: boolean }): Promise<void>;
   restart(): Promise<string>;
@@ -21,7 +24,7 @@ export interface SetupEffects {
 const OPERATOR = [
   'Tailscale needs root or an operator to change its serve config. Run once:',
   '  sudo tailscale set --operator=$USER',
-  'then run perch setup again.',
+  'then run tarfa setup again.',
 ].join('\n');
 
 export async function runSetup(
@@ -31,7 +34,7 @@ export async function runSetup(
 ): Promise<{ ok: boolean; lines: string[] }> {
   const lines = [...plan.checks];
   if (options.dryRun) {
-    lines.push(plan.steps.length === 0 ? 'dry run: nothing to change' : 'dry run: perch setup would');
+    lines.push(plan.steps.length === 0 ? 'dry run: nothing to change' : 'dry run: tarfa setup would');
     for (const step of plan.steps) lines.push(`  - ${describeStep(step, effects.envPath)}`);
     return { ok: true, lines };
   }
@@ -39,7 +42,7 @@ export async function runSetup(
     // A run that wrote everything and then found the agent not listening plans nothing next time,
     // so the check runs on its own too.
     if (!(await effects.checkListener(options.phonePort))) {
-      lines.push(`nothing changed, but nothing answers a WebSocket upgrade on 127.0.0.1:${options.phonePort}: read the agent's log (journalctl --user -u perch-agent)`);
+      lines.push(`nothing changed, but nothing answers a WebSocket upgrade on 127.0.0.1:${options.phonePort}: read the agent's log (journalctl --user -u tarfa-agent)`);
       return { ok: false, lines };
     }
     lines.push('this machine is already set up as asked; nothing changed, and the phone port answers');
@@ -69,6 +72,13 @@ async function apply(step: SetupStep, effects: SetupEffects): Promise<string | n
     case 'write-roster':
       await effects.writeRoster(step.mode);
       return describeStep(step, '').replace(/^write/, 'wrote');
+    case 'stop-legacy-service':
+      return `stopped the old agent service: ${(await effects.stopLegacyService()).join('; ')}`;
+    case 'move-state':
+      await effects.moveState();
+      return 'moved ~/.perch to ~/.tarfa (~/.perch is now a link to it)';
+    case 'remove-legacy-service':
+      return `removed the old agent service: ${(await effects.removeLegacyService()).join('; ')}`;
     case 'install-unit':
       return `installed the agent service: ${(await effects.installUnit(step.text)).join('; ')}`;
     case 'install-hooks':
@@ -81,7 +91,7 @@ async function apply(step: SetupStep, effects: SetupEffects): Promise<string | n
       return `restarted the agent (${await effects.restart()})`;
     case 'check-listener':
       if (!(await effects.checkListener(step.port))) {
-        throw new Error(`nothing answered a WebSocket upgrade on 127.0.0.1:${step.port}: read the agent's log (journalctl --user -u perch-agent)`);
+        throw new Error(`nothing answered a WebSocket upgrade on 127.0.0.1:${step.port}: read the agent's log (journalctl --user -u tarfa-agent)`);
       }
       return `the phone port answers on 127.0.0.1:${step.port}`;
     case 'pair':

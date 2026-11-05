@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import type { PerchStore } from '../store.svelte';
+  import type { TarfaStore } from '../store.svelte';
   import type { MachineConfig } from '../core/settings-store';
   import { parseAgentKey } from '../core/agent-key';
   import { parseAddressLines } from '../core/machine-addresses';
@@ -14,7 +14,7 @@
     machine,
     onClose,
   }: {
-    store: Pick<PerchStore, 'statuses' | 'lastConnectionError' | 'updateMachine' | 'removeMachine' | 'reconnectMachine'>;
+    store: Pick<TarfaStore, 'statuses' | 'lastConnectionError' | 'updateMachine' | 'removeMachine' | 'reconnectMachine'>;
     machine: MachineConfig;
     onClose: () => void;
   } = $props();
@@ -130,7 +130,7 @@
 
   <div class="danger-zone">
     <button type="button" class="danger" onclick={() => (confirming = true)}>{msg().settings.removeMachine}</button>
-    <p class="hint">{msg().settings.removeHintBefore}<code>perch pair</code>{msg().settings.removeHintAfter}</p>
+    <p class="hint">{msg().settings.removeHintBefore}<code>tarfa pair</code>{msg().settings.removeHintAfter}</p>
   </div>
 </section>
 

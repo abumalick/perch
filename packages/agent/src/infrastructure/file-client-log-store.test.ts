@@ -3,7 +3,7 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FileClientLogStore } from './file-client-log-store';
-import type { ClientLogBatch } from '@perch/contracts';
+import type { ClientLogBatch } from '@tarfa/contracts';
 
 let dir: string;
 let file: string;

@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import type { MachineStats } from '@perch/contracts';
+import type { MachineStats } from '@tarfa/contracts';
 import type { SystemStatsPort } from '../ports/system-stats-port';
 
 export type TextFileReader = (path: string) => Promise<string>;

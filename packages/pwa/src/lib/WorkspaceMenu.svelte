@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { WorkspaceStatus } from '@perch/contracts';
+  import type { WorkspaceStatus } from '@tarfa/contracts';
   import StatusPicker from './StatusPicker.svelte';
   import BrowserPicker from './BrowserPicker.svelte';
   import { githubLinks } from '../core/github-links';

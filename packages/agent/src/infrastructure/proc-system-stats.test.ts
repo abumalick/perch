@@ -9,9 +9,9 @@ const MEMINFO = [
   'SwapFree:        6000000 kB',
 ].join('\n');
 
-const CGROUP = '0::/user.slice/user-1000.slice/user@1000.service/app.slice/perch-agent.service\n';
+const CGROUP = '0::/user.slice/user-1000.slice/user@1000.service/app.slice/tarfa-agent.service\n';
 const USER_SLICE = '/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service';
-const APP_SLICE = `${USER_SLICE}/app.slice/perch-agent.service`;
+const APP_SLICE = `${USER_SLICE}/app.slice/tarfa-agent.service`;
 
 // Busy = user + system; the second sample adds 100 busy ticks and 100 idle ticks, so the
 // window is exactly 50% busy.

@@ -1,4 +1,4 @@
-import { isMachineUrl, MAX_ADDRESSES } from '@perch/secure-channel';
+import { isMachineUrl, MAX_ADDRESSES } from '@tarfa/secure-channel';
 
 // An address as the phone stores and compares it: `wss://host` and `wss://host/` are one
 // address, so a link spelling it either way finds the entry that holds it. Null for anything a

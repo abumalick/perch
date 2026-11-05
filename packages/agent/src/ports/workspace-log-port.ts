@@ -1,4 +1,4 @@
-import type { WorkspaceStatus } from '@perch/contracts';
+import type { WorkspaceStatus } from '@tarfa/contracts';
 
 // `server-lost`: the workspace went down with its tmux server, see trackLiveWorkspaces.
 export type WorkspaceCloseReason = 'closed-by-user' | 'exited' | 'server-lost';

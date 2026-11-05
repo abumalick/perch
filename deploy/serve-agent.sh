@@ -8,7 +8,7 @@
 #   pnpm serve:agent-restore           # point back at main's agent
 #   pnpm serve:agent-heal              # restore main only if agent-live dangles
 #
-# Set PERCH_SKIP_RESTART=1 to flip the symlink without restarting (used by the tests).
+# Set TARFA_SKIP_RESTART=1 to flip the symlink without restarting (used by the tests).
 set -euo pipefail
 # The main checkout, wherever this copy runs from: the live symlinks the services read are main's.
 REPO="$(cd "$(dirname "$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --path-format=absolute --git-common-dir)")" && pwd)"
@@ -16,17 +16,27 @@ LIVE="${REPO}/deploy/agent-live"
 
 # Restart is safe: the unit uses KillMode=process, so the tmux server and its sessions
 # survive (the agent re-discovers them via `tmux list-sessions`), and each keeps its status
-# (FileStatusStore, ~/.perch/status.json).
+# (FileStatusStore, ~/.tarfa/status.json).
 restart_agent() {
-  if [ -n "${PERCH_SKIP_RESTART:-}" ]; then return 0; fi
-  if command -v systemctl >/dev/null 2>&1 \
-     && systemctl --user list-unit-files perch-agent.service >/dev/null 2>&1; then
-    systemctl --user restart perch-agent
-  elif command -v launchctl >/dev/null 2>&1; then
-    launchctl kickstart -k "gui/$(id -u)/com.perch.agent"
-  else
-    echo "warning: no systemd/launchd found; restart the agent manually." >&2
+  if [ -n "${TARFA_SKIP_RESTART:-}" ]; then return 0; fi
+  # perch-agent / com.perch.agent: the service's names until `tarfa setup` swaps them.
+  if command -v systemctl >/dev/null 2>&1; then
+    for unit in tarfa-agent perch-agent; do
+      if [ -f "${HOME}/.config/systemd/user/${unit}.service" ]; then
+        systemctl --user restart "${unit}"
+        return 0
+      fi
+    done
   fi
+  if command -v launchctl >/dev/null 2>&1; then
+    for label in app.tarfa.agent com.perch.agent; do
+      if [ -f "${HOME}/Library/LaunchAgents/${label}.plist" ]; then
+        launchctl kickstart -k "gui/$(id -u)/${label}"
+        return 0
+      fi
+    done
+  fi
+  echo "warning: no agent service found; restart the agent manually." >&2
 }
 
 restore_main() { ln -sfn "${REPO}" "${LIVE}"; }

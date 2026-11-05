@@ -5,7 +5,7 @@ import type { ParkedWorkspace } from '../ports/parked-store-port';
 
 describe('workspaceSlug', () => {
   it('is the folder name, lowercased', () => {
-    expect(workspaceSlug('/home/u/workspace/Perch')).toBe('perch');
+    expect(workspaceSlug('/home/u/workspace/Tarfa')).toBe('tarfa');
   });
 
   it('keeps only characters safe in a tmux name, a --name and an unquoted command', () => {

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Tests for perch-guard.sh, the PreToolUse hook that refuses process-killing commands which
+# Tests for tarfa-guard.sh, the PreToolUse hook that refuses process-killing commands which
 # can reach the tmux server or the agent from inside a workspace. Table-driven: each row is a
 # Bash command and whether the guard must let it through.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GUARD="${HERE}/perch-guard.sh"
+GUARD="${HERE}/tarfa-guard.sh"
 
 fails=0
 
@@ -31,7 +31,7 @@ expect() {
   fi
 }
 
-echo "perch-guard.sh"
+echo "tarfa-guard.sh"
 echo " refuses"
 expect deny 'pkill -f "x"'
 expect deny 'pkill node'
@@ -68,24 +68,27 @@ expect deny '"pkill" -f x'
 
 
 echo " refuses raw inbox posts and re-parenting"
-expect deny 'printf x | nc -U ~/.perch/inbox/perch-a.sock'
+expect deny 'printf x | nc -U ~/.tarfa/inbox/perch-a.sock'
 expect deny 'nc -U /run/user/1000/cc-socks/123.sock'
-expect deny 'nc -NU "$HOME/.perch/inbox/perch-a.sock"'
+expect deny 'nc -NU "$HOME/.tarfa/inbox/perch-a.sock"'
 expect deny 'ncat -U ~/.codex/app-server-control/app-server-control.sock'
-expect deny 'socat - UNIX-CONNECT:$HOME/.perch/inbox/perch-a.sock'
+expect deny 'socat - UNIX-CONNECT:$HOME/.tarfa/inbox/perch-a.sock'
 expect deny 'echo hi | socat - unix-client:/run/user/1000/cc-socks/9.sock'
 expect deny 'curl --unix-socket ~/.codex/app-server-control/app-server-control.sock http://x/'
-expect deny "sh -c 'printf x | nc -U ~/.perch/inbox/perch-a.sock'"
+expect deny "sh -c 'printf x | nc -U ~/.tarfa/inbox/perch-a.sock'"
+expect deny 'tmux set-option -t perch-x @tarfa_parent perch-y'
+expect deny 'tmux set -t perch-x @tarfa_codex_thread abc'
+expect deny 'tmux set-option -u -t perch-x @tarfa_parent'
+expect deny 'tmux set -q -t perch-x "@tarfa_parent" perch-y'
+expect deny 'tmux ls \; set -t perch-x @tarfa_parent perch-y'
+expect deny 'sudo tmux set-option -t perch-x @tarfa_parent perch-y'
+expect deny 'tmux setw -t a @tarfa_parent b'
+expect deny 'tmux set-window-option -t a:1 @tarfa_codex_thread abc'
+expect deny 'tmux setw -g @tarfa_parent b'
+expect deny 'tmux set-window-opt -q -t a "@tarfa_parent" b'
+expect deny 'printf x | nc -U ~/.perch/inbox/perch-a.sock'
 expect deny 'tmux set-option -t perch-x @perch_parent perch-y'
 expect deny 'tmux set -t perch-x @perch_codex_thread abc'
-expect deny 'tmux set-option -u -t perch-x @perch_parent'
-expect deny 'tmux set -q -t perch-x "@perch_parent" perch-y'
-expect deny 'tmux ls \; set -t perch-x @perch_parent perch-y'
-expect deny 'sudo tmux set-option -t perch-x @perch_parent perch-y'
-expect deny 'tmux setw -t a @perch_parent b'
-expect deny 'tmux set-window-option -t a:1 @perch_codex_thread abc'
-expect deny 'tmux setw -g @perch_parent b'
-expect deny 'tmux set-window-opt -q -t a "@perch_parent" b'
 
 echo " allows"
 expect allow 'kill 1234'
@@ -110,22 +113,22 @@ expect allow 'for c in pkill killall; do type -a $c; done'
 expect allow "ssh host 'cd /srv && pkill -f x'"
 expect allow 'ls -la'
 expect allow 'rg "nc -U" packages/'
-expect allow 'git commit -m "refuse nc -U posts to ~/.perch/inbox/x.sock"'
-expect allow 'ls ~/.perch/inbox'
-expect allow 'perch send perch-x "hi"'
+expect allow 'git commit -m "refuse nc -U posts to ~/.tarfa/inbox/x.sock"'
+expect allow 'ls ~/.tarfa/inbox'
+expect allow 'tarfa send perch-x "hi"'
 expect allow 'nc -zv host 80'
 expect allow 'nc -U /var/run/docker.sock'
 expect allow 'curl --unix-socket /var/run/docker.sock http://x/'
-expect allow 'rg "@perch_parent" packages/'
-expect allow 'tmux show-option -t perch-x @perch_parent'
-expect allow 'tmux set-option -t perch-x @perch_foo 1'
+expect allow 'rg "@tarfa_parent" packages/'
+expect allow 'tmux show-option -t perch-x @tarfa_parent'
+expect allow 'tmux set-option -t perch-x @tarfa_foo 1'
 expect allow 'tmux set-option -t perch-x status off'
-expect allow 'tmux -L test set-option -t x @perch_parent y'
-expect allow 'perch spawn --child "fix the build"'
+expect allow 'tmux -L test set-option -t x @tarfa_parent y'
+expect allow 'tarfa spawn --child "fix the build"'
 # Accepted limit: a path relative to a cd is not seen; the CLIs' reviewers cover it.
-expect allow 'cd ~/.perch/inbox && nc -U x.sock'
-expect allow 'tmux setw -t a @perch_foo 1'
-expect allow 'tmux set-environment -t a @perch_parent b'
+expect allow 'cd ~/.tarfa/inbox && nc -U x.sock'
+expect allow 'tmux setw -t a @tarfa_foo 1'
+expect allow 'tmux set-environment -t a @tarfa_parent b'
 
 echo " scope"
 code=0
@@ -137,9 +140,9 @@ msg=$(payload 'pkill -f x' | TMUX_PANE=%1 bash "$GUARD" 2>&1 >/dev/null || true)
 if [[ $msg == *"pgrep -af"* && $msg == *"kill <pid>"* ]]; then echo "  ok: says what to do instead"; else
   echo "  FAIL: refusal does not suggest pgrep -af / kill <pid>: $msg"; fails=$((fails + 1)); fi
 
-msg=$(payload 'nc -U ~/.perch/inbox/perch-a.sock' | TMUX_PANE=%1 bash "$GUARD" 2>&1 >/dev/null || true)
-if [[ $msg == *"perch send <id>"* && $msg == *"perch spawn --child"* ]]; then echo "  ok: points a raw post or a re-parent at perch send / perch spawn --child"; else
-  echo "  FAIL: refusal does not suggest perch send / perch spawn --child: $msg"; fails=$((fails + 1)); fi
+msg=$(payload 'nc -U ~/.tarfa/inbox/perch-a.sock' | TMUX_PANE=%1 bash "$GUARD" 2>&1 >/dev/null || true)
+if [[ $msg == *"tarfa send <id>"* && $msg == *"tarfa spawn --child"* ]]; then echo "  ok: points a raw post or a re-parent at tarfa send / tarfa spawn --child"; else
+  echo "  FAIL: refusal does not suggest tarfa send / tarfa spawn --child: $msg"; fails=$((fails + 1)); fi
 
 code=0
 printf 'not json' | TMUX_PANE=%1 bash "$GUARD" >/dev/null 2>&1 || code=$?

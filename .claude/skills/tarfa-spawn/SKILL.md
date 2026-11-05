@@ -1,18 +1,18 @@
 ---
-name: perch-spawn
-description: Use when asked to launch, spawn, or open one or more new Perch workspaces to work on something — a batch of tickets or issues, or a single problem found mid-conversation that deserves its own workspace. Triggers on "launch a workspace on this", "spawn a workspace for each of those tickets", "open a new Perch workspace to investigate…", "start a workspace in <project>". NOT for in-session subagents (the Agent tool): a Perch workspace is a separate tmux session with its own Claude process and none of this conversation's context.
+name: tarfa-spawn
+description: Use when asked to launch, spawn, or open one or more new Tarfa workspaces to work on something — a batch of tickets or issues, or a single problem found mid-conversation that deserves its own workspace. Triggers on "launch a workspace on this", "spawn a workspace for each of those tickets", "open a new Tarfa workspace to investigate…", "start a workspace in <project>". NOT for in-session subagents (the Agent tool): a Tarfa workspace is a separate tmux session with its own Claude process and none of this conversation's context.
 ---
 
-# Spawning Perch workspaces
+# Spawning Tarfa workspaces
 
 ## Overview
 
-A Perch workspace *is* a detached tmux session named after its folder and a small
-number (`perch-3`, `eng-ops-1`; older ones are `perch-<6 hex>`). The Perch agent
+A Tarfa workspace *is* a detached tmux session named after its folder and a small
+number (`perch-3`, `eng-ops-1`; older ones are `perch-<6 hex>`). The Tarfa agent
 discovers workspaces by running `tmux list-sessions` — nothing registers them.
-`perch rename [<id>] <title>` changes a workspace's title, never its id. The `perch` CLI starts one (`perch spawn`); it needs no agent restart and no
+`tarfa rename [<id>] <title>` changes a workspace's title, never its id. The `tarfa` CLI starts one (`tarfa spawn`); it needs no agent restart and no
 token. It is on PATH once `deploy/install-cli.sh` has run on the machine (see
-"Perch CLI" in the Perch repo's `docs/DEPLOY.md`).
+"Tarfa CLI" in the Tarfa repo's `docs/DEPLOY.md`).
 
 Each workspace runs its own `claude` process with its own context. It cannot see
 this conversation. **The brief is the only thing it will ever know.**
@@ -31,7 +31,7 @@ this conversation. **The brief is the only thing it will ever know.**
 
 ## Workflow
 
-1. **Check nothing already covers it.** `perch ls --path <project>` lists every
+1. **Check nothing already covers it.** `tarfa ls --path <project>` lists every
    workspace in that project, parked ones included, with its title and role;
    resume or message an existing one rather than spawning a duplicate.
 2. **Resolve a project path per item** — it must exist (a relative one resolves
@@ -51,20 +51,20 @@ this conversation. **The brief is the only thing it will ever know.**
 ## Quick reference
 
 ```bash
-perch spawn /abs/path/to/project <<'PROMPT'
+tarfa spawn /abs/path/to/project <<'PROMPT'
 Work on issue #412. Read it first, then follow this project's conventions.
 PROMPT
 ```
 
 Prints the workspace id. `--model <alias>` picks the model (default
 `opus[1m]`); pass `--model 'sonnet[1m]'` for cheap batch work. Each brief is kept at
-`~/.perch/spawn/<id>.md` as a record of what that workspace was launched to do.
-Other sessions message it with `perch send <id> "<message>"`, using the id this prints.
+`~/.tarfa/spawn/<id>.md` as a record of what that workspace was launched to do.
+Other sessions message it with `tarfa send <id> "<message>"`, using the id this prints.
 
 `--cli claude|codex|pi` picks the CLI (default `claude`). A Codex workspace takes and sends
 messages only because spawn creates its thread and starts it bound to the Codex daemon; spawn
-refuses when `codex --version` and the daemon's version differ. Pi needs the Perch extension
-(`pi-reviewed`) for its inbox, and spawn refuses (`perch spawn --cli pi needs pi-reviewed on
+refuses when `codex --version` and the daemon's version differ. Pi needs the Tarfa extension
+(`pi-reviewed`) for its inbox, and spawn refuses (`tarfa spawn --cli pi needs pi-reviewed on
 PATH`) when the login shell cannot find `pi-reviewed`. `--model` becomes `claude --model '<m>'` for Claude, the
 thread's model for Codex, and `pi-reviewed --model '<m>'` for Pi; only Claude has a default
 (`opus[1m]`).
@@ -80,7 +80,7 @@ When you already know what the workspace is for, say so and the name stops
 moving:
 
 ```bash
-perch spawn --title 'story foo 9' /abs/path <<'PROMPT'
+tarfa spawn --title 'story foo 9' /abs/path <<'PROMPT'
 ...
 PROMPT
 ```
@@ -94,7 +94,7 @@ The title survives for the life of the session, and an unpark: opening a parked
 workspace puts back the name it had when parked and holds it (on tmux 3.5+), so
 it keeps that name from then on whether it came from `--title` or not.
 
-`perch unpark <id>...` reopens parked workspaces from a shell, the same way
+`tarfa unpark <id>...` reopens parked workspaces from a shell, the same way
 opening one on the phone does (it asks the running agent).
 
 Always pass the brief through a **quoted** heredoc (`<<'PROMPT'`). An unquoted
@@ -103,30 +103,30 @@ one lets the shell expand `$` and backticks in the brief before it is written.
 ## Reporting to an orchestrator
 
 When the spawning session is an orchestrator that will follow the child, pass
-`--child`. The caller must itself be a Perch workspace (it is found from
+`--child`. The caller must itself be a Tarfa workspace (it is found from
 `$TMUX_PANE`):
 
 ```bash
-perch spawn --child /abs/path <<'PROMPT'
+tarfa spawn --child /abs/path <<'PROMPT'
 ...
 PROMPT
 ```
 
 The child then:
 - **records its parent's workspace id**, a link that survives park/unpark and the
-  tmux server's loss; `perch ls --mine` lists the caller's children from it.
+  tmux server's loss; `tarfa ls --mine` lists the caller's children from it.
 - **cannot use `AskUserQuestion` or plan mode.** A per-workspace hook denies them
-  and tells it to send the question to the parent with `perch send` instead. A
+  and tells it to send the question to the parent with `tarfa send` instead. A
   peer message can never answer a pending prompt, so without this a child blocks
   on a question its orchestrator could have answered.
 - **is told in its brief** (an appended footer) to send its questions and its final
-  report to the parent with `perch send <parent id> "<message>"` (a Codex child as an
+  report to the parent with `tarfa send <parent id> "<message>"` (a Codex child as an
   escalated command), and that a message headed `[Perch message — from your ORCHESTRATOR]`
   carries the owner's authority.
 
 Without `--child` the workspace is an ordinary one the user drives (the default;
-orchestration is explicit). The orchestrator's side is the `perch-orchestrate` skill. A Codex
-or Pi child has no Claude idle notice, so the orchestrator follows it with `perch peek`/`perch ls`.
+orchestration is explicit). The orchestrator's side is the `tarfa-orchestrate` skill. A Codex
+or Pi child has no Claude idle notice, so the orchestrator follows it with `tarfa peek`/`tarfa ls`.
 
 ## Writing the brief
 
@@ -159,15 +159,15 @@ say so when presenting the table and let the user decide.
 
 ## Testing
 
-`perch spawn` is `spawnWorkspace` in the Perch repo's `packages/agent`, tested there
+`tarfa spawn` is `spawnWorkspace` in the Tarfa repo's `packages/agent`, tested there
 with a fake tmux. Never run it as a smoke test: it starts a real Claude process.
 
 ## Common mistakes
 
 | Mistake | What happens |
 |---|---|
-| Starting a workspace with raw `tmux new-session` | No `@perch_command`, so it can never be parked; a brief interpolated into the command string dies on its first apostrophe, silently |
+| Starting a workspace with raw `tmux new-session` | No `@tarfa_command`, so it can never be parked; a brief interpolated into the command string dies on its first apostrophe, silently |
 | A brief that says "the bug above" | The workspace has no above; it starts by asking what you mean and then sits idle |
 | Spawning before showing the table | Several Claude processes start on briefs nobody checked |
-| Spawning without checking `perch ls` | A second workspace starts on work an existing (perhaps parked) one already holds |
+| Spawning without checking `tarfa ls` | A second workspace starts on work an existing (perhaps parked) one already holds |
 | Setting the pane title yourself, after spawning | Claude Code overwrites it within seconds — use `--title`, which also turns its renaming off |

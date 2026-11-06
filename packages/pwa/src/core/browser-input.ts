@@ -2,7 +2,7 @@
 // remote frame aspect-preserving and centered (letterboxed), so pointer positions must be
 // mapped from canvas CSS pixels to remote device pixels before being sent upstream.
 
-import type { BrowserClientMessage } from '@perch/contracts';
+import type { BrowserClientMessage } from '@tarfa/contracts';
 
 export interface FrameScale {
   // Device px → CSS px multiplier of the drawn frame (CSS→device divides by it).

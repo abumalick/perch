@@ -16,7 +16,7 @@ async function openTerminal(page: Page) {
   await seedMachine(page, agent);
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
   // Opening an existing workspace intentionally leaves the terminal unfocused (keyboard
   // closed while reading — see store.autoFocus). A real user taps the terminal to start
   // typing; do the same so the bar's focus/typing behaviour is exercised with the

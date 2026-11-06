@@ -37,7 +37,7 @@ describe('hooksFiles', () => {
     expect(await hooks.current()).toBe(true);
   });
 
-  it('stays current when the user added a hook of their own after Perch\'s', async () => {
+  it('stays current when the user added a hook of their own after Tarfa\'s', async () => {
     const h = await home();
     const hooks = hooksFiles(h, HOOKS_DIR, 8787);
     await hooks.install();
@@ -52,7 +52,7 @@ describe('hooksFiles', () => {
     const h = await home();
     await hooksFiles(h, HOOKS_DIR, 8787).install();
     expect(await hooksFiles(h, HOOKS_DIR, 8789).current()).toBe(false);
-    await writeFile(join(h, '.perch', 'perch-guard.sh'), 'old\n');
+    await writeFile(join(h, '.tarfa', 'tarfa-guard.sh'), 'old\n');
     expect(await hooksFiles(h, HOOKS_DIR, 8787).current()).toBe(false);
   });
 
@@ -61,7 +61,7 @@ describe('hooksFiles', () => {
     await mkdir(join(h, '.codex'));
     const hooks = hooksFiles(h, HOOKS_DIR, 8787);
     expect(await hooks.install()).toEqual({ codex: true });
-    expect(await readFile(join(h, '.codex', 'hooks.json'), 'utf8')).toContain('perch-hook.sh');
+    expect(await readFile(join(h, '.codex', 'hooks.json'), 'utf8')).toContain('tarfa-hook.sh');
     expect(await hooks.current()).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { spawnWorkspace, type SpawnWorkspaceDeps } from './spawn-workspace';
 
-const DIR = '/home/u/.perch/spawn';
+const DIR = '/home/u/.tarfa/spawn';
 
 function makeDeps(overrides: Partial<SpawnWorkspaceDeps> = {}) {
   const files = new Map<string, string>();
@@ -74,7 +74,7 @@ describe('spawnWorkspace', () => {
   });
 
   // resumeCommand splits this to build the unpark command; the brief would be re-submitted.
-  it('stores @perch_command as the base command, without the brief', async () => {
+  it('stores @tarfa_command as the base command, without the brief', async () => {
     const { deps, tmux } = makeDeps();
     await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', model: 'sonnet[1m]' });
     expect(created(tmux).storedCommand).toBe("claude --model 'sonnet[1m]' --name perch-a1b2c3");
@@ -167,22 +167,22 @@ describe('spawnWorkspace', () => {
       expect(deny.hookSpecificOutput.permissionDecision).toBe('deny');
     });
 
-    it('the deny reason names perch send and the parent id', async () => {
+    it('the deny reason names tarfa send and the parent id', async () => {
       const { deps, files } = makeDeps();
       await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', parent });
       const reason = (JSON.parse(files.get(`${DIR}/n0nce.deny.json`)!) as { hookSpecificOutput: { permissionDecisionReason: string } })
         .hookSpecificOutput.permissionDecisionReason;
-      expect(reason).toContain('perch send perch-p00001 "');
+      expect(reason).toContain('tarfa send perch-p00001 "');
       expect(reason).not.toContain('SendMessage');
     });
 
-    it('appends a footer telling it to ask the parent with perch send', async () => {
+    it('appends a footer telling it to ask the parent with tarfa send', async () => {
       const { deps, files } = makeDeps();
       await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'Do the thing.', parent });
       const brief = files.get(`${DIR}/n0nce.md`)!;
       expect(brief.startsWith('Do the thing.\n\n---\n')).toBe(true);
       expect(brief).toContain('workspace perch-p00001');
-      expect(brief).toContain('perch send perch-p00001 "');
+      expect(brief).toContain('tarfa send perch-p00001 "');
       expect(brief).not.toContain('SendMessage');
       expect(brief).toContain('A permission prompt is the exception');
       expect(brief).toContain('final report');
@@ -194,9 +194,9 @@ describe('spawnWorkspace', () => {
       await expect(spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', parent: { id: 'main; x' } })).rejects.toThrow(/parent/);
     });
 
-    // The settings path lands unquoted in @perch_command, which unpark splits on whitespace.
+    // The settings path lands unquoted in @tarfa_command, which unpark splits on whitespace.
     it('refuses a spawn directory a command line would split', async () => {
-      const { deps, tmux } = makeDeps({ spawnDir: '/home/a b/.perch/spawn' });
+      const { deps, tmux } = makeDeps({ spawnDir: '/home/a b/.tarfa/spawn' });
       await expect(spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', parent })).rejects.toThrow(/spawn directory/);
       expect(tmux.createSession).not.toHaveBeenCalled();
     });
@@ -211,12 +211,12 @@ describe('spawnWorkspace', () => {
   });
 
   it('accepts a spawn directory with a space when there is no parent (the brief path is quoted)', async () => {
-    const { deps } = makeDeps({ spawnDir: '/home/a b/.perch/spawn' });
+    const { deps } = makeDeps({ spawnDir: '/home/a b/.tarfa/spawn' });
     await expect(spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b' })).resolves.toBe('perch-a1b2c3');
   });
 
   it("refuses a spawn directory with a quote, which would end the brief path's quotes", async () => {
-    const { deps } = makeDeps({ spawnDir: "/home/o'neil/.perch/spawn" });
+    const { deps } = makeDeps({ spawnDir: "/home/o'neil/.tarfa/spawn" });
     await expect(spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b' })).rejects.toThrow(/spawn directory/);
   });
 
@@ -234,7 +234,7 @@ describe('spawnWorkspace', () => {
   describe('--cli codex', () => {
     const parent = { id: 'perch-p00001' };
 
-    it('spawns a codex child with its thread recorded and @perch_parent set', async () => {
+    it('spawns a codex child with its thread recorded and @tarfa_parent set', async () => {
       const { deps, tmux, codex } = makeDeps();
       await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'Do $(it).', cli: 'codex', parent, model: 'gpt-5.5' });
       const thread = codex.createThread.mock.calls[0]![0];
@@ -242,7 +242,7 @@ describe('spawnWorkspace', () => {
       expect(thread.model).toBe('gpt-5.5');
       expect(thread.firstMessage).toBe('Do $(it).');
       expect(thread.developerInstructions).toContain('orchestrator workspace perch-p00001');
-      expect(thread.developerInstructions).toContain('perch send perch-p00001 "');
+      expect(thread.developerInstructions).toContain('tarfa send perch-p00001 "');
       expect(thread.developerInstructions).toContain('escalated');
       expect(thread.developerInstructions).toContain('[Perch message — from your ORCHESTRATOR]');
       expect(created(tmux)).toMatchObject({ name: 'perch-a1b2c3', cwd: '/w/proj', parent: 'perch-p00001', codexThread: 'th-1' });
@@ -253,7 +253,7 @@ describe('spawnWorkspace', () => {
       const { deps, tmux } = makeDeps();
       await spawnWorkspace(deps, { projectPath: '/w/proj', brief: 'b', cli: 'codex', title: 'T' });
       expect(created(tmux).command).toBe('codex resume th-1');
-      // No separate stored command: @perch_command records the launch itself.
+      // No separate stored command: @tarfa_command records the launch itself.
       expect(created(tmux).storedCommand ?? created(tmux).command).toBe('codex resume th-1');
       expect(tmux.setPaneTitle).toHaveBeenCalledWith('perch-a1b2c3', '✳ T');
     });
@@ -301,7 +301,7 @@ describe('spawnWorkspace', () => {
       expect(created(tmux).parent).toBe('perch-p00001');
       expect([...files.keys()]).toEqual([`${DIR}/n0nce.md`]);
       const brief = files.get(`${DIR}/n0nce.md`)!;
-      expect(brief).toContain('perch send perch-p00001 "');
+      expect(brief).toContain('tarfa send perch-p00001 "');
       expect(brief).not.toContain('SendMessage');
     });
 

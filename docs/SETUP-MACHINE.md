@@ -1,4 +1,4 @@
-# Set up your own Perch machine
+# Set up your own Tarfa machine
 
 This walks through one Ubuntu machine (a home server, a VPS, a spare PC) where Claude Code and
 Codex run in tmux workspaces that you drive from your phone. Your phone loads the app (Tarfa,
@@ -18,7 +18,7 @@ phone (the app, https://tarfa.app or your own origin)
 tailscale serve / funnel (https://<machine>.<tailnet>.ts.net:<port>/<slug>)
    │  proxies to the loopback phone port
    ▼
-Ubuntu machine: perch-agent (systemd user unit) ── tmux server ── claude / codex workspaces
+Ubuntu machine: tarfa-agent (systemd user unit) ── tmux server ── claude / codex workspaces
 ```
 
 This guide gives the commands in order; `docs/DEPLOY.md` explains them in depth and wins wherever
@@ -75,7 +75,7 @@ exec systemd-run --user --scope -q -p MemoryMax="${HEAVY_MEM:-8G}" -p MemorySwap
 ```
 
 `heavy pnpm test`, `HEAVY_MEM=12G heavy uv run train.py`: a job past its cap is killed alone, in
-under a second. Perch's home screen shows how much memory is left before the slowdown and before
+under a second. Tarfa's home screen shows how much memory is left before the slowdown and before
 the kill (`CLAUDE.md`, "Machine load strip").
 
 ## 3. Toolchain
@@ -149,47 +149,47 @@ Details: `docs/DEPLOY.md`, steps 0 to 2 and 4.
 
 ```bash
 mkdir -p ~/workspace && cd ~/workspace
-git clone <your fork> perch && cd perch
+git clone <your fork> tarfa && cd tarfa
 mise trust && mise install && mise exec -- pnpm install
 
 install -m 600 deploy/agent.env.example deploy/agent.env
-openssl rand -hex 32        # → PERCH_TOKEN in deploy/agent.env
+openssl rand -hex 32        # → TARFA_TOKEN in deploy/agent.env
 ```
 
-In `deploy/agent.env`, set `PERCH_TOKEN`, `PERCH_MACHINE_ID` (a short name for this machine),
-`PERCH_PROJECT_ROOTS` (e.g. `/home/<user>/workspace`) and, optionally, `PERCH_DEFAULT_PATH`
-(absolute). Keep `PERCH_PORT=8787`. The file must stay `600`: the agent refuses to start while
+In `deploy/agent.env`, set `TARFA_TOKEN`, `TARFA_MACHINE_ID` (a short name for this machine),
+`TARFA_PROJECT_ROOTS` (e.g. `/home/<user>/workspace`) and, optionally, `TARFA_DEFAULT_PATH`
+(absolute). Keep `TARFA_PORT=8787`. The file must stay `600`: the agent refuses to start while
 another user can read it.
 
 ```bash
 mkdir -p ~/.config/systemd/user
-sed "s#REPO_PATH#$(pwd)#g" deploy/perch-agent.service > ~/.config/systemd/user/perch-agent.service
-mkdir -p ~/.config/systemd/user/perch-agent.service.d
+sed "s#REPO_PATH#$(pwd)#g" deploy/tarfa-agent.service > ~/.config/systemd/user/tarfa-agent.service
+mkdir -p ~/.config/systemd/user/tarfa-agent.service.d
 printf '[Unit]\nAfter=tmux-server.service\nWants=tmux-server.service\n' \
-  > ~/.config/systemd/user/perch-agent.service.d/10-tmux.conf    # only with step 5
-systemctl --user daemon-reload && systemctl --user enable --now perch-agent
+  > ~/.config/systemd/user/tarfa-agent.service.d/10-tmux.conf    # only with step 5
+systemctl --user daemon-reload && systemctl --user enable --now tarfa-agent
 
-pnpm perch install-hooks                                         # status hooks, see below
-mkdir -p ~/.claude/skills && ln -sfn "$(pwd)/.claude/skills/perch-spawn" ~/.claude/skills/perch-spawn
-ln -sfn "$(pwd)/.claude/skills/perch-orchestrate" ~/.claude/skills/perch-orchestrate
-deploy/install-cli.sh                                            # `perch` on PATH (the skills use it)
+pnpm tarfa install-hooks                                         # status hooks, see below
+mkdir -p ~/.claude/skills && ln -sfn "$(pwd)/.claude/skills/tarfa-spawn" ~/.claude/skills/tarfa-spawn
+ln -sfn "$(pwd)/.claude/skills/tarfa-orchestrate" ~/.claude/skills/tarfa-orchestrate
+deploy/install-cli.sh                                            # `tarfa` on PATH (the skills use it)
 ```
 
 Check: `curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8787/hooks` prints
 `401` (running, and refusing an unauthenticated hook).
 
-**Or in one step.** `pnpm perch setup` does the `agent.env`, unit and hooks steps above without
+**Or in one step.** `pnpm tarfa setup` does the `agent.env`, unit and hooks steps above without
 prompting, and is safe to rerun (it changes only what differs):
 
 ```bash
-pnpm perch setup --machine-id <name> --project-roots /home/<user>/workspace \
+pnpm tarfa setup --machine-id <name> --project-roots /home/<user>/workspace \
   --default-path /home/<user>/workspace --dry-run      # the plan; drop --dry-run to apply it
 ```
 
-It also writes `~/.perch/devices.json` with token enrolment off, so only a `perch pair` code adds
+It also writes `~/.tarfa/devices.json` with token enrolment off, so only a `tarfa pair` code adds
 a phone. With Tailscale on the machine, `--tailscale serve` (tailnet only) or `--tailscale funnel`
 (public, the phone needs no VPN) also publishes the phone port and records its address for
-`perch pair` (step 8). `pnpm perch setup --help` explains the flags and the Tailscale admin settings. The tmux drop-in,
+`tarfa pair` (step 8). `pnpm tarfa setup --help` explains the flags and the Tailscale admin settings. The tmux drop-in,
 skills and `install-cli.sh` lines above are still yours to run.
 
 **Status hooks** tell your phone whether a session is working or waiting for you. They go into
@@ -200,21 +200,21 @@ run `/hooks` and trust them (again after any change). See `docs/DEPLOY.md`, step
 ## 7. The app
 
 Phones load the app from `https://tarfa.app`, the maintainer's copy, which every pairing link
-names unless `PERCH_PWA_ORIGIN` says otherwise. The origin holds every phone's device key, and
+names unless `TARFA_PWA_ORIGIN` says otherwise. The origin holds every phone's device key, and
 whoever serves it can read what it shows, so if you would rather trust yourself, serve your own
 copy: on a free Cloudflare account it is a static-assets Worker, deployed from a clean, pushed
 `main` of your fork.
 
 ```bash
-install -m 600 deploy/pwa-deploy.env.example ~/.perch/pwa-deploy.<name>.env   # CLOUDFLARE_ACCOUNT_ID
+install -m 600 deploy/pwa-deploy.env.example ~/.tarfa/pwa-deploy.<name>.env   # CLOUDFLARE_ACCOUNT_ID
 (cd packages/pwa && pnpm exec wrangler login --device && pnpm exec wrangler whoami)
-deploy/pwa-deploy.sh --env-file ~/.perch/pwa-deploy.<name>.env
+deploy/pwa-deploy.sh --env-file ~/.tarfa/pwa-deploy.<name>.env
 ```
 
 `--device` lets you approve the login from any browser, which a machine with no screen needs. If
 you hold several Cloudflare accounts, give each its own wrangler login with
 `XDG_CONFIG_HOME=<a directory of its own>` on every wrangler and deploy command. Then set
-`PERCH_PWA_ORIGIN` (or pass `--pwa` to `perch setup` / `perch pair`) to your origin. Moving to
+`TARFA_PWA_ORIGIN` (or pass `--pwa` to `tarfa setup` / `tarfa pair`) to your origin. Moving to
 another origin later means pairing every phone again: a new origin has empty storage.
 
 Docs: [Workers static assets](https://developers.cloudflare.com/workers/static-assets/),
@@ -228,15 +228,15 @@ certificates in the admin console, and let your user run `tailscale serve` witho
 
 ```bash
 cd ~/workspace/perch
-pnpm perch setup --machine-id <name> --project-roots /home/<user>/workspace \
+pnpm tarfa setup --machine-id <name> --project-roots /home/<user>/workspace \
   --default-path /home/<user>/workspace --tailscale serve --pair
 ```
 
 `--tailscale serve` publishes the phone port on your tailnet only: the phone needs Tailscale
 connected. `--tailscale funnel` publishes it on the internet too (the phone needs no VPN; the
 policy file must give the node the `funnel` attribute), at about 0.2 MB/s, which is fine for
-terminals and slow for large previews. `pnpm perch setup --help` has the details. `--pair` prints
-a QR code and a link; check the agent with `journalctl --user -u perch-agent | grep 'phones on'`.
+terminals and slow for large previews. `pnpm tarfa setup --help` has the details. `--pair` prints
+a QR code and a link; check the agent with `journalctl --user -u tarfa-agent | grep 'phones on'`.
 
 On your phone, open the app's origin and install it (iPhone: Share → Add to Home Screen; Android:
 install from the browser menu). Then pair:
@@ -247,11 +247,11 @@ install from the browser menu). Then pair:
 - **Android:** open the link anywhere; it goes straight into the installed app. Chrome asks once
   whether the app may reach your local network (a tailnet address): allow it.
 
-A code works once, for 10 minutes; `pnpm perch pair` makes another. `perch setup` leaves token
-enrolment off, so only a `perch pair` code adds a phone:
+A code works once, for 10 minutes; `pnpm tarfa pair` makes another. `tarfa setup` leaves token
+enrolment off, so only a `tarfa pair` code adds a phone:
 
 ```bash
-pnpm perch devices                 # your phones; revoke a lost one by id or key
+pnpm tarfa devices                 # your phones; revoke a lost one by id or key
 ```
 
 Check: the machine shows on your phone, a new `bash` workspace opens, and `echo hi` answers.
@@ -260,7 +260,7 @@ Check: the machine shows on your phone, a new `bash` workspace opens, and `echo 
 
 ```bash
 cd ~/workspace/perch
-git pull --ff-only && pnpm install --frozen-lockfile && systemctl --user restart perch-agent
+git pull --ff-only && pnpm install --frozen-lockfile && systemctl --user restart tarfa-agent
 ```
 
 Workspaces survive the restart (the agent runs from source, so there is nothing to build). If you
@@ -340,7 +340,7 @@ Add preset → Provider "Claude Code /voice".
   says `"enabled": true, "mode": "hold"`, and the agent's own user manager can open the
   loopback (`id -nG` in a login shell is not enough: it shows a group the manager may not have):
   `systemd-run --user --quiet --wait --pipe aplay -q -D plughw:Loopback,0 -f S16_LE -r 16000 -c 1 -t raw -d 1 /dev/zero`
-  exits without an error (with several users, use that user's `PERCH_VOICE_DEVICE` as the `-D`).
+  exits without an error (with several users, use that user's `TARFA_VOICE_DEVICE` as the `-D`).
 - **This is meant for a headless server.** `~/.asoundrc` replaces the default device for every
   ALSA program of that user, playback included, so on a desktop with PipeWire or PulseAudio it
   would take the real microphone and speakers away. That case is untested.
@@ -367,19 +367,19 @@ pcm.!default {
   capture.pcm "plughw:Loopback,1,<n>"
 }
 # And in its deploy/agent.env, the playback side of the same <n>, then restart its agent:
-PERCH_VOICE_DEVICE=plughw:Loopback,0,<n>
+TARFA_VOICE_DEVICE=plughw:Loopback,0,<n>
 ```
 
-The agent plays into `plughw:Loopback,0` when `PERCH_VOICE_DEVICE` is unset, which is right
+The agent plays into `plughw:Loopback,0` when `TARFA_VOICE_DEVICE` is unset, which is right
 only for a machine with one user.
 
 ## 12. Optional: a Claude Code setup that works well here
 
-None of this is required by Perch.
+None of this is required by Tarfa.
 
 - **Tell Claude where it is.** A few lines in `~/.claude/CLAUDE.md` go a long way: every session
-  runs in a Perch workspace you read on a small screen; never kill tmux sessions it did not
-  create; never give `localhost` links (step 10); Perch questions are answered from
+  runs in a Tarfa workspace you read on a small screen; never kill tmux sessions it did not
+  create; never give `localhost` links (step 10); Tarfa questions are answered from
   `~/workspace/perch` and its `docs/`; `heavy` for big jobs.
 - **Library docs:** [Context7](https://github.com/upstash/context7) as an HTTP MCP server, which
   works without a key: `claude mcp add --transport http --scope user context7 https://mcp.context7.com/mcp`
@@ -400,12 +400,12 @@ None of this is required by Perch.
   }
   ```
   then `sudo apparmor_parser -r /etc/apparmor.d/agent-browser-chrome`. Name a session after its
-  workspace and Perch's browser view picks it up (`docs/BROWSER.md`).
+  workspace and Tarfa's browser view picks it up (`docs/BROWSER.md`).
 
 ## 13. Another Linux user on the same machine
 
-One machine can run several Perch agents, one per Linux user. Each user has its own agent, tmux
-server, `~/.perch` (agent key, paired phones, parked workspaces, and its own `hidden-folders.json`,
+One machine can run several Tarfa agents, one per Linux user. Each user has its own agent, tmux
+server, `~/.tarfa` (agent key, paired phones, parked workspaces, and its own `hidden-folders.json`,
 `commands.json` and `launchers.json`), Claude Code login and config, and files. The phone sees
 each agent as a separate machine. Use it to keep one kind of work apart from the rest: a client's
 projects in an account that cannot read your home directory, your credentials or your sessions.
@@ -416,7 +416,7 @@ Everything below runs from your admin account. `<user>` is the new user, `<uid>`
 **The user.** Give it neither `sudo` nor the `docker` group: either one can read every other
 user's files, which defeats the point. Check that your own home is closed to it as well
 (`stat -c %a ~` should say `750` or `700`; older Ubuntu installs made homes `755`). Other users
-can still see command lines in `ps`, which is why Perch keeps its secrets off them.
+can still see command lines in `ps`, which is why Tarfa keeps its secrets off them.
 
 ```bash
 sudo adduser --disabled-password --gecos '' <user>
@@ -468,25 +468,25 @@ EOF
 **Steps 3 to 6, 8 and 9 again, as that user** (step 7, if you serve your own app, is done once per Cloudflare account). The new user needs its own clone (a private fork needs git
 credentials of its own). In `deploy/agent.env`, three values differ:
 
-- **`PERCH_PORT` must differ from every other agent's on the machine** (and step 6's check
+- **`TARFA_PORT` must differ from every other agent's on the machine** (and step 6's check
   `curl`s that port). Each agent listens on `127.0.0.1:<port>` for its hooks, and with the port
-  taken the second agent exits at once and its service restarts it in a loop. Pick 8789 or above. `install-hooks` and the `perch` CLI read the port from
+  taken the second agent exits at once and its service restarts it in a loop. Pick 8789 or above. `install-hooks` and the `tarfa` CLI read the port from
   `agent.env`; `install-hooks` writes it into each hook, so run it again after changing the port.
-- **`PERCH_MACHINE_ID`** is the name the phone shows: give each agent its own.
-- **`PERCH_STATS`**: each agent shows its own user's memory room on the home screen, which is
-  how you see the new user's jobs nearing their cap. `PERCH_STATS=off` hides that line.
-- **`PERCH_VOICE_DEVICE`**: for Claude voice, each user needs its own loopback subdevice, in
+- **`TARFA_MACHINE_ID`** is the name the phone shows: give each agent its own.
+- **`TARFA_STATS`**: each agent shows its own user's memory room on the home screen, which is
+  how you see the new user's jobs nearing their cap. `TARFA_STATS=off` hides that line.
+- **`TARFA_VOICE_DEVICE`**: for Claude voice, each user needs its own loopback subdevice, in
   its `~/.asoundrc` and its `agent.env` (step 11, "Several Linux users on one machine").
 
-With `perch setup` (step 6), the second user passes its own `--machine-id` and
+With `tarfa setup` (step 6), the second user passes its own `--machine-id` and
 `--phone-port` (8798 beside your 8797; `setup` refuses a port another user's agent holds), and
-sets `PERCH_PORT` in its `agent.env` first (`setup` refuses a hooks port that is taken, naming
+sets `TARFA_PORT` in its `agent.env` first (`setup` refuses a hooks port that is taken, naming
 it). To share your Tailscale port under its own path, it runs `--tailscale none --slug <user>
 --address wss://<node>.<tailnet>.ts.net/<user>`, and `setup` prints the `tailscale serve` line
 for you, the node's operator, to run.
 
 **What not to copy from your account.**
-- **`~/.perch`:** never copy it. It holds your agent key and your phones' roster; the new user's
+- **`~/.tarfa`:** never copy it. It holds your agent key and your phones' roster; the new user's
   agent makes its own.
 - **`~/.claude`:** never copy it whole. It holds your Claude login (`.credentials.json`) and your
   conversations (`projects/`, `history.jsonl`). Copy only what the user should have: the
@@ -495,11 +495,11 @@ for you, the node's operator, to run.
   (mail, drive) come along.
 
 **Pairing the phone (step 8).** The phone gets a separate entry for this agent, under its own
-agent key. `perch setup --pair` prints the first pairing code; `perch pair` makes more.
+agent key. `tarfa setup --pair` prints the first pairing code; `tarfa pair` makes more.
 
 **Running it from your account.**
-- Its user services: `sudo systemctl --user -M <user>@ <status|restart> perch-agent`.
-- Its logs: `sudo journalctl _UID=<uid> _SYSTEMD_USER_UNIT=perch-agent.service`.
+- Its user services: `sudo systemctl --user -M <user>@ <status|restart> tarfa-agent`.
+- Its logs: `sudo journalctl _UID=<uid> _SYSTEMD_USER_UNIT=tarfa-agent.service`.
 - Updating it is step 9, run as that user.
 - Each user has its own tmux server. Upgrading tmux replaces **every** user's server in the same
   step, or a newer client cannot attach to an older server (`docs/TMUX-OSC7501.md`).

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { pairingLink } from '@perch/secure-channel';
+import { pairingLink } from '@tarfa/secure-channel';
 import { seedMachine, startFakeAgent, type FakeAgent } from './fake-agent';
 import { failOnCspViolation } from './csp';
 
@@ -27,7 +27,7 @@ async function pair(page: Page, baseURL: string): Promise<void> {
 test('an unknown key with no credential is refused by the agent, and not redialed', async ({ page }) => {
   await seedMachine(page, agent, { token: '' });
   await page.goto('/');
-  await expect(page.getByTestId('home-refusal')).toHaveText('This phone is not enrolled on Test — run `perch pair` there to pair it again');
+  await expect(page.getByTestId('home-refusal')).toHaveText('This phone is not enrolled on Test — run `tarfa pair` there to pair it again');
   expect(agent.received).toEqual([]);
   const upgrades = agent.upgrades;
   expect(upgrades).toBeGreaterThan(0);

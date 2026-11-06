@@ -1,20 +1,21 @@
 {
-  "name": "@perch/agent",
+  "name": "@tarfa/cli",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
   "type": "module",
   "bin": {
+    "tarfa": "./src/cli.ts",
     "perch": "./src/cli.ts",
-    "perch-serve": "./src/serve.ts"
+    "tarfa-serve": "./src/serve.ts"
   },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@perch/contracts": "workspace:*",
-    "@perch/secure-channel": "workspace:*",
+    "@tarfa/contracts": "workspace:*",
+    "@tarfa/secure-channel": "workspace:*",
     "node-pty": "^1.0.0",
     "qr": "^0.7.0",
     "ws": "^8.18.0",

@@ -1,5 +1,5 @@
 [Unit]
-Description=Perch agent
+Description=Tarfa agent
 After=network-online.target
 
 [Service]

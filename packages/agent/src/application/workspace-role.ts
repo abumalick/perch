@@ -1,4 +1,4 @@
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 
 export const WORKSPACE_ROLES = ['orchestrator', 'child', 'normal'] as const;
 export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];

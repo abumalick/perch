@@ -20,7 +20,7 @@ test('drawer shows GitHub Issues/Projects links, routing an org to its board lis
   await page.goto('/');
 
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await openWorkspaceMenu(page);
 
@@ -36,7 +36,7 @@ test('drawer omits the GitHub links for a workspace with no github remote', asyn
   await page.goto('/');
 
   await page.getByText('other', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await openWorkspaceMenu(page);
 

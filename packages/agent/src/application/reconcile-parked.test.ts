@@ -29,7 +29,7 @@ describe('reconcileParked', () => {
     expect(tmux.killSession).toHaveBeenCalledWith('perch-a');
   });
 
-  // The resurrected shell has no `@perch_command`, so a short id is found by name alone.
+  // The resurrected shell has no `@tarfa_command`, so a short id is found by name alone.
   it('kills a colliding session whatever its id looks like', async () => {
     const tmux = tmuxWith(['eng-ops-1']);
     const killed = await reconcileParked({ parked: { list: async () => [record('eng-ops-1')] }, tmux });

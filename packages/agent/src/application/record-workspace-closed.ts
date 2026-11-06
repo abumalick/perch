@@ -1,4 +1,4 @@
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 import type { WorkspaceCloseReason, WorkspaceLogPort } from '../ports/workspace-log-port';
 import type { StatusStorePort } from '../ports/status-store-port';
 import type { Clock } from '../ports/clock';

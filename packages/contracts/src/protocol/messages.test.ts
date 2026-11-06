@@ -9,7 +9,7 @@ import type { Workspace } from '../domain/workspace';
 const sampleWorkspace: Workspace = {
   machineId: 'mini',
   id: 'perch-ab12cd',
-  name: 'perch',
+  name: 'tarfa',
   projectPath: '/home/u/workspace/perch',
   command: 'claude',
   createdAt: 1_700_000_000_000,
@@ -221,9 +221,9 @@ describe('agentMessageSchema', () => {
   });
 
   it('parses a keyterms message', () => {
-    expect(parseAgentMessage({ type: 'keyterms', keyterms: ['Perch', 'Claude Code'] })).toEqual({
+    expect(parseAgentMessage({ type: 'keyterms', keyterms: ['Tarfa', 'Claude Code'] })).toEqual({
       type: 'keyterms',
-      keyterms: ['Perch', 'Claude Code'],
+      keyterms: ['Tarfa', 'Claude Code'],
     });
   });
 
@@ -339,7 +339,7 @@ describe('workspaceSchema', () => {
   });
 
   it('parses a workspace with a github owner/repo', () => {
-    const gh = { ...sampleWorkspace, github: { owner: 'someuser', repo: 'perch' } };
+    const gh = { ...sampleWorkspace, github: { owner: 'someuser', repo: 'tarfa' } };
     expect(workspaceSchema.parse(gh)).toEqual(gh);
   });
 

@@ -2,7 +2,7 @@ import { appendFile, mkdir, rename, stat } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { MessageLog, MessageLogEntry } from '../ports/message-log-port';
 
-// Appends one JSON line per `perch send` (default ~/.perch/messages.jsonl), delivered or refused,
+// Appends one JSON line per `tarfa send` (default ~/.tarfa/messages.jsonl), delivered or refused,
 // never with its body. Bounded like FileHookEventLog: past `maxBytes` it moves to `<file>.1`.
 export class FileMessageLog implements MessageLog {
   constructor(

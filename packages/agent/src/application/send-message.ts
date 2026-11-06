@@ -16,11 +16,11 @@ import {
 import { deriveWorkspaceName } from './derive-workspace-name.js';
 
 export type SendRefusal =
-  | 'not run from a Perch workspace'
+  | 'not run from a Tarfa workspace'
   | 'empty message'
   | 'cannot message yourself'
   | `no workspace ${string} on this machine`
-  | `${string} is parked; run perch unpark ${string} first`
+  | `${string} is parked; run tarfa unpark ${string} first`
   | `${string} runs no claude, codex or pi`
   | `${string} was started with --no-daemon`
   | `delivery failed: ${string}`;
@@ -84,7 +84,7 @@ export async function sendMessage(
     req.codexThread !== undefined
       ? sessionOfCodexThread(await deps.tmux.listSessions(deps.sessionPrefix), req.codexThread)
       : await resolveSender(deps, req.pane, req.pid);
-  if (!sender) return refuse('not run from a Perch workspace');
+  if (!sender) return refuse('not run from a Tarfa workspace');
   from = sender.name;
 
   if (req.to === sender.name) return refuse('cannot message yourself');
@@ -92,7 +92,7 @@ export async function sendMessage(
   const sessions = await deps.tmux.listSessions(deps.sessionPrefix);
   const recipient = sessions.find((s) => s.name === req.to);
   if (!recipient) {
-    if (await deps.parked.get(req.to)) return refuse(`${req.to} is parked; run perch unpark ${req.to} first`);
+    if (await deps.parked.get(req.to)) return refuse(`${req.to} is parked; run tarfa unpark ${req.to} first`);
     return refuse(`no workspace ${req.to} on this machine`);
   }
 

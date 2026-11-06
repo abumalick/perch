@@ -28,7 +28,7 @@ export interface Workspace {
   // optional so a version-skewed rollout degrades gracefully. Machine-scoped: an address is
   // only reachable from a session on the same machine.
   agentAddress?: string;
-  // The workspace id of the orchestrator that spawned this one as its child (`perch spawn
+  // The workspace id of the orchestrator that spawned this one as its child (`tarfa spawn
   // --child`), on the same machine. Absent for an ordinary workspace. Stable: a workspace id
   // never changes, unlike the Claude session name other sessions message it by.
   parentId?: string;

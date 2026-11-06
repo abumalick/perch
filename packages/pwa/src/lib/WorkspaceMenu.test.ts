@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import WorkspaceMenu from './WorkspaceMenu.svelte';
-import type { WorkspaceStatus } from '@perch/contracts';
+import type { WorkspaceStatus } from '@tarfa/contracts';
 import { setLanguage } from '../i18n.svelte';
 
 function props(overrides: Record<string, unknown> = {}) {
@@ -54,10 +54,10 @@ describe('WorkspaceMenu', () => {
   });
 
   it('shows GitHub Issues/Projects links when the workspace has a github repo', () => {
-    render(WorkspaceMenu, { props: props({ github: { owner: 'someuser', repo: 'perch' } }) as never });
+    render(WorkspaceMenu, { props: props({ github: { owner: 'someuser', repo: 'tarfa' } }) as never });
     const issues = screen.getByRole('link', { name: /issues/i });
     const projects = screen.getByRole('link', { name: /projects/i });
-    expect(issues.getAttribute('href')).toBe('https://github.com/someuser/perch/issues');
+    expect(issues.getAttribute('href')).toBe('https://github.com/someuser/tarfa/issues');
     expect(projects.getAttribute('href')).toBe('https://github.com/users/someuser/projects');
   });
 

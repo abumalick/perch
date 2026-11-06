@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { PerchStore } from '../store.svelte';
+  import type { TarfaStore } from '../store.svelte';
   import { basename } from '../core/browse-path';
   import { fit, baseScale, zoomAt, panBy, type Transform, type ViewContext } from '../core/zoom-pan';
   import { initialSwipe, accrue, markPinched, decideSwipe } from '../core/swipe-gesture';
   import { msg } from '../i18n.svelte';
 
-  let { store }: { store: PerchStore } = $props();
+  let { store }: { store: TarfaStore } = $props();
   let file = $derived(store.fileView);
   let pos = $derived(store.imagePosition);
 

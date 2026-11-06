@@ -12,14 +12,14 @@ afterEach(async () => {
 describe('securePrivateDir', () => {
   it('creates the directory for its owner only', async () => {
     home = await mkdtemp(join(tmpdir(), 'perch-private-'));
-    const dir = join(home, '.perch');
+    const dir = join(home, '.tarfa');
     await securePrivateDir(dir);
     expect((await stat(dir)).mode & 0o777).toBe(0o700);
   });
 
   it('closes an existing directory made with a looser umask', async () => {
     home = await mkdtemp(join(tmpdir(), 'perch-private-'));
-    const dir = join(home, '.perch');
+    const dir = join(home, '.tarfa');
     await securePrivateDir(dir);
     await chmod(dir, 0o755);
     await securePrivateDir(dir);
@@ -36,7 +36,7 @@ describe('assertPrivateFiles', () => {
 
   it('refuses a secret another user could read, naming it and the fix', async () => {
     home = await mkdtemp(join(tmpdir(), 'perch-private-'));
-    const path = join(home, 'relay-key.json');
+    const path = join(home, 'agent-key.json');
     await writeFile(path, '{}');
     await chmod(path, 0o644);
     await expect(assertPrivateFiles([path])).rejects.toThrow(`run \`chmod 600 ${path}\``);

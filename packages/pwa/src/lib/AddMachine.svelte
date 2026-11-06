@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { PerchStore } from '../store.svelte';
+  import type { TarfaStore } from '../store.svelte';
   import { parseAgentKey } from '../core/agent-key';
   import { parseAddressLines } from '../core/machine-addresses';
   import { msg } from '../i18n.svelte';
 
-  let { store }: { store: PerchStore } = $props();
+  let { store }: { store: TarfaStore } = $props();
 
   let name = $state('');
   let addresses = $state('');

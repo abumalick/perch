@@ -1,12 +1,12 @@
 // The payload of the phone's IK message 1: its Ed25519 key (`sig`, which the roster keeps) and a
-// name to tell devices apart in `perch devices`. It is encrypted and bound to the phone's static
+// name to tell devices apart in `tarfa devices`. It is encrypted and bound to the phone's static
 // key by the handshake. The agent knows a phone by that static key alone.
 import { z } from 'zod';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { b64url, isEd25519PublicKey } from './keys';
 
 // Control characters (C0, DEL, C1) and bidi overrides: the name reaches the agent's journal and
-// `perch devices`, where they could forge a line or rewrite the terminal.
+// `tarfa devices`, where they could forge a line or rewrite the terminal.
 const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
 
 export function sanitizeDeviceName(name: string): string {
@@ -39,7 +39,7 @@ export function parseDeviceHello(payload: Uint8Array): DeviceHello | null {
   }
 }
 
-// A short, stable name for a device key, shown by the phone's Settings and by `perch devices`
+// A short, stable name for a device key, shown by the phone's Settings and by `tarfa devices`
 // so the two can be matched by eye. Not a security boundary: enrolment compares whole keys.
 export function deviceFingerprint(x25519PublicKey: string): string {
   const hex = Array.from(sha256(b64url.decode(x25519PublicKey)).subarray(0, 6), (b) => b.toString(16).padStart(2, '0')).join('');

@@ -1,5 +1,5 @@
 // One entry of Claude Code's session registry (~/.claude/sessions/<pid>.json), reduced to
-// the two fields Perch needs: the tmux session it runs in (the join key — a workspace id)
+// the two fields Tarfa needs: the tmux session it runs in (the join key — a workspace id)
 // and the session's name, which is the address other Claude Code sessions message it by.
 export interface ClaudeSessionRef {
   tmuxSession: string;

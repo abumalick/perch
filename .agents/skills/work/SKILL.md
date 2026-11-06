@@ -1,9 +1,9 @@
 ---
 name: work
-description: Implement Perch features, fixes, and behavior changes using its worktree, clean architecture, testing, on-device verification, and local integration workflow.
+description: Implement Tarfa features, fixes, and behavior changes using its worktree, clean architecture, testing, on-device verification, and local integration workflow.
 ---
 
-# Work — Perch development flow for Codex
+# Work — Tarfa development flow for Codex
 
 Read the repository's `AGENTS.md` and the relevant architecture/regression notes in
 `CLAUDE.md`. This skill is self-contained; it does not require `superpowers:*` or
@@ -49,8 +49,8 @@ Run relevant checks while working. The integration gate includes:
 pnpm -r typecheck
 pnpm -r test
 pnpm test:scripts
-pnpm --filter @perch/pwa build
-E2E_PORT=<free-port> pnpm --filter @perch/pwa e2e
+pnpm --filter @tarfa/pwa build
+E2E_PORT=<free-port> pnpm --filter @tarfa/pwa e2e
 ```
 
 Port 4173 belongs to the standing deploy. E2E uses WebKit; install its browser if

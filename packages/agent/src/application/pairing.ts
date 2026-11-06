@@ -1,6 +1,6 @@
-import { constantTimeEqual } from '@perch/secure-channel';
+import { constantTimeEqual } from '@tarfa/secure-channel';
 
-// A phone pairing secret (`perch pair`): it stands in for the token when a new
+// A phone pairing secret (`tarfa pair`): it stands in for the token when a new
 // phone enrols, so it is short-lived and good for one device only. A dead one (spent or expired)
 // is kept for PAIRING_RETAIN_MS, so a phone that presents it is told which it is.
 export interface Pairing {

@@ -1,12 +1,12 @@
-// `perch pair`: hand a phone what it needs to pair with this machine.
-import { isPairingPath, pairingLink, type AgentKeys } from '@perch/secure-channel';
+// `tarfa pair`: hand a phone what it needs to pair with this machine.
+import { isPairingPath, pairingLink, type AgentKeys } from '@tarfa/secure-channel';
 import type { PairingStorePort } from '../ports/pairing-store-port';
 import { addPairing } from './pairing';
 
 export interface PairingDeps {
   keys: AgentKeys;
   machineId: string;
-  // PERCH_DEFAULT_PATH: the root a newly paired phone resolves relative New-workspace paths against.
+  // TARFA_DEFAULT_PATH: the root a newly paired phone resolves relative New-workspace paths against.
   defaultPath?: string;
   pairings: PairingStorePort;
   newSecret: () => string;
@@ -27,7 +27,7 @@ export function pairingName(machineId: string, hostname: string): string {
 export async function mintPairingLink(deps: PairingDeps, input: { phoneUrls: string[]; pwaOrigin: string }): Promise<string> {
   // The phone drops a path it cannot use, so one is refused here, where its owner can fix it.
   if (deps.defaultPath !== undefined && !isPairingPath(deps.defaultPath)) {
-    throw new Error(`PERCH_DEFAULT_PATH must be an absolute path of at most 128 characters (got ${deps.defaultPath})`);
+    throw new Error(`TARFA_DEFAULT_PATH must be an absolute path of at most 128 characters (got ${deps.defaultPath})`);
   }
   const secret = deps.newSecret();
   await deps.pairings.update((list) => addPairing(list, secret, deps.now(), deps.ttlMs));

@@ -1,7 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
-import { generateAgentKeys } from '@perch/secure-channel';
+import { generateAgentKeys } from '@tarfa/secure-channel';
 import AddMachine from './AddMachine.svelte';
 
 function fakeStore(overrides: Record<string, unknown> = {}) {

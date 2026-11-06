@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deviceFingerprint, generateDeviceKeys } from '@perch/secure-channel';
+import { deviceFingerprint, generateDeviceKeys } from '@tarfa/secure-channel';
 import {
   EMPTY_ROSTER,
   enrolDevice,

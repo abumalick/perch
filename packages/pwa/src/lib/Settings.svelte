@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack, onMount } from 'svelte';
-  import type { PerchStore } from '../store.svelte';
+  import type { TarfaStore } from '../store.svelte';
   import type { MachineConfig } from '../core/settings-store';
   import type { ConnectionStatus } from '../core/machine-connection';
   import { trackDimensions, type Dimensions } from './viewport';
@@ -15,7 +15,7 @@
   import { msg } from '../i18n.svelte';
   import { LANGUAGES, type LanguageChoice } from '../core/i18n/language';
 
-  let { store }: { store: PerchStore } = $props();
+  let { store }: { store: TarfaStore } = $props();
 
   const canShareLinks = isAndroid(navigator.userAgent) && typeof navigator.share === 'function';
 

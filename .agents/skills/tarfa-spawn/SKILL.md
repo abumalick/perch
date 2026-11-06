@@ -1,13 +1,13 @@
 ---
-name: perch-spawn
-description: Launch separate local Perch tmux workspaces from self-contained task briefs with the `perch spawn` CLI, which starts Claude Code. Use when asked to open or spawn a Perch workspace, not for in-session Codex subagents or remote machines.
+name: tarfa-spawn
+description: Launch separate local Tarfa tmux workspaces from self-contained task briefs with the `tarfa spawn` CLI, which starts Claude Code. Use when asked to open or spawn a Tarfa workspace, not for in-session Codex subagents or remote machines.
 ---
 
-# Spawn a Perch workspace from Codex
+# Spawn a Tarfa workspace from Codex
 
-A Perch workspace is a detached tmux session named `perch-<6 hex>`, discovered by
-the machine agent. The launcher is the `perch` CLI (`perch spawn`), on PATH once
-`deploy/install-cli.sh` has run on the machine (`docs/DEPLOY.md`, "Perch CLI").
+A Tarfa workspace is a detached tmux session named `perch-<6 hex>`, discovered by
+the machine agent. The launcher is the `tarfa` CLI (`tarfa spawn`), on PATH once
+`deploy/install-cli.sh` has run on the machine (`docs/DEPLOY.md`, "Tarfa CLI").
 It starts **Claude Code**, not Codex. Make that explicit in the proposed launch.
 If the user specifically requests a Codex workspace, do not silently substitute
 Claude.
@@ -17,7 +17,7 @@ Use the CLI rather than raw tmux or a launcher of your own. It is
 
 ## Prepare and launch
 
-1. Run `perch ls --path <project>` to see whether an existing workspace (parked
+1. Run `tarfa ls --path <project>` to see whether an existing workspace (parked
    ones included, listed with title and role) already holds the task, then resolve an existing
    project directory for each new one (a relative path resolves against the cwd).
 2. Write a self-contained brief. A child has none of this conversation's context.
@@ -27,17 +27,17 @@ Use the CLI rather than raw tmux or a launcher of your own. It is
 3. Show the concrete batch (project, brief, optional title, and Claude runtime).
    Obtain launch authorization if the existing request does not already cover
    these workspaces. Honor existing authorization without asking again.
-4. Run `perch spawn`, passing the brief through a **quoted** heredoc:
+4. Run `tarfa spawn`, passing the brief through a **quoted** heredoc:
 
 ```sh
-perch spawn --title 'issue 412' /abs/path/to/project <<'PROMPT'
+tarfa spawn --title 'issue 412' /abs/path/to/project <<'PROMPT'
 Work on issue #412. Read it first and follow this project's conventions.
 Complete the authorized work and report the changes, checks, and anything left open.
 PROMPT
 ```
 
 5. Report the returned workspace id and title. The brief remains at
-   `~/.perch/spawn/<id>.md`.
+   `~/.tarfa/spawn/<id>.md`.
 
 `--model <alias>` picks the Claude model; the default is `opus[1m]`. Preserve that default unless the user requests a
 different model. `--title` distinguishes batches and suppresses Claude's pane-title
@@ -55,16 +55,16 @@ workspace) through Claude's `SendMessage`. Codex collaboration agent ids are not
 no implicit bridge between them. Without that bridge a child could be stranded.
 
 Leave `--child` off for user-driven workspaces (the default). For a user-requested coordinated
-batch, follow `$perch-orchestrate`: prefer native Codex subagents when suitable, or
+batch, follow `$tarfa-orchestrate`: prefer native Codex subagents when suitable, or
 explicitly arrange a workspace report location and monitoring plan. Use Claude's
 parent mode only if an actual Claude parent and working messaging integration have
 been established. The legacy Claude procedure is in
-[the original skill](../../../.claude/skills/perch-spawn/SKILL.md).
+[the original skill](../../../.claude/skills/tarfa-spawn/SKILL.md).
 
 ## Launcher invariants
 
 - Keep the brief on stdin through a quoted heredoc, never interpolated into a
   command line: it preserves `$`, backticks, apostrophes, and newlines.
 - Do not start workspaces with raw `tmux new-session`: without the CLI's
-  `@perch_command` a workspace can never be parked or resumed.
-- Do not run `perch spawn` as a migration smoke test: it starts a real process.
+  `@tarfa_command` a workspace can never be parked or resumed.
+- Do not run `tarfa spawn` as a migration smoke test: it starts a real process.

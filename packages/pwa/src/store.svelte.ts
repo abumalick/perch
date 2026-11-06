@@ -1,5 +1,5 @@
-import type { AgentMessage, BrowserSession, ClientMessage, MachineStats, MediaResult, Workspace, WorkspaceStatus } from '@perch/contracts';
-import { imageMediaType, pdfMediaType, audioMediaType, runsClaude } from '@perch/contracts';
+import type { AgentMessage, BrowserSession, ClientMessage, MachineStats, MediaResult, Workspace, WorkspaceStatus } from '@tarfa/contracts';
+import { imageMediaType, pdfMediaType, audioMediaType, runsClaude } from '@tarfa/contracts';
 import { SvelteSet } from 'svelte/reactivity';
 import type { ConnectionManager } from './core/connection-manager';
 import type { WorkspaceAggregator } from './core/workspace-aggregator';
@@ -20,7 +20,7 @@ import { SessionChannels } from './core/session-channels';
 import { flushConnectionLog } from './core/connection-log-flush';
 import { UnreadableDeviceKeyError, type KeyStorage } from './core/ports/device-identity';
 import { describeError } from './core/describe-error';
-import { parsePairingLink } from '@perch/secure-channel';
+import { parsePairingLink } from '@tarfa/secure-channel';
 import { acceptPairingLink, readPairingLink } from './core/pairing';
 
 export interface DeviceNotice {
@@ -86,7 +86,7 @@ const RECONNECT_GRACE_MS = 25_000;
 // is taken not to support it: the last second of playback, the release and Claude's transcription.
 export const VOICE_REPLY_MS = 20_000;
 
-export class PerchStore {
+export class TarfaStore {
   view = $state<View>('list');
   workspaces = $state<Workspace[]>([]);
   // Connection ids whose workspace list has arrived since they last came online.
@@ -767,7 +767,7 @@ export class PerchStore {
   };
 
   // A failure can come while the user is still talking: stop the recording at once.
-  private failVoice(voice: NonNullable<PerchStore['voice']>, error: string): void {
+  private failVoice(voice: NonNullable<TarfaStore['voice']>, error: string): void {
     if (voice.settled) return;
     voice.settle(new Error(error));
     this.stt?.abort(error);

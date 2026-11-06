@@ -18,7 +18,7 @@ test('a mouse drag copies the selected text to the clipboard on release', async 
   await seedMachine(page, agent);
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await page.evaluate(() => {
     (window as unknown as { __copied: string[] }).__copied = [];
@@ -31,7 +31,7 @@ test('a mouse drag copies the selected text to the clipboard on release', async 
     });
   });
 
-  // The first rendered row holds "PERCH_READY perch-demo"; drag across that exact line.
+  // The first rendered row holds "TARFA_READY perch-demo"; drag across that exact line.
   const row = page.locator('.xterm-rows > div').first();
   const box = (await row.boundingBox())!;
   const y = box.y + box.height / 2;
@@ -44,6 +44,6 @@ test('a mouse drag copies the selected text to the clipboard on release', async 
     .poll(() => page.evaluate(() => (window as unknown as { __copied: string[] }).__copied.length))
     .toBeGreaterThan(0);
   const copied = await page.evaluate(() => (window as unknown as { __copied: string[] }).__copied);
-  expect(copied.at(-1)).toContain('PERCH_READY');
+  expect(copied.at(-1)).toContain('TARFA_READY');
   await expect(page.getByText('Copied')).toBeVisible();
 });

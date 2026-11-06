@@ -26,7 +26,7 @@ export class CodexDelivery implements MessageDelivery {
     if (!thread) {
       return {
         ok: false,
-        reason: `no Codex thread recorded for ${target.id} (only perch spawn --cli codex workspaces take messages)`,
+        reason: `no Codex thread recorded for ${target.id} (only tarfa spawn --cli codex workspaces take messages)`,
       };
     }
     try {

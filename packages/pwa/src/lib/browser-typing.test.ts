@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { BrowserClientMessage } from '@perch/contracts';
+import type { BrowserClientMessage } from '@tarfa/contracts';
 import { attachBrowserTyping, type BrowserTyping } from './browser-typing';
 
 let input: HTMLInputElement;

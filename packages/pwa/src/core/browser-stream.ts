@@ -3,7 +3,7 @@ import {
   type BrowserAgentMessage,
   type BrowserClientMessage,
   type BrowserEndedReason,
-} from '@perch/contracts';
+} from '@tarfa/contracts';
 import type { Socket, SocketFactory } from './ports/socket';
 
 export type BrowserStreamState = 'connecting' | 'online' | 'ended';

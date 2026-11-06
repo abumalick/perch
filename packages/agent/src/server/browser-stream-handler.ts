@@ -3,7 +3,7 @@ import {
   parseBrowserAgentMessage,
   type BrowserAgentMessage,
   type BrowserEndedReason,
-} from '@perch/contracts';
+} from '@tarfa/contracts';
 import type { BrowserDiscoveryPort } from '../ports/browser-discovery-port';
 import type { BrowserCommandPort } from '../ports/browser-command-port';
 import type { BrowserStreamSocket, ConnectUpstream } from '../ports/browser-stream-port';

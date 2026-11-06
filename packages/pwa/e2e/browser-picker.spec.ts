@@ -18,7 +18,7 @@ test('the browser icon opens a picker when the workspace has several sessions', 
   await seedMachine(page, agent);
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   if (!isWideViewport(page)) {
     await openWorkspaceMenu(page);

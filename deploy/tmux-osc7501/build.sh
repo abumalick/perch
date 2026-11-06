@@ -42,7 +42,7 @@ build() {
   local configure_args=(--prefix="$PREFIX")
   case $(uname -s) in
     Linux)
-      # Perch reaps each pane's tmux-spawn-*.scope on close, which needs systemd support.
+      # Tarfa reaps each pane's tmux-spawn-*.scope on close, which needs systemd support.
       configure_args+=(--enable-systemd)
       ;;
     Darwin)

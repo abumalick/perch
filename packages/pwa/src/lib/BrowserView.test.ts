@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import type { BrowserClientMessage, BrowserEndedReason } from '@perch/contracts';
+import type { BrowserClientMessage, BrowserEndedReason } from '@tarfa/contracts';
 import BrowserView from './BrowserView.svelte';
 
 type Handlers = {

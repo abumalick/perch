@@ -12,11 +12,11 @@ import {
   rawStaticKey,
   readHandshakeFrame,
   REFUSAL,
-} from '@perch/secure-channel';
+} from '@tarfa/secure-channel';
 import type { FrameSocket } from '../ports/frame-socket';
 import type { DeviceStanding, EnrolmentMode } from '../application/device-roster';
 import { DeviceGateBusy, type DeviceGate, type Redemption } from '../ports/device-gate-port';
-import type { Refusal } from '@perch/secure-channel';
+import type { Refusal } from '@tarfa/secure-channel';
 import { NoiseClientConnection } from './noise-client-connection';
 
 class FakeFrameSocket implements FrameSocket {

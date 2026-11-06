@@ -1,9 +1,8 @@
-# Perch — agent guide
+# Tarfa — agent guide
 
-Perch is a mobile-first PWA to view and interact with Claude Code terminal sessions
-(tmux workspaces) running on multiple machines, from an iPhone. Its public name is **Tarfa**:
-the PWA is branded Tarfa and served from tarfa.app; the code, CLI and config are still named
-Perch until the rename's second phase. An **agent** runs on each machine (e.g. a Mac and a Linux
+Tarfa (formerly Perch) is a mobile-first PWA to view and interact with Claude Code terminal
+sessions (tmux workspaces) running on multiple machines, from an iPhone, served from tarfa.app.
+An **agent** runs on each machine (e.g. a Mac and a Linux
 box) with a loopback phone port, which its operator publishes (`tailscale serve`, Funnel, a
 proxy); the **PWA** connects to that address directly, in an end-to-end Noise session keyed by
 the phone's device key, and streams its terminals. No agent listens off loopback.
@@ -20,20 +19,20 @@ the phone's device key, and streams its terminals. No agent listens off loopback
 - **Never commit secrets.** Tokens live in `deploy/agent.env` (gitignored) and in a password manager. `deploy/agent.env.example` is the template.
 
 ## Layout
-- `packages/contracts` (`@perch/contracts`) — the zod wire protocol and shared types.
+- `packages/contracts` (`@tarfa/contracts`) — the zod wire protocol and shared types.
   `ClientMessage` / `AgentMessage` discriminated unions. Terminal `data` is base64.
   **Change the protocol here first**, then the agent and PWA.
-- `packages/agent` (`@perch/agent`) — per-machine agent. tmux via `node:child_process`,
+- `packages/agent` (`@tarfa/cli`) — per-machine agent. tmux via `node:child_process`,
   terminal streaming via `node-pty`, a loopback phone port phones connect to directly (served
   through `NoiseClientConnection`), and a `node:http` server on
   `127.0.0.1` with three bearer-token-guarded routes: `POST /hooks` (Claude Code hooks report
-  attention here), `POST /unpark` (`perch unpark`) and `POST /message` (`perch send`).
+  attention here), `POST /unpark` (`tarfa unpark`) and `POST /message` (`tarfa send`).
   Domain/application in `application/` + `ports/`, adapters in `infrastructure/`, wiring in
   `server/`.
-- `packages/secure-channel` (`@perch/secure-channel`) — the Noise IK session both ends run, its
+- `packages/secure-channel` (`@tarfa/secure-channel`) — the Noise IK session both ends run, its
   framing, the device hello, pairing links and refusals (see "Device keys, enrolment and
   pairing").
-- `packages/pwa` (`@perch/pwa`) — Svelte 5 (runes) PWA, launched as Tarfa. xterm.js terminal, vite-plugin-pwa
+- `packages/pwa` (`@tarfa/pwa`) — Svelte 5 (runes) PWA, launched as Tarfa. xterm.js terminal, vite-plugin-pwa
   (auto-update), Playwright e2e. Core logic (connection manager, aggregator, store) is in
   `src/core` + `src/adapters` and unit-tested with a fake socket; `src/lib` is the UI.
 - **The PWA speaks English and French.** Every string a user reads goes in
@@ -47,7 +46,7 @@ the phone's device key, and streams its terminals. No agent listens off loopback
   at the source (the connection log keeps them) and are worded at display
   (`lib/machine-status.ts`).
 
-## Commands (per package via `pnpm --filter @perch/<pkg> …`)
+## Commands (per package via `pnpm --filter @tarfa/<pkg> …`)
 - Test: `test` (vitest). Types: `typecheck`. Build (pwa): `build`. E2E (pwa):
   `exec playwright test` (uses a faithful fake agent in `e2e/fake-agent.ts`).
 - Run the whole suite: `pnpm -s test`. Keep it green; add tests with every change.
@@ -65,7 +64,7 @@ Build each feature in its own git worktree; full runbook in `docs/WORKTREES.md`.
   ports, so they run in parallel across worktrees with no clash.
 - **e2e ports clash** — `vite preview` uses a fixed port. On the host running `run-pwa.sh`,
   **4173 is the standing deploy**; give each checkout its own:
-  `E2E_PORT=4175 pnpm --filter @perch/pwa e2e` (build first — `vite preview` serves the gitignored `dist/`).
+  `E2E_PORT=4175 pnpm --filter @tarfa/pwa e2e` (build first — `vite preview` serves the gitignored `dist/`).
 - **Test a worktree build on the phone:** `pnpm serve:build .worktrees/<feature>` points the
   staging PWA on the tailnet at it (installed PWA auto-updates in ~60s; the home header shows the
   worktree slug as a badge); `pnpm serve:restore` flips back to main. From a public origin,
@@ -83,19 +82,19 @@ Build each feature in its own git worktree; full runbook in `docs/WORKTREES.md`.
 
 ## Runtime & deployment
 See `docs/DEPLOY.md` for the full runbook. In short:
-- Each agent reads `deploy/agent.env` (`PERCH_TOKEN`, `PERCH_MACHINE_ID`,
-  `PERCH_PROJECT_ROOTS`, `PERCH_PORT` for the loopback hooks listener, `PERCH_PHONE_PORT` for the
-  phone port, `PERCH_PHONE_ADDRESSES` for where phones reach it) and
+- Each agent reads `deploy/agent.env` (`TARFA_TOKEN`, `TARFA_MACHINE_ID`,
+  `TARFA_PROJECT_ROOTS`, `TARFA_PORT` for the loopback hooks listener, `TARFA_PHONE_PORT` for the
+  phone port, `TARFA_PHONE_ADDRESSES` for where phones reach it) and
   runs as a service: **launchd** on macOS
-  (`deploy/com.perch.agent.plist`), **systemd user unit + linger** on Ubuntu. Both invoke
+  (`deploy/app.tarfa.agent.plist`), **systemd user unit + linger** on Ubuntu. Both invoke
   `deploy/run-agent.sh`, which self-locates `mise` (services don't inherit an interactive
   PATH). Run `mise trust` once per machine or the unit crash-loops.
 - **An agent is reached on its phone port once that is published.** It binds `127.0.0.1`
-  whatever `PERCH_HOST` says (a non-loopback value is ignored with a warning). The hooks port
-  (`PERCH_PORT`) serves only `POST /hooks`, `POST /unpark` and `POST /message`, and is never
-  published with `tailscale serve`. `perch setup` sets a machine up; `perch pair` pairs a phone
+  whatever `TARFA_HOST` says (a non-loopback value is ignored with a warning). The hooks port
+  (`TARFA_PORT`) serves only `POST /hooks`, `POST /unpark` and `POST /message`, and is never
+  published with `tailscale serve`. `tarfa setup` sets a machine up; `tarfa pair` pairs a phone
   ("Device keys, enrolment and pairing").
-- **`perch setup` sets a machine up without prompting** (`application/setup-machine.ts` plans
+- **`tarfa setup` sets a machine up without prompting** (`application/setup-machine.ts` plans
   from flags plus what the machine holds, `run-setup.ts` applies; `docs/DEPLOY.md`, "In one
   command"): agent.env, agent key, roster, service, hooks, a `tailscale serve`/`funnel` handler,
   then a restart and a phone-port check. Things not to "simplify": **every step is planned only
@@ -105,7 +104,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   as current when it runs `<checkout>/deploy/run-agent.sh` with `KillMode=process`**, however
   it gets there (dev's runs it through `mise exec` from `WorkingDirectory`), so setup never
   rewrites a working unit; **hooks count as installed regardless of key order and entry order**
-  (Claude Code rewrites `settings.json` with sorted keys); **an existing `PERCH_PWA_ORIGIN` is
+  (Claude Code rewrites `settings.json` with sorted keys); **an existing `TARFA_PWA_ORIGIN` is
   kept unless `--pwa` is given**; **a phone or hooks port held by anything but this user's
   agent is refused** (another Linux user's processes are invisible to `ss`/`lsof`); and **an
   existing serve handler on the same port and path is never replaced**; **an existing roster with
@@ -114,10 +113,42 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   takes its port from `--tailscale-port`, else the `--address` under the slug, else 443,
   and reads `funnel` when that port is already on Funnel** (`serve` would turn Funnel off for every
   agent on it; `--tailscale serve` on a Funnel port runs `tailscale funnel` for the same reason); and **a `systemctl --user` that cannot reach the manager stops setup** (without
-  `XDG_RUNTIME_DIR` it would read as "not installed" and reinstall a working unit). `perch pair` mints a
-  link with every `PERCH_PHONE_ADDRESSES` address in order (`PERCH_PWA_ORIGIN` defaults to
+  `XDG_RUNTIME_DIR` it would read as "not installed" and reinstall a working unit). `tarfa pair` mints a
+  link with every `TARFA_PHONE_ADDRESSES` address in order (`TARFA_PWA_ORIGIN` defaults to
   `https://tarfa.app`).
-- **The phone port: phones connect to the agent directly** (`PERCH_PHONE_PORT`, default 8797,
+- **The rename from Perch reads the old names for one release; don't drop a read early.** Each
+  one goes when its condition holds:
+  - `PERCH_*` env names stand in for `TARFA_*` (`application/legacy-env.ts`, through
+    `loadConfig`; the agent warns once per name, `childEnv` strips both prefixes), until every
+    machine's agent.env is rewritten by `tarfa setup`.
+  - `~/.perch` is moved to `~/.tarfa` by the agent at startup, **before it reads anything**
+    (`infrastructure/state-dir.ts`, under `~/.tarfa-migrate.lock`), which leaves `~/.perch` a link
+    to it and renames `relay-key.json` to `agent-key.json`, leaving the old name a link too (an
+    agent from before the rename, brought back, would otherwise make a new key). It never merges:
+    both holding something, or a `~/.perch` link to nothing, stops the agent, since starting on an empty `~/.tarfa` beside the old key would make
+    a new key and every phone would refuse it. The CLI never moves it (an older agent may still
+    run): it reads whichever exists (`resolveStateDir`, `resolveAgentKeyPath`), and
+    `install-hooks` refuses until the move. Goes once every machine moved and no hook entry names it.
+  - `@perch_command`/`_parent`/`_codex_thread` are read beside `@tarfa_*`, and the startup
+    re-tags them (`retagLegacyOptions`) **before** `trackLiveWorkspaces`, `reconcileParked` and the
+    prune (`application/startup-reconcile.ts`): a session missing its marker reads as a bare shell
+    to park, kill or prune. `createSession` sets both names, so an agent from before the rename
+    (still running until its restart, or a rollback) sees every session. Goes once every startup
+    logs zero re-tagged for a week.
+  - `~/.local/bin/perch` is a link to `tarfa`, `deploy/perch-cli.sh` (what an older install
+    links) to `tarfa-cli.sh`, `@tarfa/cli` has both bins and `pnpm perch` runs the CLI, for one
+    release after `tarfa` ships.
+  - The guard refuses `.perch/inbox/` and `@perch_parent`/`_codex_thread` too, and the quoting
+    regex quotes `[Perch message` and `[Tarfa message`. `send` still writes the Perch header until
+    the dotfiles rule accepts both spellings; both reads go a release after the switch.
+  - `tarfa setup` swaps the service: stop `perch-agent`/`com.perch.agent`, move `~/.perch`,
+    install and start `tarfa-agent`/`app.tarfa.agent` **before any step that can fail** (a failed
+    hooks or serve step must not leave a remote machine with no agent), remove the old one last;
+    never two agents on one hooks port. The old unit's drop-ins are copied to the new one.
+    `port-owner` counts either unit as this user's agent meanwhile.
+  Not renamed: the Noise prologue `perch-relay-noise-v3` (a wire change of its own), the
+  `perch-<6 hex>` ids and `sessionPrefix` (data), and Pi's `perch-message` custom type.
+- **The phone port: phones connect to the agent directly** (`TARFA_PHONE_PORT`, default 8797,
   `infrastructure/phone-listener.ts`). It upgrades on **any** path (`tailscale serve --set-path`
   strips its prefix) and answers anything else 404, and each socket runs the unchanged Noise
   session through `WsServer.acceptPhoneSocket`. **One device gate serves every socket**
@@ -183,12 +214,12 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   - **The host running `run-pwa.sh`:** it keeps a `vite preview`
     process serving the `deploy/pwa-live` symlink (defaults to `packages/pwa/dist/`), fronted
     by `tailscale serve` on :8443. The preview stays up and serves whatever the symlink points
-    at, so `pnpm --filter @perch/pwa build` alone re-deploys here — no process restart, just
+    at, so `pnpm --filter @tarfa/pwa build` alone re-deploys here — no process restart, just
     reload the PWA. `pnpm serve:build` temporarily repoints the symlink at a worktree build
     (see above).
 - Install Claude Code hooks on each agent machine: the agent CLI `install-hooks` command.
 - **Hidden folders are per-machine, file-based config — not a protocol/PWA feature.** A
-  gitignored `~/.perch/hidden-folders.json` (JSON array of folder names) on each agent
+  gitignored `~/.tarfa/hidden-folders.json` (JSON array of folder names) on each agent
   machine hides matching projects from workspaces, recent paths, and the folder picker
   (`is-hidden-path.ts`: any path segment equal to a listed name is filtered). Read fresh
   from disk on every call (`FileHiddenFoldersStore`) — no caching, so edits take effect
@@ -202,7 +233,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   walking it would hide Claude. Only the shell's exit 1 means "absent": a failing profile, a
   timeout or an unstartable shell keeps the CLI offered, since hiding Claude would silently make
   Bash the form's default. A PATH set only in `.zshrc` is invisible to a login shell. Bash is always
-  offered. `custom` is a gitignored `~/.perch/launchers.json` (capped at 20): a `create` carrying
+  offered. `custom` is a gitignored `~/.tarfa/launchers.json` (capped at 20): a `create` carrying
   `remember: true` — set only when the Custom radio was used — adds its command after the
   workspace exists, unless it is exactly `bash`/`claude`/`codex` (so `claude --resume` typed as
   Custom is kept). A remembered command runs as typed, with no model picker; `forgetLauncher`
@@ -288,7 +319,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   - **Users sharing a machine share one loopback card, so each pins its own subdevice.** ALSA
     pairs playback subdevice *n* with capture *n* and hands each open the lowest free one, so two
     unpinned users dictating at once cross over (measured with `arecord`/`aplay`: a recorder
-    heard the tone another player sent; pinned subdevices kept apart). Each user's `~/.asoundrc` names `Loopback,1,<n>` and its `PERCH_VOICE_DEVICE` the
+    heard the tone another player sent; pinned subdevices kept apart). Each user's `~/.asoundrc` names `Loopback,1,<n>` and its `TARFA_VOICE_DEVICE` the
     matching `plughw:Loopback,0,<n>` (default `plughw:Loopback,0`, right for one user only).
   One dictation at a time per agent. The PWA gives up `VOICE_REPLY_MS` after
   the end, since an older agent's `bad_message` is silent. Set up by hand per machine
@@ -309,7 +340,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   `store.logConnectivity`). The flush rides the *new* session, so the events about why the old
   one died are not lost with it; it fails soft (no `ok` ack → events stay buffered, drain next
   reconnect). The agent appends one JSON line per event to a gitignored
-  `~/.perch/client-log.jsonl` (`FileClientLogStore`); a batch over 512 KB is refused. Dedup by
+  `~/.tarfa/client-log.jsonl` (`FileClientLogStore`); a batch over 512 KB is refused. Dedup by
   `(sess, seq)` at read (a global event may appear once per machine it flushed to). No PWA/UI
   to read it; analyse the file on the box.
 - **Workspace lifecycle log — a durable record of every closed workspace, agent-side only.**
@@ -318,7 +349,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   one JSON line — id, name, project path, machine id, created/closed timestamps, a reason
   (`closed-by-user` for an explicit PWA close, `exited` for a shell exit/crash/manual
   `tmux kill-session`), and the last known attention status — to a gitignored
-  `~/.perch/workspace-log.jsonl` (`FileWorkspaceLogStore`). An explicit close snapshots via
+  `~/.tarfa/workspace-log.jsonl` (`FileWorkspaceLogStore`). An explicit close snapshots via
   `WsServer.forgetWorkspace(id)` *before* killing the tmux session (tmux can't answer
   afterward) and falls back to a fresh tmux lookup if the workspace was closed within its
   first title-poll tick. The log write is best-effort (a failure must never fail the close
@@ -331,7 +362,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
 - **Parking a workspace — stop the session, keep the conversation.** Setting a workspace's
   status to `parked` (renamed from `postponed`) kills its tmux session to free the `claude`
   process, and snapshots what's needed to revive it — id, name, path, command, and the
-  captured `claudeSessionId` — into a gitignored `~/.perch/parked.json`
+  captured `claudeSessionId` — into a gitignored `~/.tarfa/parked.json`
   (`FileParkedStore`). `listWorkspaces` unions parked records with live tmux sessions, so
   a parked workspace stays in the list with no protocol change, no new `Workspace` field,
   and no PWA logic — and the disappearance poll never sees it vanish, so it logs no
@@ -346,7 +377,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   cost is that an unparked workspace stops renaming itself. On an older tmux the title is set
   unlocked and may not hold: the spawn's `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` prefix would cover
   only the left half of `<cmd> --resume <id> || exec <cmd>`, and it silences OSC 7501 too.
-  `perch unpark <id>...` opens parked workspaces from a shell through the same path, by asking
+  `tarfa unpark <id>...` opens parked workspaces from a shell through the same path, by asking
   the running agent (`POST /unpark`, the hooks secret): the agent holds `status.json` in memory
   and writes `parked.json`, so a CLI writing either would race it, and only the agent tells the
   phones. **The parked record — not `status === 'parked'` — is the source of
@@ -372,7 +403,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   server — a reboot, or a session's own `pkill -f <pattern>` matching `tmux -D` — usually with
   the agent beside it, so the disappearance poll never sees them go, and the startup prune then
   drops their status entries (and session ids). `trackLiveWorkspaces` keeps a gitignored
-  `~/.perch/live.json` (`FileLiveSnapshotStore`): every live workspace in the parked-record shape,
+  `~/.tarfa/live.json` (`FileLiveSnapshotStore`): every live workspace in the parked-record shape,
   plus the server's identity (`TmuxPort.serverId`, `#{pid}:#{start_time}` from
   `display-message`, which an empty but running server still answers). It runs at startup
   **before** `reconcileParked` and the prune, and on every poll tick **before** `pollTitles`,
@@ -380,7 +411,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   while the same server runs is an ordinary exit and is just dropped; one missing after the
   identity changed (or with no server) is logged `server-lost` and, when its Claude session id
   is known, written to `parked.json`, so the PWA lists it as parked and opening it resumes the
-  conversation. A session present on the new server without `@perch_command` counts as lost too
+  conversation. A session present on the new server without `@tarfa_command` counts as lost too
   (tmux-resurrect's bare shell), and `reconcileParked` kills it. An explicit close or park drops
   the entry at once (`forgetWorkspace`). Accepted edge: on a machine whose tmux server exits
   with its last session, that last workspace exiting on its own comes back parked; close it.
@@ -388,7 +419,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
 
 - **Workspace ids are `<folder>-<n>`, the smallest free n** (`short-workspace-ids.ts`), so one
   is easy to say aloud; older workspaces keep their `perch-<6 hex>`. Three things follow, don't
-  undo any: **Perch finds its sessions by the `@perch_command` it sets on each**, not by name
+  undo any: **Tarfa finds its sessions by the `@tarfa_command` it sets on each**, not by name
   (`listSessions` also takes the old prefix, for a tmux-resurrect shell, which has no marker;
   `reconcileParked` looks parked ids up by name for the same reason; such a shell under a new id
   whose workspace had no Claude session id to park stays invisible, holding its name). **tmux
@@ -404,54 +435,55 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   session at all, and any live Claude session's name (Claude names an unnamed session
   `<folder>-<2 hex>`, a valid id). **A Create-form workspace gets no `--name`:** measured on
   Claude Code 2.1.316, a named session writes its name as its title and never a summary, so the
-  messaging address stays Claude's own and `perch spawn`'s explicit `--name <id>` is the
+  messaging address stays Claude's own and `tarfa spawn`'s explicit `--name <id>` is the
   exception. Claude's `/rename` writes a title with no glyph, which `deriveWorkspaceName` takes
   for a `claude` pane (but not `Claude Code` or the id; the adapter reads tmux's host-name
   default as no title).
 
-- **The `perch` CLI and the orchestrator → child link.** `deploy/install-cli.sh` links
-  `deploy/perch-cli.sh` to `~/.local/bin/perch` on each machine, so any session in any repo can
-  run `perch spawn [--child]`, `perch ls [--mine|--role|--path]`, `perch peek <id>`, `perch unpark <id>...`
-  and `perch rename [<id>] <title>`. `rename` sets `✳ <title>` locked, as unpark does, so Claude
-  stops renaming that workspace; without an id it renames the caller's own. The first three read tmux and the `~/.perch` stores directly (read-only, no agent.env needed)
+- **The `tarfa` CLI and the orchestrator → child link.** `deploy/install-cli.sh` links
+  `deploy/tarfa-cli.sh` to `~/.local/bin/tarfa` (and, for one release, `~/.local/bin/perch` to
+  `tarfa`) on each machine, so any session in any repo can
+  run `tarfa spawn [--child]`, `tarfa ls [--mine|--role|--path]`, `tarfa peek <id>`, `tarfa unpark <id>...`
+  and `tarfa rename [<id>] <title>`. `rename` sets `✳ <title>` locked, as unpark does, so Claude
+  stops renaming that workspace; without an id it renames the caller's own. The first three read tmux and the `~/.tarfa` stores directly (read-only, no agent.env needed)
   and skip the GitHub lookup, so `ls` answers in a fraction of a second; `unpark` asks the
   running agent (parking section). **Orchestration is explicit:** a plain
-  `perch spawn` is an ordinary workspace; `--child` records the caller's **workspace id** (never
-  its Claude session name, which changes on rename) as the tmux option `@perch_parent`, read
+  `tarfa spawn` is an ordinary workspace; `--child` records the caller's **workspace id** (never
+  its Claude session name, which changes on rename) as the tmux option `@tarfa_parent`, read
   into `Workspace.parentId`. The link is carried in `parked.json` and `live.json` and re-set by
   unpark, so it survives park/unpark and a lost tmux server. A child whose turn ended right
   after messaging its parent gets `waitingOn: 'parent'` (the durable `messagedLast` mark): its
-  status stays `working`, the PWA labels it "Needs orchestrator" and `perch ls` shows
+  status stays `working`, the PWA labels it "Needs orchestrator" and `tarfa ls` shows
   `needs-orchestrator`. The PWA nests one level of children under a listed, unparked parent on
   the same machine (`core/nest-workspaces.ts`), folded by default; a group ranks by its most
   urgent member, and Next walks children of folded parents too.
-- **Cross-agent messaging (`perch send`).** `perch send <id> "<message>"` (or stdin) lets one
+- **Cross-agent messaging (`tarfa send`).** `tarfa send <id> "<message>"` (or stdin) lets one
   workspace message another on the same machine, for Claude, Codex and Pi; how it works and the
   authority text each CLI needs are in `docs/MESSAGING.md`. Things not to "simplify":
   - **The agent delivers, not the CLI** (`POST /message`, the hooks secret, as `unpark`): one
     process serialises deliveries and owns the sender's marks and the log.
   - **The sender is proven, never named by the caller:** pane ancestry for Claude and Pi, and for
-    Codex `CODEX_THREAD_ID` matched to `@perch_codex_thread` (its tools run in the daemon's
+    Codex `CODEX_THREAD_ID` matched to `@tarfa_codex_thread` (its tools run in the daemon's
     sandbox, outside the pane).
-  - **Perch writes the header, and only the first line of the whole message grants authority**
+  - **Tarfa writes the header, and only the first line of the whole message grants authority**
     (`from your ORCHESTRATOR` = the owner). Body lines that begin `[Perch message` (after any
     whitespace, any case, `[` or `［`) are quoted `> `, and Claude's text has both envelope tags
     escaped so a body cannot close its envelope or open another.
   - **Each message carries a random `msg` id on its `from:` line:** Claude's inbox drops a body
-    equal to one the same peer sent within 30 s, and every Perch delivery is the same peer.
+    equal to one the same peer sent within 30 s, and every Tarfa delivery is the same peer.
   - **The body is inline only.** No `--file`: a path in a message is an instruction, not data.
-  - **No queue for a parked recipient:** it is refused ("run `perch unpark` first"), because a
+  - **No queue for a parked recipient:** it is refused ("run `tarfa unpark` first"), because a
     held message would be delivered into a conversation nobody chose to reopen.
   - **`sentDuringTool` keeps the sender's "Needs orchestrator" mark:** the send's own
     `PostToolUse` arrives after the mark is set and would clear it.
-    Accepted edge: a `perch send` run by a subagent marks the parent workspace too, since the
+    Accepted edge: a `tarfa send` run by a subagent marks the parent workspace too, since the
     sender is proven by pane and the subagent's Bash runs in the parent's pane.
-  - **Codex takes messages only in workspaces made by `perch spawn --cli codex`:** Perch creates
-    the thread, records `@perch_codex_thread` and launches exactly `codex resume <thread id>`
+  - **Codex takes messages only in workspaces made by `tarfa spawn --cli codex`:** Tarfa creates
+    the thread, records `@tarfa_codex_thread` and launches exactly `codex resume <thread id>`
     (no `-c`, which would force an in-process thread nothing can reach). A phone-created Codex
     keeps `--no-daemon`. Spawn refuses when the CLI and daemon versions differ.
   - **Accepted limit: one Linux user.** A process of that user can still write an inbox socket or
-    re-parent a session; `perch-guard.sh` and the CLIs' reviewers refuse only the obvious routes
+    re-parent a session; `tarfa-guard.sh` and the CLIs' reviewers refuse only the obvious routes
     (`docs/MESSAGING.md`).
 - **Closing a workspace reaps the pane's systemd scope — and acknowledges before it does.**
   tmux (built with systemd support) puts every pane it spawns in its own transient
@@ -463,7 +495,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   with the process, so afterwards there is nothing to read) and returns it; `reapWorkspaceScope`
   stops it with `systemctl --user stop`. `SystemdScopeReaper` **refuses any unit that is not
   `tmux-spawn-<uuid>.scope`** — a pane under a tmux built without systemd support sits in
-  `perch-agent.service`, and stopping that would kill the agent itself. Linux-only by
+  `tarfa-agent.service`, and stopping that would kill the agent itself. Linux-only by
   construction: on macOS `scopeForPid` returns null and the leak remains.
   **Two orderings carry the design.** Claude Code exits gracefully on SIGTERM as well as SIGHUP
   (verified: its `~/.claude/sessions/<pid>.json` registry entry, key and socket are all removed;
@@ -523,7 +555,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   `ProcSystemStats` is Linux-only by construction: elsewhere `read()` returns null, no
   `stats` is sent, and the strip does not render. All the headroom reads are best-effort — a
   kernel that exposes none of them still yields a reading, and the fields are optional on the
-  wire so a version-skewed agent degrades to the old strip. `PERCH_STATS=off` in `agent.env`
+  wire so a version-skewed agent degrades to the old strip. `TARFA_STATS=off` in `agent.env`
   takes the collector away the same way (`serve.ts`), for a second Linux user on a box whose load
   another agent already shows. Requires an agent restart per machine.
 - **Reconnect must replace the connect chain, never stack a second one.** `MachineConnection`'s
@@ -595,7 +627,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     keys, and an existing record that reads back malformed fails with a way out, never a
     `TypeError` and never a silent new key.
   - **Only the X25519 key identifies a phone.** The agent checks the IK key against
-    `~/.perch/devices.json` itself: an unknown key may send `auth` and nothing else, and it is
+    `~/.tarfa/devices.json` itself: an unknown key may send `auth` and nothing else, and it is
     enrolled only when the handler's `authResult ok` goes out. The hello's Ed25519 key (`sig`)
     is stored in the roster for its file format and checked by nothing; its `proof`, which
     relays admitted a phone by, is optional in the schema so an older PWA's hello still parses,
@@ -604,7 +636,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     ignores the top bit, and a revoked key re-spelled would come back as unknown. **Nothing the
     phone sends behind an accepted `auth` reaches the handler until the roster write settles**
     (it is held with the outgoing `authResult`, and dropped if the roster declines). Hello names
-    are sanitised (control characters, bidi overrides) before the journal and `perch devices`.
+    are sanitised (control characters, bidi overrides) before the journal and `tarfa devices`.
     Until `auth` is accepted the agent reads 8 KiB messages at most and three `auth`s per
     socket, both counted as messages arrive, and holds at most 16 messages while a credential is
     being checked (an honest phone sends nothing behind `auth` until `authResult`).
@@ -660,19 +692,19 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     the link for ten minutes. The binding device presenting it again is not a second use; any
     other is refused.
   - **Device ids are 48 bits, so a key is the real name.** Enrolment refuses a key whose id is
-    already in the roster (enrolled or revoked), and `perch devices revoke/forget` take the full
-    X25519 key as well as an id, which `perch devices` prints.
+    already in the roster (enrolled or revoked), and `tarfa devices revoke/forget` take the full
+    X25519 key as well as an id, which `tarfa devices` prints.
   - **`devices.json` fails closed and writes under a lock.** Malformed is an error, never an
     empty roster (that would forget every revocation and re-open enrolment), and the agent and
-    `perch devices` write it from different processes. A pairing secret the agent never issued is
-    answered without taking `pairing.json`'s lock, so made-up ones cannot keep `perch pair` out.
+    `tarfa devices` write it from different processes. A pairing secret the agent never issued is
+    answered without taking `pairing.json`'s lock, so made-up ones cannot keep `tarfa pair` out.
   - **The hooks have their own secret, kept off every command line.** `POST /hooks` takes a
-    random secret the agent writes to `~/.perch/token` at each start (the path installed hooks
-    already read), never `PERCH_TOKEN`, which enrols phones. `POST /unpark` and `POST /message`
-    take the same secret, which `perch unpark` reads from that file into a header in-process.
-    `perch-hook.sh` gives curl the header through a file (process substitution) and the body on
+    random secret the agent writes to `~/.tarfa/token` at each start (the path installed hooks
+    already read), never `TARFA_TOKEN`, which enrols phones. `POST /unpark` and `POST /message`
+    take the same secret, which `tarfa unpark` reads from that file into a header in-process.
+    `tarfa-hook.sh` gives curl the header through a file (process substitution) and the body on
     stdin, built with the `printf` builtin: any local user can read a process's argv.
-    `perch-hook.test.sh` asserts neither reaches it.
+    `tarfa-hook.test.sh` asserts neither reaches it.
   - **The PWA runs no script but its own bundle.** A media preview's Blob takes the type its
     path implies, never the agent's (`SessionMedia` refuses a reply naming another): a blob: URL
     has the PWA's origin, so an agent answering a `.pdf` as `text/html` once ran script beside
@@ -682,25 +714,25 @@ See `docs/DEPLOY.md` for the full runbook. In short:
     external host the PWA must reach goes in `connect-src` there. The PDF iframe has no
     `sandbox`: WebKit draws PDFs with a plugin, which any sandbox disables.
   - **Secret files must be private, or the agent does not start.** At startup it makes
-    `~/.perch` 0700 and exits, naming each file and the `chmod 600` that fixes it, while
+    `~/.tarfa` 0700 and exits, naming each file and the `chmod 600` that fixes it, while
     `relay-key.json` (the agent key, named when relays existed), `devices.json`, `pairing.json`,
-    `token` or `deploy/agent.env` (named by `PERCH_AGENT_ENV` from `run-agent.sh`) can be read or
+    `token` or `deploy/agent.env` (named by `TARFA_AGENT_ENV` from `run-agent.sh`) can be read or
     written by another user. A service that crash-loops right after an update: read its log for
     that line first.
-  - **No process the agent starts gets a `PERCH_` variable** (`childEnv`, used by every
+  - **No process the agent starts gets a `TARFA_` variable** (`childEnv`, used by every
     `execFile` and the pty). A tmux server copies the environment of the client that starts it
     into its global environment, which every pane inherits; when the agent's own
-    `new-session` found no server, every workspace got `PERCH_TOKEN`. A new spawn site must use
+    `new-session` found no server, every workspace got `TARFA_TOKEN`. A new spawn site must use
     `childEnv()` too. The CLI reads the agent.env the service reads for every command, since a
     shell in a workspace has none of the agent's variables.
-  - **An agent.env from before still starts.** `PERCH_RELAY_URLS` or `PERCH_RELAY_URL` is
-    ignored with one startup warning, and `perch connect`, `perch relay-key` and
-    `perch pair --relay` refuse in one line pointing at `perch setup` and `perch pair` (exit 2).
-  - **Machines are set up with `perch setup`; phones pair with `perch pair`** (runbook:
+  - **An agent.env from before still starts.** `TARFA_RELAY_URLS` or `TARFA_RELAY_URL` is
+    ignored with one startup warning, and `tarfa connect`, `tarfa relay-key` and
+    `tarfa pair --relay` refuse in one line pointing at `tarfa setup` and `tarfa pair` (exit 2).
+  - **Machines are set up with `tarfa setup`; phones pair with `tarfa pair`** (runbook:
     `docs/DEPLOY.md`). Pairing-link rules:
-    - **A link's default path (`p`, from `PERCH_DEFAULT_PATH`) is a convenience, never a reason
+    - **A link's default path (`p`, from `TARFA_DEFAULT_PATH`) is a convenience, never a reason
       to fail a pairing.** The phone drops one that is not absolute or exceeds 128 characters and
-      pairs anyway, so `perch pair` refuses such a value up front instead. It sets a new entry's
+      pairs anyway, so `tarfa pair` refuses such a value up front instead. It sets a new entry's
       `defaultPath` and fills an existing entry only when that has none: a re-scan is a retry,
       and the owner's Settings value wins, like the entry's name.
     - **A pairing link carries up to four addresses and never re-pins an entry.**
@@ -709,7 +741,7 @@ See `docs/DEPLOY.md` for the full runbook. In short:
       only, for the e2e) with the path `/` or one segment (a `tailscale serve --set-path` slug); a
       fifth or any invalid one nulls the whole link. A link naming an address another key's entry
       holds is refused (`pairedMachine`, direct section). A link opened from outside the app is
-      confirmed first, showing every host and the machine key's fingerprint that `perch pair`
+      confirmed first, showing every host and the machine key's fingerprint that `tarfa pair`
       prints beside the code, and a pending pairing secret is sent in preference to a token. A
       full link must name this app's own origin (`readPairingLink`).
     - **A pairing link tapped inside the app is paired by the running app**
@@ -765,9 +797,9 @@ So the PWA is on a public origin, tarfa.app, and what follows from that:
   phone's whole credential; whoever serves the PWA can also read everything it shows.
   **tarfa.app is the maintainer's origin**: whoever does not trust it serves their own copy
   (`deploy/pwa-deploy.sh --env-file` for their own Cloudflare account, or any static host) and
-  points their pairing links at it (`perch pair --pwa`). Moving origins means a new device key
+  points their pairing links at it (`tarfa pair --pwa`). Moving origins means a new device key
   (a new origin has empty storage), so every phone pairs again there.
-- **Pairing links name the PWA's origin** (`PERCH_PWA_ORIGIN`, default `https://tarfa.app`), so
+- **Pairing links name the PWA's origin** (`TARFA_PWA_ORIGIN`, default `https://tarfa.app`), so
   they follow it.
 - **A device that cannot fetch the PWA's origin never updates, and nothing says so.** It keeps
   running its cached service-worker build, which can still connect, so the app looks healthy
@@ -839,7 +871,7 @@ So the PWA is on a public origin, tarfa.app, and what follows from that:
   decode base64 → bytes → `TextDecoder` (UTF-8), never `atob` into a latin1 string (that
   mojibakes box-drawing/accents and breaks the xterm render). Guarded by a store unit test.
 - **Machine routing:** the PWA routes attach/input/close by the **connection id** (the
-  PWA's machine config id), not the agent's `PERCH_MACHINE_ID`. The aggregator stamps each
+  PWA's machine config id), not the agent's `TARFA_MACHINE_ID`. The aggregator stamps each
   workspace with the connection id. The e2e uses a deliberately mismatched agent id to
   cover this.
 - **List on connect:** the agent sends workspaces in response to an explicit `list`, or pushes
@@ -849,11 +881,11 @@ So the PWA is on a public origin, tarfa.app, and what follows from that:
 - **Restarting the agent must NOT kill tmux sessions:** the agent spawns the tmux server
   as a child, so it lives in the systemd unit's cgroup. The default
   `KillMode=control-group` would SIGTERM the whole cgroup on restart and take every
-  workspace (and the Claude Code session inside it) down with it. `deploy/perch-agent.service`
+  workspace (and the Claude Code session inside it) down with it. `deploy/tarfa-agent.service`
   sets **`KillMode=process`** so a restart stops only the agent; the tmux server and its
   sessions survive. Don't drop this. On restart the agent re-discovers live sessions via
   `tmux list-sessions` (no in-memory session registry), so workspaces reappear on the PWA's
-  next `list`. Status is **durable** (`FileStatusStore` → `~/.perch/status.json`): it reloads
+  next `list`. Status is **durable** (`FileStatusStore` → `~/.tarfa/status.json`): it reloads
   on startup, so each session keeps its last status across a restart instead of resetting to
   `idle`, and entries for sessions that no longer exist are pruned at startup. After changing
   the unit, re-deploy it and `systemctl --user daemon-reload`; this and `install-hooks` must
@@ -861,7 +893,7 @@ So the PWA is on a public origin, tarfa.app, and what follows from that:
 - **Android terminal input bypasses xterm's IME path, and the textarea is the model.**
   xterm.js's composition handling desyncs from the pty on Android: it tracks a composition as
   absolute indices into its accumulating hidden-textarea value, which breaks on Android's racing
-  composition events, and Perch's keyboard-bar arrows write to the pty out-of-band. On Android
+  composition events, and Tarfa's keyboard-bar arrows write to the pty out-of-band. On Android
   (iOS untouched) `lib/android-input.ts` takes over: **the browser applies every keyboard edit to
   the textarea, and on each `input` (and `compositionend`) the adapter sends
   `diffLine(sent, textarea.value)`** (`core/android-terminal-input.ts`) — backspaces to the common
@@ -993,7 +1025,7 @@ So the PWA is on a public origin, tarfa.app, and what follows from that:
   that created it (headed, profile, executable, args, init scripts, proxy, user agent…), and
   restarts its daemon when the idle timeout or a policy differs. A session started on a
   persistent profile, headed under Xvfb (Google/Shopify/Cloudflare logins), came back as a
-  profile-less `about:blank` on the first Perch command, so opening the viewer (it sends
+  profile-less `about:blank` on the first Tarfa command, so opening the viewer (it sends
   `set viewport`) logged it out. The CLI hands each setting to the daemon it spawns as an
   `AGENT_BROWSER_*` variable, so `procSessionLaunchEnv` reads `<session>.pid` →
   `/proc/<pid>/environ` (only when it says `AGENT_BROWSER_DAEMON=1` and names that session)
@@ -1001,8 +1033,8 @@ So the PWA is on a public origin, tarfa.app, and what follows from that:
   `DISPLAY`: extending would keep a variable the session was created without (the service
   inherits an idle timeout and init scripts from the user's environment). Plumbing
   (`_DAEMON`, `_SESSION`, `_STREAM_PORT`, `_NAMESPACE`, `_SOCKET_DIR`) is never replayed;
-  `_DAEMON` would make the CLI run as a daemon. With nothing to read (Perch's own `start`,
-  macOS) the inherited env is kept, and Perch never imposes a setting of its own.
+  `_DAEMON` would make the CLI run as a daemon. With nothing to read (Tarfa's own `start`,
+  macOS) the inherited env is kept, and Tarfa never imposes a setting of its own.
 - **An installed Android PWA cannot hand a tapped link to another browser app; the share sheet
   can.** A link picker set as the default browser (LinkSheet) never sees a terminal link: Firefox's
   web-app mode drops any link bound for an installed browser, and Chrome keeps http(s) in-app
@@ -1089,20 +1121,20 @@ So the PWA is on a public origin, tarfa.app, and what follows from that:
   over a needs-feedback that an OSC turn end set** (the in-memory `oscTurnEnded` mark): OSC's
   `done` lands before the Stop hook's curl, so a poll in that gap would leave `needs-feedback`
   while the shell runs, but a needs-feedback from a permission prompt or an OSC `blocked` (a
-  background subagent asking) must stand, or the prompt waits behind "working". A titled `perch spawn` locks the pane title
+  background subagent asking) must stand, or the prompt waits behind "working". A titled `tarfa spawn` locks the pane title
   with `allow-set-title off` (3.5+) rather than `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`, which also
   silences Claude's OSC 7501; the env switch remains on an older tmux. The agent's tests never
-  need the patched binary: `tmux-adapter.osc.test.ts` runs only with `PERCH_TMUX_OSC` set.
+  need the patched binary: `tmux-adapter.osc.test.ts` runs only with `TARFA_TMUX_OSC` set.
 - **Every hook event is logged with the rule that decided it.** `applyHookEvent` appends one
-  JSON line per event to a gitignored `~/.perch/hook-events.jsonl` (`FileHookEventLog`, moved to
+  JSON line per event to a gitignored `~/.tarfa/hook-events.jsonl` (`FileHookEventLog`, moved to
   `.1` past 50 MB): workspace, event, session id, tool, notification type, source, whether a
   subagent made the call, the Stop's `background_tasks` (trimmed), a `StopFailure`'s `error`,
   the `reason` (`AttentionReason`), and the status and three marks before and after. Never the
   prompt, a tool's input or output, or the assistant's message. It is what answers "why is this
-  workspace still `working`": `rg '"workspace":"perch-xxxx"' ~/.perch/hook-events.jsonl | tail`.
+  workspace still `working`": `rg '"workspace":"perch-xxxx"' ~/.tarfa/hook-events.jsonl | tail`.
   Best-effort: a failed write never changes the decision or the 204. No PWA/UI.
 - **A session parked on background work stays `working`, and the 60s idle notification must
-  not undo it.** `perch-hook.sh` forwards Claude's hook stdin verbatim as a nested `claude`
+  not undo it.** `tarfa-hook.sh` forwards Claude's hook stdin verbatim as a nested `claude`
   object on `POST /hooks`; `attention-decision.ts` reads `background_tasks` from it. A `Stop`
   with a running or pending task the session is **waiting on** leaves the session at `working`
   and marks it deferred in an in-memory `Set` on `WsServer`. That is a task of type `shell`
@@ -1123,27 +1155,27 @@ So the PWA is on a public origin, tarfa.app, and what follows from that:
   subagent's own tool calls fire them in the parent session after its `Stop`, and clearing
   there would re-open the 60s hole for the subagent case. The deferral `Set` is deliberately
   in-memory — losing it on restart costs one extra "Needs you", never a missed one.
-  **`perch-hook.sh` posts only when the pane named by `$TMUX_PANE` has its own process among
+  **`tarfa-hook.sh` posts only when the pane named by `$TMUX_PANE` has its own process among
   the script's ancestors.** `$TMUX`/`$TMUX_PANE` alone prove nothing: an untargeted
   `tmux display-message -p '#S'` resolves to the most-recently-active session, and Codex runs
   hooks in a shared daemon that kept the environment of whichever pane started it. Both stamped
   statuses onto unrelated workspaces. Changing the script means re-running `install-hooks` per
-  machine (it copies it to `~/.perch/perch-hook.sh`).
+  machine (it copies it to `~/.tarfa/tarfa-hook.sh`).
   **A turn that ends right after a main-loop `SendMessage` defers the same way.** That is a
   session waiting on another Claude session's reply (a spawned child on its orchestrator, an
-  orchestrator on its children; see the `perch-orchestrate` skill), not on the user. The fact
+  orchestrator on its children; see the `tarfa-orchestrate` skill), not on the user. The fact
   is a second marker (`messagedLast`), set by a main-loop `PostToolUse` of
   `SendMessage`, cleared by any other main-loop `PostToolUse` and by `UserPromptSubmit` (the
   reply arrives as one). It must stay separate from the deferral `Set`, because tool calls keep
   the deferral but change this. Unlike the other two marks it is **durable**, an entry field in
   `status.json` (pruned with its entry), because it is what derives a child's
-  `waitingOn: 'parent'` ("Needs orchestrator"), which the PWA and `perch ls` both show. Accepted
+  `waitingOn: 'parent'` ("Needs orchestrator"), which the PWA and `tarfa ls` both show. Accepted
   cost: a child whose last act was its final report stays `working` until it is closed.
-- **`install-hooks` also installs a kill guard (`perch-guard.sh`, a `PreToolUse` hook on `Bash`
+- **`install-hooks` also installs a kill guard (`tarfa-guard.sh`, a `PreToolUse` hook on `Bash`
   for Claude Code and Codex).** A workspace session once ran `pkill -f "x"`, which matches
   nearly every command line: it took down the tmux server, the agent and every other session in
   one second. Everything runs as one Linux user, so nothing at the OS level can stop that; a
-  private PID namespace per pane would, but breaks `sudo` in workspaces and `perch-hook.sh`'s
+  private PID namespace per pane would, but breaks `sudo` in workspaces and `tarfa-hook.sh`'s
   pane-ancestry check (the pane pid tmux reports would be outside the namespace). The guard
   refuses `pkill`, `killall`, `kill -1`, `xargs kill`, `kill $(pgrep|pidof …)` and `tmux
   kill-server`/`kill-session -a` without `-S`/`-L`, including behind `sudo`/`env`/`sh -c`, and
@@ -1153,11 +1185,11 @@ So the PWA is on a public origin, tarfa.app, and what follows from that:
   these commands is not refused (refusing those taught sessions to route around the hook), and
   checks a `sh -c` script as its own command line. It also refuses the two plain routes to
   another session's authority (docs/MESSAGING.md): a raw socket client (`nc`, `ncat`, `socat`,
-  `curl`) whose command names a message socket (`cc-socks/`, `.perch/inbox/`,
+  `curl`) whose command names a message socket (`cc-socks/`, `.tarfa/inbox/`,
   `app-server-control/`; a client on any other socket passes), and `tmux set`/`set-option`/
-  `setw`/`set-window-option` of `@perch_parent` or `@perch_codex_thread` on the default server;
-  it points at `perch send` and `perch spawn --child`. It parses the JSON without `jq`, like
-  `perch-hook.sh`. Table-tested in `perch-guard.test.sh`; re-run `install-hooks` per machine,
+  `setw`/`set-window-option` of `@tarfa_parent` or `@tarfa_codex_thread` on the default server;
+  it points at `tarfa send` and `tarfa spawn --child`. It parses the JSON without `jq`, like
+  `tarfa-hook.sh`. Table-tested in `tarfa-guard.test.sh`; re-run `install-hooks` per machine,
   and re-trust the Codex hooks in `/hooks`.
 - **Codex reports status through the same hook script, with `codex` as a third argument.**
   `install-hooks` also writes `~/.codex/hooks.json` where `~/.codex` exists; Codex runs nothing
@@ -1165,7 +1197,7 @@ So the PWA is on a public origin, tarfa.app, and what follows from that:
   differences from Claude Code, all observed on Codex 0.162:
   - **Hooks run outside the pane unless Codex is started with `--no-daemon`**, which the create
     form adds. Under the shared daemon the hook posts the payload's `session_id` as `thread`
-    instead of a session name, and `/hooks` maps it through `@perch_codex_thread`; a thread no
+    instead of a session name, and `/hooks` maps it through `@tarfa_codex_thread`; a thread no
     workspace recorded changes nothing (`docs/MESSAGING.md`, "Codex delivery").
   - **A question is asynchronous.** `request_user_input_async`'s `PostToolUse` fires as soon as
     the question is shown, then the model sleeps on `clocksleep`; the answer arrives as a
@@ -1229,15 +1261,15 @@ reaches `origin`, including FF merges and `git update-ref` advances no commit ho
   before these hooks existed. If the gate is in your way, the tests are red — fix them.
 - The gate first runs `deploy/check-leaks.sh`: gitleaks over the staged diff and history,
   then a whole-word check of tracked files against a word list kept **outside** the repo
-  (`~/.perch/leak-words.txt`, or `$PERCH_LEAK_WORDS`) — names of other projects,
+  (`~/.tarfa/leak-words.txt`, or `$TARFA_LEAK_WORDS`) — names of other projects,
   organisations and hosts that must never be published. gitleaks only knows credential
   shapes, so it can't catch those; and committing the list would publish the names it
   guards. No list on a machine → that half is skipped. Use neutral fixture names (`foo`,
   `acme-org/acme-app`), never real ones.
 - It then runs `pnpm -r typecheck` + `pnpm -r test` + `pnpm test:scripts`, builds the
   PWA and runs the Playwright **e2e** on a free port (the default 4173 is the standing
-  deploy on the host running `run-pwa.sh`). The suite runs on **WebKit only** (the Perch client is exclusively WebKit —
-  iPhone/iPad/Safari), so a machine needs it once — `pnpm --filter @perch/pwa exec
+  deploy on the host running `run-pwa.sh`). The suite runs on **WebKit only** (the Tarfa client is exclusively WebKit —
+  iPhone/iPad/Safari), so a machine needs it once — `pnpm --filter @tarfa/pwa exec
   playwright install webkit` — alongside `mise trust`; without them the gate fails closed.
 
 ## Pushing & merge conflicts

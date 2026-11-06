@@ -1,7 +1,7 @@
 import { chmod, mkdir, stat } from 'node:fs/promises';
 import { exposedFiles } from '../application/private-files';
 
-// ~/.perch holds the agent's secrets: its owner's alone, whatever umask created it.
+// ~/.tarfa holds the agent's secrets: its owner's alone, whatever umask created it.
 export async function securePrivateDir(dir: string): Promise<void> {
   await mkdir(dir, { recursive: true, mode: 0o700 });
   await chmod(dir, 0o700);

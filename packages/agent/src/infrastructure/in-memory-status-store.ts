@@ -1,4 +1,4 @@
-import type { WorkspaceStatus } from '@perch/contracts';
+import type { WorkspaceStatus } from '@tarfa/contracts';
 import type { StatusStorePort } from '../ports/status-store-port';
 
 interface Entry {

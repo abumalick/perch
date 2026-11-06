@@ -8,7 +8,8 @@
 #      in (the lines it adds and its message), so a name added by one commit and removed
 #      by the next does not reach the remote unseen.
 # The word list lives OUTSIDE the repo, one case-insensitive whole word (or ERE) per
-# line, `#` comments allowed: ${PERCH_LEAK_WORDS:-~/.perch/leak-words.txt}. Keeping it
+# line, `#` comments allowed: ${TARFA_LEAK_WORDS:-~/.tarfa/leak-words.txt} ($PERCH_LEAK_WORDS
+# and ~/.perch/leak-words.txt, their names before the rename, are still read). Keeping it
 # out of the tree is the point — committing the list would publish the very names it
 # guards. A missing list skips the word check (opt-in per machine); a list git cannot
 # use (a malformed ERE) fails the check.
@@ -22,7 +23,9 @@ set -euo pipefail
 HOOK="${1:-}"
 REMOTE="${2:-}"
 REPO="$(git rev-parse --show-toplevel)"
-WORDS="${PERCH_LEAK_WORDS:-${HOME}/.perch/leak-words.txt}"
+WORDS="${TARFA_LEAK_WORDS:-${PERCH_LEAK_WORDS:-${HOME}/.tarfa/leak-words.txt}}"
+# Where the list lived before the rename, on a machine whose agent has not moved ~/.perch yet.
+if [ -z "${TARFA_LEAK_WORDS:-}${PERCH_LEAK_WORDS:-}" ] && [ ! -f "${WORDS}" ]; then WORDS="${HOME}/.perch/leak-words.txt"; fi
 ZERO='0000000000000000000000000000000000000000'
 
 command -v gitleaks >/dev/null || { echo "check-leaks: gitleaks not found (pinned in mise.toml; run 'mise install')" >&2; exit 1; }

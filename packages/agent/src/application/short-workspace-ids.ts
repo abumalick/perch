@@ -8,7 +8,7 @@ import type { ClaudeSessionsPort } from '../ports/claude-sessions-port';
 const SLUG_MAX = 20;
 
 // The id lands in a tmux session name (which rejects `.` and `:`), in `claude --name` and
-// unquoted in `@perch_command` (split on whitespace on unpark). It never holds `__`, which
+// unquoted in `@tarfa_command` (split on whitespace on unpark). It never holds `__`, which
 // separates a workspace id from the rest of a browser session's name.
 export function workspaceSlug(projectPath: string): string {
   const slug = basename(projectPath)
@@ -21,8 +21,8 @@ export function workspaceSlug(projectPath: string): string {
 }
 
 export interface ShortWorkspaceIdsDeps {
-  // Any tmux session, Perch's or not: a session tmux-resurrect brought back as a bare shell
-  // carries no Perch marker, yet holds the name.
+  // Any tmux session, Tarfa's or not: a session tmux-resurrect brought back as a bare shell
+  // carries no Tarfa marker, yet holds the name.
   tmux: Pick<TmuxPort, 'hasSession' | 'listSessions'>;
   sessionPrefix: string;
   parked: Pick<ParkedStorePort, 'list'>;

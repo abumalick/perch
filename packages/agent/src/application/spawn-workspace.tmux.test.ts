@@ -11,7 +11,7 @@ import { RandomIdGenerator } from '../infrastructure/system';
 import { spawnWorkspace } from './spawn-workspace';
 
 // ISOLATION: every tmux call here, the test's own and the adapter's, carries `-S <sandbox
-// socket>`. -S beats $TMUX, which inside a Perch pane names the real server holding the user's
+// socket>`. -S beats $TMUX, which inside a Tarfa pane names the real server holding the user's
 // workspaces; never call tmux here without it. The sandbox server also gets `-f /dev/null`, so
 // the user's tmux plugins never run against it.
 const exec = promisify(execFile);
@@ -73,7 +73,7 @@ async function launched(): Promise<string[]> {
 
 function sandboxEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
-  // A Perch pane carries these; the sandbox server and its panes must not inherit them.
+  // A Tarfa pane carries these; the sandbox server and its panes must not inherit them.
   delete env.TMUX;
   delete env.TMUX_PANE;
   delete env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE;
@@ -109,8 +109,8 @@ describe('spawnWorkspace (real tmux, sandbox socket)', () => {
     expect(await readFile(join(out, 'title_env'), 'utf8')).toBe('1');
     expect(await t(['display-message', '-p', '-t', id, '#{pane_title}'])).toBe('✳ story 9');
     expect(await t(['display-message', '-p', '-t', id, '#{session_path}'])).toBe(project);
-    expect(await t(['show-options', '-t', id, '-v', '@perch_command'])).toBe(`${launcher} --model 'opus[1m]' --name ${id} --settings ${settings}`);
-    expect(await t(['show-options', '-t', id, '-v', '@perch_parent'])).toBe('perch-p00001');
+    expect(await t(['show-options', '-t', id, '-v', '@tarfa_command'])).toBe(`${launcher} --model 'opus[1m]' --name ${id} --settings ${settings}`);
+    expect(await t(['show-options', '-t', id, '-v', '@tarfa_parent'])).toBe('perch-p00001');
 
     const [listed] = await tmux.listSessions(id);
     expect(listed?.parent).toBe('perch-p00001');

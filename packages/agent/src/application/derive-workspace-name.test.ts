@@ -62,8 +62,8 @@ describe('deriveWorkspaceName', () => {
     "claude --model 'opus[1m]' --resume abc || exec claude --model 'opus[1m]'",
     '/home/u/.local/bin/claude',
   ])('takes a plain title Claude set (%s)', (command) => {
-    expect(deriveWorkspaceName('multi perch server per machine', '/home/u/workspace/api', command, 'api-3')).toBe(
-      'multi perch server per machine',
+    expect(deriveWorkspaceName('multi tarfa server per machine', '/home/u/workspace/api', command, 'api-3')).toBe(
+      'multi tarfa server per machine',
     );
   });
 

@@ -1,4 +1,4 @@
-import type { AgentMessage, ClientMessage } from '@perch/contracts';
+import type { AgentMessage, ClientMessage } from '@tarfa/contracts';
 import type { CloseInfo, Socket, SocketFactory } from './ports/socket';
 
 export interface SessionBrowserDeps {

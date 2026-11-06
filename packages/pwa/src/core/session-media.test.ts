@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ClientMessage } from '@perch/contracts';
+import type { ClientMessage } from '@tarfa/contracts';
 import { MAX_MEDIA_BYTES, SessionMedia } from './session-media';
 
 function b64(bytes: number[]): string {

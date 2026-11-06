@@ -1,4 +1,4 @@
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 import type { WorkspaceRole } from './workspace-role';
 
 const TITLE_MAX = 40;
@@ -26,7 +26,7 @@ function statusCell(w: Workspace): string {
   return w.urgent ? `${status} (urgent)` : status;
 }
 
-// `perch ls`'s human table. NAME is the Claude session's messaging name (what SendMessage
+// `tarfa ls`'s human table. NAME is the Claude session's messaging name (what SendMessage
 // takes), TITLE the workspace's display name, AGE the time in its current status.
 export function formatWorkspaceTable(workspaces: Array<Workspace & { role: WorkspaceRole }>, opts: { now: number; home: string }): string {
   if (workspaces.length === 0) return 'no workspaces';

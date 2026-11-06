@@ -74,6 +74,31 @@ describe('TmuxAdapter (real tmux)', () => {
     expect(await adapter.hasSession(name)).toBe(false);
   });
 
+  // On its own server: a re-tag acts on every session the server holds.
+  it('lists a session an older agent tagged @perch_*, and re-tags it @tarfa_* once', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tarfa-retag-'));
+    const socket = join(dir, 'sock');
+    const config = join(dir, 'tmux.conf');
+    await exec('sh', ['-c', `: > '${config}'`]);
+    const adapter = new TmuxAdapter({ socket, config });
+    const raw = (args: string[]) => exec('tmux', ['-S', socket, ...args]);
+    try {
+      await raw(['-f', config, 'new-session', '-d', '-s', 'old-1', '-c', tmpdir(), 'sleep 30']);
+      await raw(['set-option', '-t', '=old-1:', '@perch_command', 'claude --model x']);
+      await raw(['set-option', '-t', '=old-1:', '@perch_parent', 'orch-1']);
+      await adapter.createSession({ name: 'new-1', cwd: tmpdir(), command: 'sleep 30' });
+
+      expect((await adapter.listSessions('perch-')).find((s) => s.name === 'old-1')).toMatchObject({ command: 'claude --model x', parent: 'orch-1' });
+      expect(await adapter.retagLegacyOptions()).toBe(2); // new-1 carries both names already
+      expect((await raw(['show-options', '-v', '-t', '=old-1:', '@tarfa_command'])).stdout.trim()).toBe('claude --model x');
+      expect((await raw(['show-options', '-v', '-t', '=old-1:', '@tarfa_parent'])).stdout.trim()).toBe('orch-1');
+      expect(await adapter.retagLegacyOptions()).toBe(0);
+    } finally {
+      await raw(['kill-server']).catch(() => undefined);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('treats killing an already-absent session as success', async () => {
     // When the inner process (e.g. Claude) exits, tmux destroys the session on its own.
     // A later close request must not error on the vanished session — close is idempotent.
@@ -201,18 +226,18 @@ describe('TmuxAdapter (real tmux)', () => {
 // that client must not carry the agent's secrets. Run on a private socket: the shared server
 // is never touched.
 describe('tmux (the agent\'s tmux client)', () => {
-  it('starts a server whose global environment holds no PERCH_ variable', async () => {
+  it('starts a server whose global environment holds no TARFA_ variable', async () => {
     const socket = `perch-env-test-${process.pid}-${Date.now()}`;
-    const saved = process.env.PERCH_TOKEN;
-    process.env.PERCH_TOKEN = 'leaked-token';
+    const saved = process.env.TARFA_TOKEN;
+    process.env.TARFA_TOKEN = 'leaked-token';
     try {
       await tmux(['-L', socket, '-f', '/dev/null', 'new-session', '-d', '-s', 'probe', '-c', tmpdir(), 'sleep 30']);
       const { stdout } = await exec('tmux', ['-L', socket, 'show-environment', '-g']);
       expect(stdout).toContain('PATH=');
-      expect(stdout).not.toContain('PERCH_');
+      expect(stdout).not.toContain('TARFA_');
     } finally {
-      if (saved === undefined) delete process.env.PERCH_TOKEN;
-      else process.env.PERCH_TOKEN = saved;
+      if (saved === undefined) delete process.env.TARFA_TOKEN;
+      else process.env.TARFA_TOKEN = saved;
       await exec('tmux', ['-L', socket, 'kill-server']).catch(() => undefined);
     }
   });

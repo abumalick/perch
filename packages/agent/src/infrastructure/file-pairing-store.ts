@@ -6,7 +6,7 @@ import { withFileLock, writeFileAtomic } from './file-lock';
 
 const schema = z.array(z.object({ secret: z.string().regex(/^[A-Za-z0-9_-]{43}$/), expiresAt: z.string(), usedAt: z.string().optional(), usedBy: z.string().optional() }));
 
-// ~/.perch/pairing.json. Missing or malformed reads as no secrets, which admits nobody.
+// ~/.tarfa/pairing.json. Missing or malformed reads as no secrets, which admits nobody.
 export class FilePairingStore implements PairingStorePort {
   constructor(
     private readonly filePath: string,

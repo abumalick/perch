@@ -1,5 +1,5 @@
 import type { ClaudeVoice } from '../application/claude-voice';
-import { constantTimeEqual } from '@perch/secure-channel';
+import { constantTimeEqual } from '@tarfa/secure-channel';
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import { NoiseClientConnection, type NoiseClientConnectionOptions } from './noise-client-connection';
 import type { FrameSocket } from '../ports/frame-socket';
@@ -34,7 +34,7 @@ import type { ProcessScopePort } from '../ports/process-scope-port';
 import type { SystemStatsPort } from '../ports/system-stats-port';
 import { recordWorkspaceClosed } from '../application/record-workspace-closed';
 import { trackLiveWorkspaces } from '../application/track-live-workspaces';
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 import { ConnectionHandler } from './connection-handler';
 import { ViewerRegistry } from './viewer-registry';
 import { applyHookEvent, markSent } from '../application/apply-hook-event';
@@ -51,8 +51,8 @@ import { closeWorkspaceBrowserSessions } from '../application/close-workspace-br
 
 export interface WsServerDeps {
   config: AgentConfig;
-  // The secret `POST /hooks` takes (`~/.perch/token`, written for perch-hook.sh at startup). Not
-  // PERCH_TOKEN: that one enrols phones, and a hook's secret is within reach of other local users
+  // The secret `POST /hooks` takes (`~/.tarfa/token`, written for tarfa-hook.sh at startup). Not
+  // TARFA_TOKEN: that one enrols phones, and a hook's secret is within reach of other local users
   // in ways a phone's credential must not be. Without it, no hook is accepted.
   hookToken?: string;
   tmux: TmuxPort;
@@ -75,7 +75,7 @@ export interface WsServerDeps {
   clientLog: ClientLogPort;
   // Optional: where every hook event and its decision is recorded (applyHookEvent).
   hookEventLog?: HookEventLogPort;
-  // What `POST /message` (perch send) needs. Without it the route is not served.
+  // What `POST /message` (tarfa send) needs. Without it the route is not served.
   messaging?: { ancestry: ProcessAncestry; delivery: MessageDelivery; log: MessageLog };
   workspaceLog: WorkspaceLogPort;
   parked: ParkedStorePort;
@@ -108,7 +108,7 @@ const DEFAULT_STATS_POLL_MS = 5000;
 // How long an explicit close keeps the poll from taking a still-listed workspace back.
 const CLOSING_MS = 10_000;
 
-// This listener takes Claude Code's hooks (and `perch unpark`/`perch send`), from this machine
+// This listener takes Claude Code's hooks (and `tarfa unpark`/`tarfa send`), from this machine
 // only, so it is bound to loopback whatever the environment says. Phones reach the phone port.
 const LOOPBACK = '127.0.0.1';
 
@@ -138,13 +138,13 @@ export class WsServer {
   // applyHookEvent.
   private readonly deferred = new Set<string>();
   // Sessions whose last main-loop tool call was SendMessage — see applyHookEvent. Kept in the
-  // status store rather than here, so it survives a restart and `perch ls` can read it.
+  // status store rather than here, so it survives a restart and `tarfa ls` can read it.
   private readonly messagedLast = {
     has: (id: string) => this.deps.status.getMessagedLast(id),
     add: (id: string) => this.deps.status.setMessagedLast(id, true),
     delete: (id: string) => this.deps.status.setMessagedLast(id, false),
   };
-  // Sessions that ran perch send inside their current tool call — see markSent.
+  // Sessions that ran tarfa send inside their current tool call — see markSent.
   private readonly sentDuringTool = new Set<string>();
   // Codex sessions with a question waiting on the user — see applyHookEvent.
   private readonly questionPending = new Set<string>();
@@ -312,8 +312,8 @@ export class WsServer {
   }
 
   // Three routes, all behind the hooks secret: `/hooks` for Claude Code's hook events, `/unpark`
-  // for `perch unpark`, which must go through the agent because it holds status.json in memory and
-  // writes parked.json itself, and `/message` for `perch send`, whose marks live here too.
+  // for `tarfa unpark`, which must go through the agent because it holds status.json in memory and
+  // writes parked.json itself, and `/message` for `tarfa send`, whose marks live here too.
   private handleHttp(req: IncomingMessage, res: ServerResponse): void {
     const routes = this.deps.messaging ? ['/hooks', '/unpark', '/message'] : ['/hooks', '/unpark'];
     if (req.method !== 'POST' || !routes.includes(req.url ?? '')) {
@@ -385,7 +385,7 @@ export class WsServer {
     });
   }
 
-  // Codex under its daemon runs hooks outside every pane, so perch-hook.sh names the thread
+  // Codex under its daemon runs hooks outside every pane, so tarfa-hook.sh names the thread
   // instead; one no workspace recorded is dropped.
   private async applyHookByThread(thread: string, event: string, claude: unknown, agent: unknown, res: ServerResponse): Promise<void> {
     try {
@@ -624,7 +624,7 @@ export class WsServer {
           'exited',
         );
         this.dropWorkspaceState(id);
-        // The inner process exited and tmux destroyed the session without a Perch `close`
+        // The inner process exited and tmux destroyed the session without a Tarfa `close`
         // message, so the connection-handler cascade never ran — close the workspace's
         // orphaned browser sessions here. Best-effort (never throws), and not awaited: it waits
         // on a Chrome shutdown, which would hold up the next tick. A later pollBrowserSessions

@@ -1,5 +1,5 @@
-import type { AgentMessage, ClientLogBatch, ClientMessage } from '@perch/contracts';
-import { startTimer } from '@perch/secure-channel';
+import type { AgentMessage, ClientLogBatch, ClientMessage } from '@tarfa/contracts';
+import { startTimer } from '@tarfa/secure-channel';
 import { SessionMedia } from './session-media';
 import { SessionBrowser } from './session-browser';
 

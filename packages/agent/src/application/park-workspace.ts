@@ -1,4 +1,4 @@
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 import type { TmuxPort } from '../ports/tmux-port';
 import type { StatusStorePort } from '../ports/status-store-port';
 import type { ParkedStorePort } from '../ports/parked-store-port';
@@ -25,7 +25,7 @@ export type ParkResult = 'parked' | 'already-parked' | 'not-restorable';
 // instead, and let the caller tell the user. An id appears once any Claude Code hook fires
 // for the session, so a workspace becomes parkable as soon as it is used.
 //
-// `workspace.command` comes from the tmux session option `@perch_command`, which
+// `workspace.command` comes from the tmux session option `@tarfa_command`, which
 // tmux-continuum does not restore after a reboot — a continuum-revived workspace therefore
 // has an empty command even though it is a live, resumable Claude session. Falling back to
 // the literal `'claude'` keeps such a workspace parkable: unparking then runs

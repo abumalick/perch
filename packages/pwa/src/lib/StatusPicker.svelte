@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { WorkspaceStatus } from '@perch/contracts';
+  import type { WorkspaceStatus } from '@tarfa/contracts';
   import { STATUS_LABELS, STATUS_ORDER } from './workspace-status-display';
   import { msg } from '../i18n.svelte';
 

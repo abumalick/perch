@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { isWorkspaceStatus, type WorkspaceStatus } from '@perch/contracts';
+import { isWorkspaceStatus, type WorkspaceStatus } from '@tarfa/contracts';
 import type { StatusStorePort } from '../ports/status-store-port';
 
 interface Entry {
@@ -16,7 +16,7 @@ interface Entry {
 }
 
 // Durable last-write-wins status store. Mirrors InMemoryStatusStore's semantics
-// but persists to ~/.perch/status.json so statuses survive an agent restart.
+// but persists to ~/.tarfa/status.json so statuses survive an agent restart.
 // Synchronous I/O matches the synchronous StatusStorePort and keeps the map hot
 // before the first `list`. Tolerant of a missing or corrupt file (starts empty).
 export class FileStatusStore implements StatusStorePort {
@@ -154,7 +154,7 @@ export class FileStatusStore implements StatusStorePort {
   }
 }
 
-// `postponed` was renamed to `parked`. Existing ~/.perch/status.json files on each agent
+// `postponed` was renamed to `parked`. Existing ~/.tarfa/status.json files on each agent
 // machine still hold the old literal, and nothing syncs config between machines — so
 // migrate at read rather than requiring a manual step per machine.
 function migrateStatus(value: unknown): unknown {

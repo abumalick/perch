@@ -1,15 +1,16 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { deviceFingerprint, generateDeviceKeys, parsePairingLink } from '@perch/secure-channel';
+import { deviceFingerprint, generateDeviceKeys, parsePairingLink } from '@tarfa/secure-channel';
 import { FileDeviceStore } from './infrastructure/file-device-store';
 import { parseEnvFile } from './application/agent-env';
-import { enrolDevice, enrolmentMode } from './application/device-roster';
-import type { Workspace } from '@perch/contracts';
+import { enrolDevice, enrolmentMode, withEnrolmentMode } from './application/device-roster';
+import { loadOrCreateAgentKeys } from './infrastructure/agent-key-file';
+import type { Workspace } from '@tarfa/contracts';
 import type { TmuxPort, TmuxSessionInfo } from './ports/tmux-port';
 import { run, UsageError, type CliIo } from './cli';
 
@@ -26,17 +27,17 @@ afterEach(async () => {
   }
 });
 
-describe('perch CLI (real tmux)', () => {
+describe('tarfa CLI (real tmux)', () => {
   it('creates, lists, and closes a workspace end to end', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'perch-cli-home-'));
-    const project = await mkdtemp(join(tmpdir(), 'perch-cli-proj-'));
+    const home = await mkdtemp(join(tmpdir(), 'tarfa-cli-home-'));
+    const project = await mkdtemp(join(tmpdir(), 'tarfa-cli-proj-'));
     tmpDirs.push(home, project);
-    const env = { PERCH_MACHINE_ID: 'test', PERCH_TOKEN: 'test-token', PERCH_PROJECT_ROOTS: tmpdir(), PERCH_AGENT_ENV: join(home, 'agent.env') };
+    const env = { TARFA_MACHINE_ID: 'test', TARFA_TOKEN: 'test-token', TARFA_PROJECT_ROOTS: tmpdir(), TARFA_AGENT_ENV: join(home, 'agent.env') };
 
     const createdJson = await run(['create', project, 'sleep 30'], env, home);
     const ws = JSON.parse(createdJson) as { id: string; projectPath: string; status: string };
     sessions.push(ws.id);
-    expect(ws.id.startsWith('perch-')).toBe(true);
+    expect(ws.id.startsWith('tarfa-cli-proj-')).toBe(true);
     expect(ws.projectPath).toBe(project);
     expect(ws.status).toBe('idle');
 
@@ -53,12 +54,12 @@ describe('perch CLI (real tmux)', () => {
     expect(after.some((w) => w.id === ws.id)).toBe(false);
   });
 
-  // `perch list` is the same question the PWA asks, so it must not answer it differently.
+  // `tarfa list` is the same question the PWA asks, so it must not answer it differently.
   it('stamps the agent address of the Claude session running in a workspace', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'perch-cli-home-'));
-    const project = await mkdtemp(join(tmpdir(), 'perch-cli-proj-'));
+    const home = await mkdtemp(join(tmpdir(), 'tarfa-cli-home-'));
+    const project = await mkdtemp(join(tmpdir(), 'tarfa-cli-proj-'));
     tmpDirs.push(home, project);
-    const env = { PERCH_MACHINE_ID: 'test', PERCH_TOKEN: 'test-token', PERCH_PROJECT_ROOTS: tmpdir(), PERCH_AGENT_ENV: join(home, 'agent.env') };
+    const env = { TARFA_MACHINE_ID: 'test', TARFA_TOKEN: 'test-token', TARFA_PROJECT_ROOTS: tmpdir(), TARFA_AGENT_ENV: join(home, 'agent.env') };
 
     const ws = JSON.parse(await run(['create', project, 'sleep 30'], env, home)) as { id: string };
     sessions.push(ws.id);
@@ -77,69 +78,69 @@ describe('perch CLI (real tmux)', () => {
 
 describe('removed relay commands', () => {
   it('refuses connect, relay-key and pair --relay with one line naming what replaces them, exit 2', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'perch-cli-home-'));
+    const home = await mkdtemp(join(tmpdir(), 'tarfa-cli-home-'));
     tmpDirs.push(home);
     // No agent.env at all: the refusal needs nothing from the machine.
-    const env = { PERCH_AGENT_ENV: join(home, 'agent.env') };
+    const env = { TARFA_AGENT_ENV: join(home, 'agent.env') };
     for (const argv of [['connect', 'wss://relay.example', '--key', 'k'], ['relay-key'], ['pair', '--relay', 'wss://relay.example']]) {
       const refused = run(argv, env, home);
       await expect(refused).rejects.toBeInstanceOf(UsageError);
-      await expect(refused).rejects.toMatchObject({ exitCode: 2, message: expect.stringMatching(/^[^\n]*relays are gone[^\n]*perch setup[^\n]*perch pair[^\n]*$/) });
+      await expect(refused).rejects.toMatchObject({ exitCode: 2, message: expect.stringMatching(/^[^\n]*relays are gone[^\n]*tarfa setup[^\n]*tarfa pair[^\n]*$/) });
     }
   });
 });
 
-describe('perch install-hooks', () => {
+describe('tarfa install-hooks', () => {
   it('bakes in the port from the agent.env the service reads', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'perch-cli-home-'));
+    const home = await mkdtemp(join(tmpdir(), 'tarfa-cli-home-'));
     tmpDirs.push(home);
     const envPath = join(home, 'agent.env');
-    await writeFile(envPath, 'PERCH_MACHINE_ID=box\nPERCH_PORT=9911\n');
-    await run(['install-hooks'], { PERCH_AGENT_ENV: envPath }, home);
+    await writeFile(envPath, 'TARFA_MACHINE_ID=box\nTARFA_PORT=9911\n');
+    await run(['install-hooks'], { TARFA_AGENT_ENV: envPath }, home);
     const settings = await readFile(join(home, '.claude', 'settings.json'), 'utf8');
-    expect(settings).toContain('perch-hook.sh Stop 9911');
+    expect(settings).toContain('tarfa-hook.sh Stop 9911');
   });
 
   it('copies the kill guard beside the status hook and registers it on Bash', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'perch-cli-home-'));
+    const home = await mkdtemp(join(tmpdir(), 'tarfa-cli-home-'));
     tmpDirs.push(home);
     const envPath = join(home, 'agent.env');
-    await writeFile(envPath, 'PERCH_MACHINE_ID=box\nPERCH_PORT=9911\n');
+    await writeFile(envPath, 'TARFA_MACHINE_ID=box\nTARFA_PORT=9911\n');
     await mkdir(join(home, '.codex'));
-    await run(['install-hooks'], { PERCH_AGENT_ENV: envPath }, home);
-    expect(await readFile(join(home, '.perch', 'perch-guard.sh'), 'utf8')).toContain('pkill');
+    await run(['install-hooks'], { TARFA_AGENT_ENV: envPath }, home);
+    expect(await readFile(join(home, '.tarfa', 'tarfa-guard.sh'), 'utf8')).toContain('pkill');
     for (const file of [join(home, '.claude', 'settings.json'), join(home, '.codex', 'hooks.json')]) {
       const { hooks } = JSON.parse(await readFile(file, 'utf8')) as {
         hooks: { PreToolUse: Array<{ matcher?: string; hooks: Array<{ command: string }> }> };
       };
       expect(hooks.PreToolUse).toContainEqual({
         matcher: 'Bash',
-        hooks: [{ type: 'command', command: 'bash ~/.perch/perch-guard.sh' }],
+        hooks: [{ type: 'command', command: 'bash ~/.tarfa/tarfa-guard.sh' }],
       });
     }
   });
 
   it('registers Codex hooks only where Codex is installed', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'perch-cli-home-'));
+    const home = await mkdtemp(join(tmpdir(), 'tarfa-cli-home-'));
     tmpDirs.push(home);
     const envPath = join(home, 'agent.env');
-    await writeFile(envPath, 'PERCH_MACHINE_ID=box\nPERCH_PORT=9911\n');
-    await run(['install-hooks'], { PERCH_AGENT_ENV: envPath }, home);
+    await writeFile(envPath, 'TARFA_MACHINE_ID=box\nTARFA_PORT=9911\n');
+    await run(['install-hooks'], { TARFA_AGENT_ENV: envPath }, home);
     await expect(readFile(join(home, '.codex', 'hooks.json'), 'utf8')).rejects.toThrow();
 
     await mkdir(join(home, '.codex'));
-    const out = await run(['install-hooks'], { PERCH_AGENT_ENV: envPath }, home);
-    expect(await readFile(join(home, '.codex', 'hooks.json'), 'utf8')).toContain('perch-hook.sh Stop 9911 codex');
+    const out = await run(['install-hooks'], { TARFA_AGENT_ENV: envPath }, home);
+    expect(await readFile(join(home, '.codex', 'hooks.json'), 'utf8')).toContain('tarfa-hook.sh Stop 9911 codex');
     expect(out).toContain('/hooks');
   });
 });
 
-describe('perch devices', () => {
+describe('tarfa devices', () => {
   async function withPhones() {
-    const home = await mkdtemp(join(tmpdir(), 'perch-cli-home-'));
+    const home = await mkdtemp(join(tmpdir(), 'tarfa-cli-home-'));
     tmpDirs.push(home);
-    const env = { PERCH_MACHINE_ID: 'test', PERCH_AGENT_ENV: join(home, 'agent.env') };
-    const store = new FileDeviceStore(join(home, '.perch', 'devices.json'));
+    const env = { TARFA_MACHINE_ID: 'test', TARFA_AGENT_ENV: join(home, 'agent.env') };
+    const store = new FileDeviceStore(join(home, '.tarfa', 'devices.json'));
     const at = new Date('2026-09-24T10:00:00Z');
     const phones = [generateDeviceKeys(), generateDeviceKeys()];
     await store.update((r) =>
@@ -166,7 +167,7 @@ describe('perch devices', () => {
     expect(out).toContain(`${ids[0]}  phone 0  enrolled 2026-09-24`);
     expect(out).toContain(`${ids[1]}  phone 1  enrolled 2026-09-24`);
     // The full key names a device when two share an id.
-    const roster = JSON.parse(await readFile(join(home, '.perch', 'devices.json'), 'utf8')) as { devices: Array<{ x25519: string }> };
+    const roster = JSON.parse(await readFile(join(home, '.tarfa', 'devices.json'), 'utf8')) as { devices: Array<{ x25519: string }> };
     expect(out).toContain(`enrolled 2026-09-24  key ${roster.devices[0]!.x25519}`);
     expect(await run(['devices', 'list'], env, home)).toBe(out);
   });
@@ -194,7 +195,7 @@ describe('perch devices', () => {
     const { home, env, store } = await withPhones();
     expect(await run(['devices', 'enrolment', 'off'], env, home)).toContain('enrolment: off');
     expect(enrolmentMode(await store.read())).toBe('off');
-    expect(await run(['devices'], env, home)).toContain('enrolment: off (only a pairing code from `perch pair` enrols a phone)');
+    expect(await run(['devices'], env, home)).toContain('enrolment: off (only a pairing code from `tarfa pair` enrols a phone)');
     await run(['devices', 'enrolment', 'closed'], env, home);
     expect(enrolmentMode(await store.read())).toBe('closed');
     expect(await run(['devices'], env, home)).toContain('enrolment: closed (no new phone can enrol)');
@@ -211,24 +212,24 @@ describe('perch devices', () => {
   });
 });
 
-describe('perch pair (arguments and agent.env)', () => {
+describe('tarfa pair (arguments and agent.env)', () => {
   async function machine(envText: string) {
     const home = await mkdtemp(join(tmpdir(), 'perch-pair-home-'));
     tmpDirs.push(home);
     const envPath = join(home, 'agent.env');
     await writeFile(envPath, envText);
-    return { home, env: { PERCH_AGENT_ENV: envPath } };
+    return { home, env: { TARFA_AGENT_ENV: envPath } };
   }
-  const base = 'PERCH_MACHINE_ID=box\nPERCH_TOKEN=t\nPERCH_PHONE_ADDRESSES=wss://box.example.ts.net\n';
+  const base = 'TARFA_MACHINE_ID=box\nTARFA_TOKEN=t\nTARFA_PHONE_ADDRESSES=wss://box.example.ts.net\n';
 
   it('mints a pairing link for the phone address, reading the agent.env the service reads', async () => {
-    const { home, env } = await machine(`${base}PERCH_PWA_ORIGIN=https://pwa.example:8443\n`);
-    const out = await run(['pair'], { ...env, PERCH_PHONE_ADDRESSES: 'wss://stale.example.ts.net' }, home);
+    const { home, env } = await machine(`${base}TARFA_PWA_ORIGIN=https://pwa.example:8443\n`);
+    const out = await run(['pair'], { ...env, TARFA_PHONE_ADDRESSES: 'wss://stale.example.ts.net' }, home);
     const link = out.split('\n').find((line) => line.startsWith('https://'))!;
     const pairing = parsePairingLink(link)!;
     expect(pairing.urls).toEqual(['wss://box.example.ts.net']);
     expect(pairing.name).toBe('box');
-    const stored = JSON.parse(await readFile(join(home, '.perch', 'pairing.json'), 'utf8')) as Array<{ secret: string }>;
+    const stored = JSON.parse(await readFile(join(home, '.tarfa', 'pairing.json'), 'utf8')) as Array<{ secret: string }>;
     expect(stored.map((p) => p.secret)).toEqual([pairing.secret]);
     expect(out).toContain('for 10 minutes');
     // The phone shows the same fingerprint before it pairs, to compare by eye.
@@ -240,42 +241,42 @@ describe('perch pair (arguments and agent.env)', () => {
     const before = Date.now();
     const out = await run(['pair', '--ttl', '2'], env, home);
     expect(out).toContain('for 2 minutes');
-    const [stored] = JSON.parse(await readFile(join(home, '.perch', 'pairing.json'), 'utf8')) as Array<{ expiresAt: string }>;
+    const [stored] = JSON.parse(await readFile(join(home, '.tarfa', 'pairing.json'), 'utf8')) as Array<{ expiresAt: string }>;
     const left = Date.parse(stored!.expiresAt) - before;
     expect(left).toBeGreaterThanOrEqual(2 * 60_000);
     expect(left).toBeLessThan(2 * 60_000 + 5_000);
     for (const bad of ['0', '11', '1.5', 'x']) await expect(run(['pair', '--ttl', bad], env, home)).rejects.toThrow(/--ttl/);
   });
 
-  it('hands the phone the PERCH_DEFAULT_PATH agent.env sets', async () => {
-    const { home, env } = await machine(`${base}PERCH_PWA_ORIGIN=https://pwa.example:8443\nPERCH_DEFAULT_PATH=/home/u/workspace\n`);
+  it('hands the phone the TARFA_DEFAULT_PATH agent.env sets', async () => {
+    const { home, env } = await machine(`${base}TARFA_PWA_ORIGIN=https://pwa.example:8443\nTARFA_DEFAULT_PATH=/home/u/workspace\n`);
     const out = await run(['pair'], env, home);
     expect(parsePairingLink(out.split('\n').find((line) => line.startsWith('https://'))!)!.defaultPath).toBe('/home/u/workspace');
   });
 
   it('names the pairing after the host when the machine id is the generic "local"', async () => {
-    const { home, env } = await machine('PERCH_MACHINE_ID=local\nPERCH_TOKEN=t\nPERCH_PHONE_ADDRESSES=wss://box.example.ts.net\nPERCH_PWA_ORIGIN=https://pwa.example:8443\n');
+    const { home, env } = await machine('TARFA_MACHINE_ID=local\nTARFA_TOKEN=t\nTARFA_PHONE_ADDRESSES=wss://box.example.ts.net\nTARFA_PWA_ORIGIN=https://pwa.example:8443\n');
     const out = await run(['pair'], env, home);
     const pairing = parsePairingLink(out.split('\n').find((line) => line.startsWith('https://'))!)!;
     expect(pairing.name).toBe(hostname().split('.')[0]);
   });
 
-  it('takes --pwa over PERCH_PWA_ORIGIN, and the tarfa.app default without either', async () => {
+  it('takes --pwa over TARFA_PWA_ORIGIN, and the tarfa.app default without either', async () => {
     const { home, env } = await machine(base);
     expect(await run(['pair'], env, home)).toContain('https://tarfa.app/#pair?');
     const out = await run(['pair', '--pwa', 'https://pwa.example/ignored/path'], env, home);
     expect(out).toContain('https://pwa.example/#pair?');
   });
 
-  it('refuses a machine with no PERCH_PHONE_ADDRESSES, pointing at perch setup', async () => {
-    const { home, env } = await machine('PERCH_MACHINE_ID=box\nPERCH_TOKEN=t\nPERCH_RELAY_URLS=wss://relay.example\n');
-    await expect(run(['pair'], env, home)).rejects.toThrow(/PERCH_PHONE_ADDRESSES.*perch setup/);
+  it('refuses a machine with no TARFA_PHONE_ADDRESSES, pointing at tarfa setup', async () => {
+    const { home, env } = await machine('TARFA_MACHINE_ID=box\nTARFA_TOKEN=t\nTARFA_RELAY_URLS=wss://relay.example\n');
+    await expect(run(['pair'], env, home)).rejects.toThrow(/TARFA_PHONE_ADDRESSES.*tarfa setup/);
   });
 
-  it('mints a link with every PERCH_PHONE_ADDRESSES address, in order', async () => {
+  it('mints a link with every TARFA_PHONE_ADDRESSES address, in order', async () => {
     const { home, env } = await machine(
-      'PERCH_MACHINE_ID=dev\nPERCH_TOKEN=t\nPERCH_DEFAULT_PATH=/home/u/workspace\n' +
-        'PERCH_PHONE_ADDRESSES=wss://dev.example.ts.net:10000/abu,wss://dev.example.ts.net:8443/abu\n',
+      'TARFA_MACHINE_ID=dev\nTARFA_TOKEN=t\nTARFA_DEFAULT_PATH=/home/u/workspace\n' +
+        'TARFA_PHONE_ADDRESSES=wss://dev.example.ts.net:10000/abu,wss://dev.example.ts.net:8443/abu\n',
     );
     const out = await run(['pair'], env, home);
     const link = out.split('\n').find((line) => line.startsWith('https://'))!;
@@ -285,22 +286,23 @@ describe('perch pair (arguments and agent.env)', () => {
     );
   });
 
-  it('refuses a PERCH_PHONE_ADDRESSES address a phone would refuse', async () => {
-    const { home, env } = await machine('PERCH_MACHINE_ID=box\nPERCH_TOKEN=t\nPERCH_PHONE_ADDRESSES=ws://dev.example.ts.net/abu\n');
-    await expect(run(['pair'], env, home)).rejects.toThrow(/PERCH_PHONE_ADDRESSES/);
+  it('refuses a TARFA_PHONE_ADDRESSES address a phone would refuse', async () => {
+    const { home, env } = await machine('TARFA_MACHINE_ID=box\nTARFA_TOKEN=t\nTARFA_PHONE_ADDRESSES=ws://dev.example.ts.net/abu\n');
+    await expect(run(['pair'], env, home)).rejects.toThrow(/TARFA_PHONE_ADDRESSES/);
   });
 });
 
-describe('perch setup (fake service and Tailscale)', () => {
+describe('tarfa setup (fake service and Tailscale)', () => {
   const HOST = 'dev.example.ts.net';
-  async function machine(envText: string | null = null) {
-    const root = await mkdtemp(join(tmpdir(), 'perch-setup-'));
+  async function machine(envText: string | null = null, opts: { legacy?: boolean } = {}) {
+    let legacy = opts.legacy ?? false;
+    const root = await mkdtemp(join(tmpdir(), 'tarfa-setup-'));
     tmpDirs.push(root);
     const repo = join(root, 'repo');
     const home = join(root, 'home');
     await mkdir(join(repo, 'deploy'), { recursive: true });
     await mkdir(home);
-    await writeFile(join(repo, 'deploy', 'perch-agent.service'), '[Service]\nExecStart=/usr/bin/env bash REPO_PATH/deploy/run-agent.sh\nKillMode=process\n');
+    await writeFile(join(repo, 'deploy', 'tarfa-agent.service'), '[Service]\nExecStart=/usr/bin/env bash REPO_PATH/deploy/run-agent.sh\nKillMode=process\n');
     const envPath = join(repo, 'deploy', 'agent.env');
     if (envText !== null) await writeFile(envPath, envText, { mode: 0o600 });
     const calls: string[] = [];
@@ -310,15 +312,18 @@ describe('perch setup (fake service and Tailscale)', () => {
       setup: {
         service: {
           kind: 'systemd',
-          template: () => readFile(join(repo, 'deploy', 'perch-agent.service'), 'utf8'),
+          template: () => readFile(join(repo, 'deploy', 'tarfa-agent.service'), 'utf8'),
           installed: async () => unit,
           enabled: async () => unit !== null,
           install: async (text) => {
             // The roster must be on disk before the service can first start.
-            calls.push(`install-unit roster=${await readFile(join(home, '.perch', 'devices.json'), 'utf8').then(() => 'present', () => 'absent')}`);
+            calls.push(`install-unit roster=${await readFile(join(home, '.tarfa', 'devices.json'), 'utf8').then(() => 'present', () => 'absent')}`);
             unit = text;
             return ['enabled'];
           },
+          legacyInstalled: async () => legacy,
+          stopLegacy: async () => (calls.push('stop-legacy'), ['stopped']),
+          removeLegacy: async () => (calls.push('remove-legacy'), (legacy = false), ['removed']),
         },
         tailscale: {
           status: async () => ({
@@ -339,7 +344,7 @@ describe('perch setup (fake service and Tailscale)', () => {
         checkListener: async () => (calls.push('check'), true),
       },
     };
-    return { repo, home, env: { PERCH_AGENT_ENV: envPath }, envPath, calls, io };
+    return { repo, home, env: { TARFA_AGENT_ENV: envPath }, envPath, calls, io };
   }
   const FLAGS = ['--machine-id', 'dev', '--project-roots', '/home/u/workspace', '--tailscale', 'funnel', '--slug', 'abu'];
 
@@ -349,20 +354,40 @@ describe('perch setup (fake service and Tailscale)', () => {
     expect(out).toContain('the phone port answers');
     expect(m.calls).toEqual(['install-unit roster=present', 'serve 10000/abu http://127.0.0.1:8797 funnel=true', 'restart', 'check']);
     const values = parseEnvFile(await readFile(m.envPath, 'utf8'));
-    expect(values).toMatchObject({ PERCH_MACHINE_ID: 'dev', PERCH_PHONE_ADDRESSES: `wss://${HOST}:10000/abu`, PERCH_PWA_ORIGIN: 'https://tarfa.app' });
-    expect(values.PERCH_TOKEN).toMatch(/^[0-9a-f]{64}$/);
+    expect(values).toMatchObject({ TARFA_MACHINE_ID: 'dev', TARFA_PHONE_ADDRESSES: `wss://${HOST}:10000/abu`, TARFA_PWA_ORIGIN: 'https://tarfa.app' });
+    expect(values.TARFA_TOKEN).toMatch(/^[0-9a-f]{64}$/);
     // What run-agent.sh does with it: bash reads back exactly what was written.
-    const sourced = await promisify(execFile)('bash', ['-c', '. "$1"; printf %s "$PERCH_PHONE_ADDRESSES|$PERCH_PROJECT_ROOTS"', '_', m.envPath], { env: {} });
+    const sourced = await promisify(execFile)('bash', ['-c', '. "$1"; printf %s "$TARFA_PHONE_ADDRESSES|$TARFA_PROJECT_ROOTS"', '_', m.envPath], { env: {} });
     expect(sourced.stdout).toBe(`wss://${HOST}:10000/abu|/home/u/workspace`);
-    expect(enrolmentMode(await new FileDeviceStore(join(m.home, '.perch', 'devices.json')).read())).toBe('off');
-    expect(JSON.parse(await readFile(join(m.home, '.perch', 'relay-key.json'), 'utf8'))).toHaveProperty('x25519');
-    expect(await readFile(join(m.home, '.claude', 'settings.json'), 'utf8')).toContain('perch-hook.sh');
+    expect(enrolmentMode(await new FileDeviceStore(join(m.home, '.tarfa', 'devices.json')).read())).toBe('off');
+    expect(JSON.parse(await readFile(join(m.home, '.tarfa', 'agent-key.json'), 'utf8'))).toHaveProperty('x25519');
+    expect(await readFile(join(m.home, '.claude', 'settings.json'), 'utf8')).toContain('tarfa-hook.sh');
 
     m.calls.length = 0;
     const env = await readFile(m.envPath, 'utf8');
     expect(await run(['setup', ...FLAGS], m.env, m.home, m.io)).toMatch(/already set up/);
     expect(m.calls).toEqual(['check']);
     expect(await readFile(m.envPath, 'utf8')).toBe(env);
+  });
+
+  it('swaps a machine set up before the rename: old service stopped, ~/.perch moved, new one started, old one removed', async () => {
+    const m = await machine('PERCH_TOKEN=keep-me\nPERCH_MACHINE_ID=dev\n', { legacy: true });
+    const legacy = join(m.home, '.perch');
+    await mkdir(legacy, { mode: 0o700 });
+    const key = await loadOrCreateAgentKeys(join(legacy, 'relay-key.json'));
+    await new FileDeviceStore(join(legacy, 'devices.json')).update((roster) => withEnrolmentMode(roster, 'off'));
+
+    await run(['setup', ...FLAGS], m.env, m.home, m.io);
+    expect(m.calls).toEqual(['stop-legacy', 'install-unit roster=present', 'restart', 'check', 'serve 10000/abu http://127.0.0.1:8797 funnel=true', 'remove-legacy']);
+    expect(await readlink(legacy)).toBe('.tarfa');
+    expect((await loadOrCreateAgentKeys(join(m.home, '.tarfa', 'agent-key.json'))).x25519.publicKey).toBe(key.x25519.publicKey);
+    const env = await readFile(m.envPath, 'utf8');
+    expect(env).toMatch(/^TARFA_TOKEN=keep-me\nTARFA_MACHINE_ID=dev\n/);
+    expect(env).not.toContain('PERCH_');
+
+    m.calls.length = 0;
+    expect(await run(['setup', ...FLAGS], m.env, m.home, m.io)).toMatch(/already set up/);
+    expect(m.calls).toEqual(['check']);
   });
 
   it('prints a pairing link with --pair', async () => {
@@ -373,13 +398,13 @@ describe('perch setup (fake service and Tailscale)', () => {
   });
 
   it('changes nothing on a dry run', async () => {
-    const m = await machine('PERCH_TOKEN=keep\n');
+    const m = await machine('TARFA_TOKEN=keep\n');
     const out = await run(['setup', ...FLAGS, '--dry-run'], m.env, m.home, m.io);
     expect(out).toContain('tailscale: Funnel allowed on port 10000');
     expect(out).toContain('tailscale funnel --bg --https=10000 --set-path=/abu http://127.0.0.1:8797');
     expect(m.calls).toEqual([]);
-    expect(await readFile(m.envPath, 'utf8')).toBe('PERCH_TOKEN=keep\n');
-    await expect(readFile(join(m.home, '.perch', 'devices.json'))).rejects.toThrow();
+    expect(await readFile(m.envPath, 'utf8')).toBe('TARFA_TOKEN=keep\n');
+    await expect(readFile(join(m.home, '.tarfa', 'devices.json'))).rejects.toThrow();
   });
 
   it('explains itself with --help: Funnel, slugs and the second user', async () => {
@@ -392,12 +417,12 @@ describe('perch setup (fake service and Tailscale)', () => {
 
   it('answers an unknown flag with the usage and exit code 2', async () => {
     const m = await machine();
-    await expect(run(['setup', ...FLAGS, '--bogus', 'x'], m.env, m.home, m.io)).rejects.toMatchObject({ exitCode: 2, message: expect.stringContaining('usage: perch setup') });
+    await expect(run(['setup', ...FLAGS, '--bogus', 'x'], m.env, m.home, m.io)).rejects.toMatchObject({ exitCode: 2, message: expect.stringContaining('usage: tarfa setup') });
   });
 });
 
 // `ls`, `spawn` and `peek` run against a fake tmux: these tests never reach a tmux server.
-describe('perch ls / spawn / peek (fake tmux)', () => {
+describe('tarfa ls / spawn / peek (fake tmux)', () => {
   const NOW = 1_800_000_000_000;
   const live: TmuxSessionInfo[] = [
     { name: 'perch-aaaaaa', startPath: '/w/foo', command: 'claude', createdAt: NOW - 3_600_000, title: '✳ Fix login' },
@@ -436,17 +461,17 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     await mkdir(root, { recursive: true });
     const home = await mkdtemp(join(root, 'cli-ls-'));
     tmpDirs.push(home);
-    await mkdir(join(home, '.perch'));
-    await writeFile(join(home, '.perch', 'hidden-folders.json'), '["secret"]');
+    await mkdir(join(home, '.tarfa'));
+    await writeFile(join(home, '.tarfa', 'hidden-folders.json'), '["secret"]');
     // No agent.env at all: these commands must work from any repo's session.
-    const env = { PERCH_AGENT_ENV: join(home, 'no-such-agent.env') };
+    const env = { TARFA_AGENT_ENV: join(home, 'no-such-agent.env') };
     return { home, env };
   }
 
   // The brief file is named by a nonce; the launch command names it.
   const spawnedBrief = (home: string, created: Array<{ name: string; command: string }>, id: string) => {
     const path = /cat '([^']+)'/.exec(created.find((c) => c.name === id)!.command)![1]!;
-    expect(path.startsWith(join(home, '.perch', 'spawn'))).toBe(true);
+    expect(path.startsWith(join(home, '.tarfa', 'spawn'))).toBe(true);
     return readFile(path, 'utf8');
   };
 
@@ -454,9 +479,9 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
 
   it('lists live and parked workspaces with their stored status, without an agent.env', async () => {
     const { home, env } = await machine();
-    await writeFile(join(home, '.perch', 'status.json'), JSON.stringify({ 'perch-bbbbbb': { status: 'needs-feedback', changedAt: NOW - 120_000, urgent: true } }));
+    await writeFile(join(home, '.tarfa', 'status.json'), JSON.stringify({ 'perch-bbbbbb': { status: 'needs-feedback', changedAt: NOW - 120_000, urgent: true } }));
     await writeFile(
-      join(home, '.perch', 'parked.json'),
+      join(home, '.tarfa', 'parked.json'),
       JSON.stringify([{ id: 'perch-pppppp', name: 'Parked one', projectPath: '/w/foo', command: 'claude', machineId: 'm', createdAt: 1, parkedAt: NOW - 86_400_000 }]),
     );
     const out = await run(['ls'], env, home, io(fakeTmux().tmux));
@@ -475,7 +500,7 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
 
   it('shows a child whose last act was SendMessage as waiting on its orchestrator', async () => {
     const { home, env } = await machine();
-    await writeFile(join(home, '.perch', 'status.json'), JSON.stringify({ 'perch-bbbbbb': { status: 'working', changedAt: NOW, messagedLast: true } }));
+    await writeFile(join(home, '.tarfa', 'status.json'), JSON.stringify({ 'perch-bbbbbb': { status: 'working', changedAt: NOW, messagedLast: true } }));
     const json = JSON.parse(await run(['ls', '--json'], env, home, io(fakeTmux().tmux))) as Workspace[];
     expect(json.find((w) => w.id === 'perch-bbbbbb')?.waitingOn).toBe('parent');
     expect(await run(['ls'], env, home, io(fakeTmux().tmux))).toMatch(/perch-bbbbbb +- +needs-orchestrator /);
@@ -484,21 +509,21 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
   it('never writes the status file it reads', async () => {
     const { home, env } = await machine();
     const status = JSON.stringify({ 'perch-gone00': { status: 'working', changedAt: 1 } });
-    await writeFile(join(home, '.perch', 'status.json'), status);
+    await writeFile(join(home, '.tarfa', 'status.json'), status);
     await run(['ls'], env, home, io(fakeTmux().tmux));
-    expect(await readFile(join(home, '.perch', 'status.json'), 'utf8')).toBe(status);
+    expect(await readFile(join(home, '.tarfa', 'status.json'), 'utf8')).toBe(status);
   });
 
   it('still lists when status.json or parked.json is corrupt, missing, or not a file', async () => {
     const { home, env } = await machine();
-    await writeFile(join(home, '.perch', 'status.json'), '{not json');
-    await writeFile(join(home, '.perch', 'parked.json'), '[{"x"');
+    await writeFile(join(home, '.tarfa', 'status.json'), '{not json');
+    await writeFile(join(home, '.tarfa', 'parked.json'), '[{"x"');
     expect(await run(['ls'], env, home, io(fakeTmux().tmux))).toContain('perch-aaaaaa');
-    await rm(join(home, '.perch', 'status.json'));
-    await rm(join(home, '.perch', 'parked.json'));
+    await rm(join(home, '.tarfa', 'status.json'));
+    await rm(join(home, '.tarfa', 'parked.json'));
     expect(await run(['ls'], env, home, io(fakeTmux().tmux))).toContain('perch-aaaaaa');
-    await mkdir(join(home, '.perch', 'status.json'));
-    await mkdir(join(home, '.perch', 'parked.json'));
+    await mkdir(join(home, '.tarfa', 'status.json'));
+    await mkdir(join(home, '.tarfa', 'parked.json'));
     expect(await run(['ls'], env, home, io(fakeTmux().tmux))).toContain('perch-aaaaaa');
   });
 
@@ -508,7 +533,7 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     expect(await ids('--role', 'orchestrator')).toEqual(['perch-aaaaaa']);
     expect(await ids('--role', 'child')).toEqual(['perch-bbbbbb']);
     expect(await ids('--role', 'normal')).toEqual([]);
-    await expect(run(['ls', '--role', 'boss'], env, home, io(fakeTmux().tmux))).rejects.toThrow(/usage: perch ls/);
+    await expect(run(['ls', '--role', 'boss'], env, home, io(fakeTmux().tmux))).rejects.toThrow(/usage: tarfa ls/);
   });
 
   it('filters by project path: the directory and everything under it, relative to the caller', async () => {
@@ -529,7 +554,7 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     const real = await realpath(await mkdtemp(join(home, 'real-')));
     await symlink(real, join(home, 'link'));
     await writeFile(
-      join(home, '.perch', 'parked.json'),
+      join(home, '.tarfa', 'parked.json'),
       JSON.stringify([{ id: 'perch-pppppp', name: 'Parked one', projectPath: real, command: 'claude', machineId: 'm', createdAt: 1, parkedAt: NOW }]),
     );
     const out = await run(['ls', '--json', '--path', join(home, 'link')], env, home, io(fakeTmux().tmux, { cwd: '/' }));
@@ -543,15 +568,15 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     expect(ids(await run(['ls', '--json', '--parent', 'perch-aaaaaa'], env, home, io(tmux)))).toEqual(['perch-bbbbbb']);
     expect(ids(await run(['ls', '--json', '--mine'], { ...env, TMUX_PANE: '%7' }, home, io(tmux)))).toEqual(['perch-bbbbbb']);
     await expect(run(['ls', '--mine'], env, home, io(tmux))).rejects.toThrow(/TMUX_PANE/);
-    await expect(run(['ls', '--mine'], { ...env, TMUX_PANE: '%8' }, home, io(tmux))).rejects.toThrow(/not inside a Perch workspace/);
-    await expect(run(['ls', '--parent'], env, home, io(tmux))).rejects.toThrow(/usage: perch ls/);
+    await expect(run(['ls', '--mine'], { ...env, TMUX_PANE: '%8' }, home, io(tmux))).rejects.toThrow(/not inside a Tarfa workspace/);
+    await expect(run(['ls', '--parent'], env, home, io(tmux))).rejects.toThrow(/usage: tarfa ls/);
   });
 
   it('unparks through the running agent, one line per id, failing if any did not open', async () => {
     const { home } = await machine();
-    await writeFile(join(home, '.perch', 'token'), 'hook-secret');
-    const env = { PERCH_AGENT_ENV: join(home, 'agent.env') };
-    await writeFile(env.PERCH_AGENT_ENV, 'PERCH_PORT=9911\n');
+    await writeFile(join(home, '.tarfa', 'token'), 'hook-secret');
+    const env = { TARFA_AGENT_ENV: join(home, 'agent.env') };
+    await writeFile(env.TARFA_AGENT_ENV, 'TARFA_PORT=9911\n');
     const calls: Array<{ url: string; auth: string; body: string }> = [];
     const results: Record<string, string> = { 'perch-aaaaaa': 'unparked', 'perch-bbbbbb': 'not-parked', 'perch-cccccc': 'missing-directory' };
     const fetch = async (url: string | URL | Request, init?: RequestInit) => {
@@ -566,26 +591,26 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     await expect(run(['unpark', 'perch-bbbbbb', 'perch-aaaaaa', 'perch-cccccc'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(
       'perch-bbbbbb: not parked\nperch-aaaaaa: opened\nperch-cccccc: its project directory no longer exists',
     );
-    await expect(run(['unpark'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/usage: perch unpark/);
+    await expect(run(['unpark'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/usage: tarfa unpark/);
   });
 
   it('says the agent is not running when nothing answers', async () => {
     const { home, env } = await machine();
-    await writeFile(join(home, '.perch', 'token'), 'hook-secret');
+    await writeFile(join(home, '.tarfa', 'token'), 'hook-secret');
     const fetch = async () => {
       throw new TypeError('fetch failed', { cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }) });
     };
     await expect(run(['unpark', 'perch-aaaaaa'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/agent is not running/);
-    await rm(join(home, '.perch', 'token'));
+    await rm(join(home, '.tarfa', 'token'));
     await expect(run(['unpark', 'perch-aaaaaa'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/agent is not running/);
   });
 
   describe('send', () => {
     async function agent(answer: (body: Record<string, unknown>) => Response = () => Response.json({ result: 'delivered' })) {
       const { home } = await machine();
-      await writeFile(join(home, '.perch', 'token'), 'hook-secret');
-      const env = { PERCH_AGENT_ENV: join(home, 'agent.env'), TMUX_PANE: '%3' };
-      await writeFile(env.PERCH_AGENT_ENV, 'PERCH_PORT=9911\n');
+      await writeFile(join(home, '.tarfa', 'token'), 'hook-secret');
+      const env = { TARFA_AGENT_ENV: join(home, 'agent.env'), TMUX_PANE: '%3' };
+      await writeFile(env.TARFA_AGENT_ENV, 'TARFA_PORT=9911\n');
       const calls: Array<{ url: string; auth: string; body: Record<string, unknown> }> = [];
       const fetch = async (url: string | URL | Request, init?: RequestInit) => {
         const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -616,12 +641,12 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
 
     it('send refuses --file and extra arguments with usage', async () => {
       const { home, env, calls, fetch } = await agent();
-      const usage = /usage: perch send <workspace id> "<message>"/;
+      const usage = /usage: tarfa send <workspace id> "<message>"/;
       for (const argv of [['send'], ['send', 'perch-orch-1', 'a', 'b'], ['send', '--file', 'x', 'perch-orch-1'], ['send', 'perch-orch-1', '-f', 'x']]) {
         await expect(run(argv, env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(usage);
       }
       await expect(run(['send', 'perch-orch-1', 'hi'], { ...env, TMUX_PANE: undefined }, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(
-        'not inside a Perch workspace: $TMUX_PANE is unset',
+        'not inside a Tarfa workspace: $TMUX_PANE is unset',
       );
       expect(calls).toEqual([]);
     });
@@ -669,14 +694,14 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     expect(await spawnedBrief(home, created, id)).toBe('Do it.\n');
   });
 
-  it('spawns a child of the caller, telling it to ask the parent with perch send', async () => {
+  it('spawns a child of the caller, telling it to ask the parent with tarfa send', async () => {
     const { home, env } = await machine();
     const { tmux, created } = fakeTmux({ '%7': 'perch-aaaaaa' });
     const id = await run(['spawn', '--child', '--model', 'sonnet[1m]', home], { ...env, TMUX_PANE: '%7' }, home, io(tmux, { stdin: async () => 'b' }));
     expect(created[0]!.parent).toBe('perch-aaaaaa');
     expect(created[0]!.storedCommand).toContain("--model 'sonnet[1m]'");
     const brief = await spawnedBrief(home, created, id);
-    expect(brief).toContain('perch send perch-aaaaaa "');
+    expect(brief).toContain('tarfa send perch-aaaaaa "');
   });
 
   it('spawns a codex child on a thread the app server creates', async () => {
@@ -713,7 +738,7 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     const { home, env } = await machine();
     const { tmux, created } = fakeTmux({ '%7': 'perch-aaaaaa' }, [codexCaller]);
     const codexEnv = { ...env, TMUX_PANE: '%7', CODEX_THREAD_ID: 'zz' };
-    const refusal = 'not inside a Perch workspace: no workspace records Codex thread zz';
+    const refusal = 'not inside a Tarfa workspace: no workspace records Codex thread zz';
     await expect(run(['spawn', '--child', home], codexEnv, home, io(tmux, { stdin: async () => 'b' }))).rejects.toThrow(refusal);
     await expect(run(['rename', 'x'], codexEnv, home, io(tmux))).rejects.toThrow(refusal);
     await expect(run(['ls', '--mine'], codexEnv, home, io(tmux))).rejects.toThrow(refusal);
@@ -735,7 +760,7 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     const { tmux, created } = fakeTmux();
     const resolveCommand = async () => false;
     await expect(run(['spawn', '--cli', 'pi', home], env, home, io(tmux, { stdin: async () => 'b', resolveCommand }))).rejects.toThrow(
-      'perch spawn --cli pi needs pi-reviewed on PATH',
+      'tarfa spawn --cli pi needs pi-reviewed on PATH',
     );
     expect(created).toEqual([]);
   });
@@ -744,7 +769,7 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     const { home, env } = await machine();
     const { tmux, created } = fakeTmux();
     await expect(run(['spawn', '--cli', 'bash', home], env, home, io(tmux, { stdin: async () => 'b' }))).rejects.toThrow(
-      'usage: perch spawn [--title <title>] [--child] [--model <model>] [--cli claude|codex|pi] <projectPath>',
+      'usage: tarfa spawn [--title <title>] [--child] [--model <model>] [--cli claude|codex|pi] <projectPath>',
     );
     expect(created).toEqual([]);
   });
@@ -770,17 +795,17 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     expect(locked).toEqual(['perch-aaaaaa', 'perch-bbbbbb', 'perch-aaaaaa']);
     expect(titles).toEqual(['perch-aaaaaa ✳ Invoice PDF fix', 'perch-bbbbbb ✳ Child two', 'perch-aaaaaa ✳ perch-bbbbbb']);
     await expect(run(['rename', 'perch-9', 'x'], pane, home, io(tmux))).rejects.toThrow(/no workspace perch-9/);
-    await expect(run(['rename'], pane, home, io(tmux))).rejects.toThrow(/usage: perch rename/);
+    await expect(run(['rename'], pane, home, io(tmux))).rejects.toThrow(/usage: tarfa rename/);
     await expect(run(['rename', 'x'], env, home, io(tmux))).rejects.toThrow(/TMUX_PANE/);
   });
 
-  it('refuses a child outside a Perch pane, and a spawn without a path', async () => {
+  it('refuses a child outside a Tarfa pane, and a spawn without a path', async () => {
     const { home, env } = await machine();
     const { tmux, created } = fakeTmux({ '%9': 'main' });
     const stdin = async () => 'b';
     await expect(run(['spawn', '--child', home], env, home, io(tmux, { stdin }))).rejects.toThrow(/TMUX_PANE/);
     await expect(run(['spawn', '--child', home], { ...env, TMUX_PANE: '%9' }, home, io(tmux, { stdin }))).rejects.toThrow(/session is main/);
-    await expect(run(['spawn'], env, home, io(tmux, { stdin }))).rejects.toThrow(/usage: perch spawn/);
+    await expect(run(['spawn'], env, home, io(tmux, { stdin }))).rejects.toThrow(/usage: tarfa spawn/);
     await expect(run(['spawn', join(home, 'nope')], env, home, io(tmux, { stdin }))).rejects.toThrow(/not a directory/);
     expect(created).toEqual([]);
   });
@@ -794,14 +819,14 @@ describe('perch ls / spawn / peek (fake tmux)', () => {
     expect(lines.slice(2)).toEqual(['', 'line 2', 'line 3']);
     expect((await run(['peek', 'perch-aaaaaa'], env, home, io(fakeTmux().tmux))).split('\n').slice(3)).toEqual(['old', 'line 1', 'line 2', 'line 3']);
     await expect(run(['peek', 'perch-zzzzzz'], env, home, io(fakeTmux().tmux))).rejects.toThrow(/no workspace perch-zzzzzz/);
-    await expect(run(['peek'], env, home, io(fakeTmux().tmux))).rejects.toThrow(/usage: perch peek/);
-    await expect(run(['peek', 'perch-aaaaaa', '-n', 'x'], env, home, io(fakeTmux().tmux))).rejects.toThrow(/usage: perch peek/);
+    await expect(run(['peek'], env, home, io(fakeTmux().tmux))).rejects.toThrow(/usage: tarfa peek/);
+    await expect(run(['peek', 'perch-aaaaaa', '-n', 'x'], env, home, io(fakeTmux().tmux))).rejects.toThrow(/usage: tarfa peek/);
   });
 
   it('says a parked workspace has no pane to peek at', async () => {
     const { home, env } = await machine();
     await writeFile(
-      join(home, '.perch', 'parked.json'),
+      join(home, '.tarfa', 'parked.json'),
       JSON.stringify([{ id: 'perch-pppppp', name: 'P', projectPath: '/w/foo', command: 'claude', machineId: 'm', createdAt: 1, parkedAt: NOW }]),
     );
     expect(await run(['peek', 'perch-pppppp'], env, home, io(fakeTmux().tmux))).toContain('parked: no pane until it is opened');

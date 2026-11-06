@@ -3,7 +3,7 @@
   // saves the whole list, which from then on replaces the built-in defaults. A preset is
   // edited in a modal; only Cancel and Escape close it, so a stray tap keeps a half-typed prompt.
   import { onMount } from 'svelte';
-  import type { PerchStore } from '../store.svelte';
+  import type { TarfaStore } from '../store.svelte';
   import {
     DEFAULT_CLEANUP_PROMPT,
     presetError,
@@ -15,7 +15,7 @@
     store,
   }: {
     store: Pick<
-      PerchStore,
+      TarfaStore,
       'dictationPresets' | 'currentPreset' | 'addingPreset' | 'saveDictationPresets' | 'resetDictationPresets'
     >;
   } = $props();

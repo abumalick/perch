@@ -1,5 +1,5 @@
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
-import { b64url } from '@perch/secure-channel';
+import { b64url } from '@tarfa/secure-channel';
 import { describeError } from '../core/describe-error';
 import { DeviceKeyError, UnreadableDeviceKeyError, type DeviceIdentity, type KeyStorage } from '../core/ports/device-identity';
 

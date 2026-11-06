@@ -181,7 +181,7 @@ describe('listWorkspaces', () => {
     };
     const repoRemote = {
       getGithubRepo: async (path: string) =>
-        path === '/p/perch' ? { owner: 'someuser', repo: 'perch' } : null,
+        path === '/p/perch' ? { owner: 'someuser', repo: 'tarfa' } : null,
     };
 
     const result = await listWorkspaces({
@@ -191,7 +191,7 @@ describe('listWorkspaces', () => {
       status: noStatus,
       repoRemote,
     });
-    expect(result.find((w) => w.id === 'perch-gh')?.github).toEqual({ owner: 'someuser', repo: 'perch' });
+    expect(result.find((w) => w.id === 'perch-gh')?.github).toEqual({ owner: 'someuser', repo: 'tarfa' });
     expect(result.find((w) => w.id === 'perch-no')).not.toHaveProperty('github');
   });
 

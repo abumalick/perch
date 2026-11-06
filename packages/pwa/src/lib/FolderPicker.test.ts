@@ -6,7 +6,7 @@ import FolderPicker from './FolderPicker.svelte';
 function fakeStore(over: Record<string, unknown> = {}) {
   return {
     browseError: null as string | null,
-    dirEntries: { path: '/home/u/workspace', subdirs: ['/home/u/workspace/perch'], files: ['/home/u/workspace/README.md'] },
+    dirEntries: { path: '/home/u/workspace', subdirs: ['/home/u/workspace/tarfa'], files: ['/home/u/workspace/README.md'] },
     pickerBrowse: vi.fn(),
     pickerMakeDir: vi.fn(),
     ...over,
@@ -33,8 +33,8 @@ describe('FolderPicker (single root)', () => {
   it('renders folders as buttons and descends on tap', async () => {
     const store = fakeStore();
     render(FolderPicker, { props: props(store) });
-    await fireEvent.click(screen.getByRole('button', { name: 'perch' }));
-    expect(store.pickerBrowse).toHaveBeenCalledWith('mac', '/home/u/workspace/perch');
+    await fireEvent.click(screen.getByRole('button', { name: 'tarfa' }));
+    expect(store.pickerBrowse).toHaveBeenCalledWith('mac', '/home/u/workspace/tarfa');
   });
 
   it('does not list files (it is a folder picker)', () => {
@@ -48,38 +48,38 @@ describe('FolderPicker (single root)', () => {
   });
 
   it('shows Up below the root and ascends on tap', async () => {
-    const store = fakeStore({ dirEntries: { path: '/home/u/workspace/perch', subdirs: [], files: [] } });
+    const store = fakeStore({ dirEntries: { path: '/home/u/workspace/tarfa', subdirs: [], files: [] } });
     render(FolderPicker, { props: props(store) });
     await fireEvent.click(screen.getByRole('button', { name: /up one level/i }));
     expect(store.pickerBrowse).toHaveBeenCalledWith('mac', '/home/u/workspace');
   });
 
   it('picks the folder currently shown', async () => {
-    const store = fakeStore({ dirEntries: { path: '/home/u/workspace/perch', subdirs: [], files: [] } });
+    const store = fakeStore({ dirEntries: { path: '/home/u/workspace/tarfa', subdirs: [], files: [] } });
     const onpick = vi.fn();
     render(FolderPicker, { props: props(store, { onpick }) });
     await fireEvent.click(screen.getByRole('button', { name: /use this folder/i }));
-    expect(onpick).toHaveBeenCalledWith('/home/u/workspace/perch');
+    expect(onpick).toHaveBeenCalledWith('/home/u/workspace/tarfa');
   });
 
   it('creates a folder in the current directory and (via the agent reply) browses into it', async () => {
-    const store = fakeStore({ dirEntries: { path: '/home/u/workspace/perch', subdirs: [], files: [] } });
+    const store = fakeStore({ dirEntries: { path: '/home/u/workspace/tarfa', subdirs: [], files: [] } });
     render(FolderPicker, { props: props(store) });
     await fireEvent.click(screen.getByRole('button', { name: /new folder/i }));
     await fireEvent.input(screen.getByRole('textbox', { name: /folder name/i }), {
       target: { value: 'docs' },
     });
     await fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
-    expect(store.pickerMakeDir).toHaveBeenCalledWith('mac', '/home/u/workspace/perch', 'docs');
+    expect(store.pickerMakeDir).toHaveBeenCalledWith('mac', '/home/u/workspace/tarfa', 'docs');
   });
 
   it('disables Create and warns when the name matches an existing folder', async () => {
-    // Default store: current dir has a `perch` subfolder and a `README.md` file.
+    // Default store: current dir has a `tarfa` subfolder and a `README.md` file.
     const store = fakeStore();
     render(FolderPicker, { props: props(store) });
     await fireEvent.click(screen.getByRole('button', { name: /new folder/i }));
     await fireEvent.input(screen.getByRole('textbox', { name: /folder name/i }), {
-      target: { value: 'perch' },
+      target: { value: 'tarfa' },
     });
     expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled();
     expect(screen.getByText(/already exists/i)).toBeInTheDocument();
@@ -96,7 +96,7 @@ describe('FolderPicker (single root)', () => {
   });
 
   it('disables Create for an invalid folder name', async () => {
-    const store = fakeStore({ dirEntries: { path: '/home/u/workspace/perch', subdirs: [], files: [] } });
+    const store = fakeStore({ dirEntries: { path: '/home/u/workspace/tarfa', subdirs: [], files: [] } });
     render(FolderPicker, { props: props(store) });
     await fireEvent.click(screen.getByRole('button', { name: /new folder/i }));
     const create = screen.getByRole('button', { name: /^create$/i });
@@ -126,7 +126,7 @@ describe('FolderPicker (single root)', () => {
   });
 
   it('ascends one level on Back from a subfolder instead of dismissing', async () => {
-    const store = fakeStore({ dirEntries: { path: '/home/u/workspace/perch', subdirs: [], files: [] } });
+    const store = fakeStore({ dirEntries: { path: '/home/u/workspace/tarfa', subdirs: [], files: [] } });
     const oncancel = vi.fn();
     render(FolderPicker, { props: props(store, { oncancel }) });
     await fireEvent.click(screen.getByRole('button', { name: /back/i }));
@@ -146,7 +146,7 @@ describe('FolderPicker (single root)', () => {
   });
 
   it('offers an explicit Cancel that dismisses from any depth', async () => {
-    const store = fakeStore({ dirEntries: { path: '/home/u/workspace/perch/src', subdirs: [], files: [] } });
+    const store = fakeStore({ dirEntries: { path: '/home/u/workspace/tarfa/src', subdirs: [], files: [] } });
     const oncancel = vi.fn();
     render(FolderPicker, { props: props(store, { oncancel }) });
     await fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));

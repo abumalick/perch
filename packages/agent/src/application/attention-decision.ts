@@ -1,4 +1,4 @@
-import type { WorkspaceStatus } from '@perch/contracts';
+import type { WorkspaceStatus } from '@tarfa/contracts';
 
 // What to do with the session's deferral mark: `set` it, `clear` it, or leave it alone.
 type Deferral = 'set' | 'clear' | 'keep';
@@ -18,7 +18,7 @@ export type AttentionReason =
   | 'question'
   | 'blocking-tool'
   | 'tool'
-  | 'perch-send'
+  | 'tarfa-send'
   | 'session-start'
   | 'compact'
   | 'unknown-event';
@@ -36,7 +36,7 @@ export interface AttentionDecision {
 
 // The Stop hook payload carries `background_tasks`: every running or pending task the session
 // holds. It is undocumented, so read it defensively — anything unexpected means "no running
-// task", which lands on `needs-feedback`, i.e. the behaviour Perch had before this feature.
+// task", which lands on `needs-feedback`, i.e. the behaviour Tarfa had before this feature.
 // Only work the session is waiting on counts. The Monitor tool and `until` loops run as `shell`;
 // an MCP monitor or task names its `server`. A watched artifact is a `monitor` with no server
 // that lasts as long as the session, and Claude's housekeeping (`dream`, `auto-mode scan`,
@@ -114,7 +114,7 @@ export function attentionDecision(input: {
   claude?: unknown;
   wasDeferred: boolean;
   messagedLast?: boolean;
-  // Whether a `perch send` marked this session during the tool call this PostToolUse closes.
+  // Whether a `tarfa send` marked this session during the tool call this PostToolUse closes.
   sentDuringTool?: boolean;
   questionPending?: boolean;
   currentStatus?: WorkspaceStatus;
@@ -174,7 +174,7 @@ export function attentionDecision(input: {
       if (input.event === 'PostToolUse') {
         // The send ran inside this very tool call, so its PostToolUse is not a later tool call.
         if (input.sentDuringTool && !isPeerMessage(input.claude)) {
-          return { reason: 'perch-send', status: 'working', deferral: 'keep' };
+          return { reason: 'tarfa-send', status: 'working', deferral: 'keep' };
         }
         return {
           reason: 'tool',

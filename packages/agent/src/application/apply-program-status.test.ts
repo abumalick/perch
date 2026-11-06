@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { applyProgramStatus } from './apply-program-status';
 import { applyHookEvent } from './apply-hook-event';
-import type { WorkspaceStatus } from '@perch/contracts';
+import type { WorkspaceStatus } from '@tarfa/contracts';
 import type { HookEventEntry } from '../ports/hook-event-log-port';
 
 function setup(initial: Record<string, WorkspaceStatus> = {}) {

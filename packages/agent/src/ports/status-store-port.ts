@@ -1,4 +1,4 @@
-import type { WorkspaceStatus } from '@perch/contracts';
+import type { WorkspaceStatus } from '@tarfa/contracts';
 
 export interface StatusStorePort {
   get(workspaceId: string): WorkspaceStatus | undefined;

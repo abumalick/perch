@@ -1,7 +1,7 @@
 import type { DeviceRoster } from '../application/device-roster';
 
-// The phones this agent accepts (~/.perch/devices.json), shared by every
-// checkout like deploy/agent.env. Read fresh on every call, so a `perch devices` edit takes
+// The phones this agent accepts (~/.tarfa/devices.json), shared by every
+// checkout like deploy/agent.env. Read fresh on every call, so a `tarfa devices` edit takes
 // effect at the next handshake with no restart.
 export interface DeviceStorePort {
   read(): Promise<DeviceRoster>;

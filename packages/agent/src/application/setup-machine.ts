@@ -1,9 +1,10 @@
-// `perch setup`: what it takes to turn a checkout into a running agent phones can reach, worked
+// `tarfa setup`: what it takes to turn a checkout into a running agent phones can reach, worked
 // out from flags and what the machine already holds. Pure: the caller reads the machine into a
 // SetupState and applies the steps (run-setup.ts). Every step is planned only when something
 // differs, so a rerun with the same flags plans nothing.
-import { isMachineUrl, isPairingPath, MAX_ADDRESSES } from '@perch/secure-channel';
+import { isMachineUrl, isPairingPath, MAX_ADDRESSES } from '@tarfa/secure-channel';
 import { parseEnvFile, setEnvValue } from './agent-env';
+import { renameLegacyEnvLines, withLegacyEnv } from './legacy-env';
 import type { EnrolmentMode } from './device-roster';
 
 export type TailscaleMode = 'serve' | 'funnel' | 'none';
@@ -17,7 +18,7 @@ export interface SetupFlags {
   tailscale: TailscaleMode;
   tailscalePort?: number;
   addresses: string[];
-  // Only when --pwa is given: an existing PERCH_PWA_ORIGIN is otherwise kept.
+  // Only when --pwa is given: an existing TARFA_PWA_ORIGIN is otherwise kept.
   pwa?: string;
   pair: boolean;
   dryRun: boolean;
@@ -49,11 +50,16 @@ export interface SetupState {
   // whether it is enabled to start at boot (with linger, under systemd).
   service: { kind: 'systemd' | 'launchd'; template: string; installed: string | null; enabled: boolean };
   envText: string | null;
-  // Used only when agent.env holds no PERCH_TOKEN.
+  // Used only when agent.env holds no TARFA_TOKEN.
   newToken: string;
   hasKey: boolean;
   roster: 'absent' | EnrolmentMode;
   hooksCurrent: boolean;
+  // The unit (or plist) from before the rename, perch-agent / com.perch.agent, is installed.
+  legacyService: boolean;
+  // Where the state is: moved to ~/.tarfa, still in ~/.perch, or in both (which the agent refuses
+  // to merge, so setup stops before it stops anything).
+  stateDir: 'moved' | 'legacy' | 'conflict';
   phonePortOwner: PortOwner;
   hooksPortOwner: PortOwner;
   // Null when Tailscale is not installed or its daemon does not answer.
@@ -62,6 +68,9 @@ export interface SetupState {
 }
 
 export type SetupStep =
+  | { kind: 'stop-legacy-service' }
+  | { kind: 'move-state' }
+  | { kind: 'remove-legacy-service' }
   | { kind: 'write-env'; text: string; changes: string[] }
   | { kind: 'create-key' }
   | { kind: 'write-roster'; mode: EnrolmentMode }
@@ -90,7 +99,13 @@ export function planSetup(flags: SetupFlags, state: SetupState): { steps: SetupS
     };
   }
   if (state.hooksPortOwner === 'other') {
-    return { error: 'the hooks port is taken by another process (another user\'s agent?): set PERCH_PORT in deploy/agent.env to a free port, then run perch setup again' };
+    return { error: 'the hooks port is taken by another process (another user\'s agent?): set TARFA_PORT in deploy/agent.env to a free port, then run tarfa setup again' };
+  }
+
+  if (state.stateDir === 'conflict') {
+    return {
+      error: 'both ~/.perch and ~/.tarfa hold state (or ~/.perch links elsewhere): the agent will not merge them, so setup stops before touching the service. Keep the one that holds the agent key, move the other away, then run tarfa setup again',
+    };
   }
 
   const target = `http://127.0.0.1:${flags.phonePort}`;
@@ -123,13 +138,18 @@ export function planSetup(flags: SetupFlags, state: SetupState): { steps: SetupS
   if (addresses.length > MAX_ADDRESSES) return { error: `a machine takes at most ${MAX_ADDRESSES} addresses (got ${addresses.length})` };
   // A roster that already offers token enrolment is never published silently: the owner says
   // whether to keep it.
-  const published = addresses.length > 0 || Boolean(parseEnvFile(state.envText ?? '').PERCH_PHONE_ADDRESSES);
+  const published = addresses.length > 0 || Boolean(withLegacyEnv(parseEnvFile(state.envText ?? '')).TARFA_PHONE_ADDRESSES);
   if (published && state.roster === 'on' && flags.tokenEnrolment === undefined) {
     return {
-      error: 'token enrolment is on in ~/.perch/devices.json, and this run gives phones an address: pass --token-enrolment off to switch it off (pairing codes only), or --token-enrolment on to keep it on deliberately',
+      error: 'token enrolment is on in ~/.tarfa/devices.json, and this run gives phones an address: pass --token-enrolment off to switch it off (pairing codes only), or --token-enrolment on to keep it on deliberately',
     };
   }
 
+  // The swap from the service's old name: stop the old agent, move ~/.perch while nothing holds
+  // it, then the steps below install and start the new one. Never both at once: two agents would
+  // share one hooks port and one state directory.
+  if (state.legacyService) steps.push({ kind: 'stop-legacy-service' });
+  if (state.stateDir === 'legacy') steps.push({ kind: 'move-state' });
   const env = planEnv(flags, state, addresses);
   if (env) steps.push(env);
   if (!state.hasKey) steps.push({ kind: 'create-key' });
@@ -139,31 +159,36 @@ export function planSetup(flags: SetupFlags, state: SetupState): { steps: SetupS
   else if (flags.tokenEnrolment && state.roster !== flags.tokenEnrolment) steps.push({ kind: 'write-roster', mode: flags.tokenEnrolment });
   const mode = state.roster === 'absent' ? (flags.tokenEnrolment ?? 'off') : (flags.tokenEnrolment ?? state.roster);
   if (mode === 'on' && checks.some((line) => line.includes('internet') || line.includes('Funnel allowed'))) {
-    checks.push('warning: token enrolment is on, so whoever holds PERCH_TOKEN can enrol a phone on a public port: run `perch devices enrolment off` (or pass --token-enrolment off)');
+    checks.push('warning: token enrolment is on, so whoever holds TARFA_TOKEN can enrol a phone on a public port: run `tarfa devices enrolment off` (or pass --token-enrolment off)');
   }
   const unit = state.service.template.replaceAll('REPO_PATH', state.repo);
   if (!state.service.enabled || !unitIsCurrent(state.service.kind, state.service.installed, state.repo)) steps.push({ kind: 'install-unit', text: unit });
+  // The old agent is stopped: start the new one before anything that can fail, so a failed hooks
+  // or serve step never leaves the machine with no agent (and a phone with no way back in).
+  if (state.legacyService) steps.push({ kind: 'restart' }, { kind: 'check-listener', port: flags.phonePort });
   if (!state.hooksCurrent) steps.push({ kind: 'install-hooks' });
   if (serveStep) steps.push(serveStep);
-  if (steps.length > 0) steps.push({ kind: 'restart' }, { kind: 'check-listener', port: flags.phonePort });
+  if (state.legacyService) steps.push({ kind: 'remove-legacy-service' });
+  else if (steps.length > 0) steps.push({ kind: 'restart' }, { kind: 'check-listener', port: flags.phonePort });
   if (operatorStep) steps.push(operatorStep);
   if (flags.pair) steps.push({ kind: 'pair' });
   return { steps, checks };
 }
 
 function planEnv(flags: SetupFlags, state: SetupState, addresses: string[]): SetupStep | null {
-  const before = state.envText ?? '';
+  const legacy = renameLegacyEnvLines(state.envText ?? '');
+  const before = legacy.text;
   const values = parseEnvFile(before);
   const wanted: Array<[string, string, string?]> = [];
-  if (!values.PERCH_TOKEN) wanted.push(['PERCH_TOKEN', state.newToken, '(generated)']);
-  wanted.push(['PERCH_MACHINE_ID', flags.machineId], ['PERCH_PROJECT_ROOTS', flags.projectRoots.join(':')]);
-  if (flags.defaultPath) wanted.push(['PERCH_DEFAULT_PATH', flags.defaultPath]);
-  wanted.push(['PERCH_PHONE_PORT', String(flags.phonePort)]);
-  if (addresses.length > 0) wanted.push(['PERCH_PHONE_ADDRESSES', addresses.join(',')]);
-  if (flags.pwa || !values.PERCH_PWA_ORIGIN) wanted.push(['PERCH_PWA_ORIGIN', flags.pwa ?? DEFAULT_PWA_ORIGIN]);
+  if (!values.TARFA_TOKEN) wanted.push(['TARFA_TOKEN', state.newToken, '(generated)']);
+  wanted.push(['TARFA_MACHINE_ID', flags.machineId], ['TARFA_PROJECT_ROOTS', flags.projectRoots.join(':')]);
+  if (flags.defaultPath) wanted.push(['TARFA_DEFAULT_PATH', flags.defaultPath]);
+  wanted.push(['TARFA_PHONE_PORT', String(flags.phonePort)]);
+  if (addresses.length > 0) wanted.push(['TARFA_PHONE_ADDRESSES', addresses.join(',')]);
+  if (flags.pwa || !values.TARFA_PWA_ORIGIN) wanted.push(['TARFA_PWA_ORIGIN', flags.pwa ?? DEFAULT_PWA_ORIGIN]);
 
   let text = before;
-  const changes: string[] = [];
+  const changes: string[] = [...legacy.renamed];
   for (const [name, value, shown] of wanted) {
     if (values[name] === value) continue;
     text = setEnvValue(text, name, value);
@@ -203,7 +228,7 @@ function serveCommand(entry: { port: number; path: string; target: string; funne
 }
 
 function checkTailscale(mode: 'serve' | 'funnel', port: number, status: TailscaleStatus | null): { host: string; checks: string[] } | { error: string } {
-  if (status === null) return { error: 'Tailscale is not installed or its daemon does not answer: install it, run `tailscale up`, then run perch setup again (see perch setup --help)' };
+  if (status === null) return { error: 'Tailscale is not installed or its daemon does not answer: install it, run `tailscale up`, then run tarfa setup again (see tarfa setup --help)' };
   if (status.BackendState !== 'Running') {
     return { error: `Tailscale is not running or logged out (state ${status.BackendState ?? 'unknown'}): run \`tailscale up\`` };
   }
@@ -220,7 +245,7 @@ function checkTailscale(mode: 'serve' | 'funnel', port: number, status: Tailscal
     if (!FUNNEL_PORTS.includes(port)) return { error: `Funnel serves only ports 443, 8443 or 10000 (got ${port}): pick one with --tailscale-port` };
     const caps = Object.keys(status.Self?.CapMap ?? {});
     if (!caps.includes('funnel')) {
-      return { error: 'Funnel is not allowed for this node: add the funnel node attribute for it in the tailnet policy file (perch setup --help)' };
+      return { error: 'Funnel is not allowed for this node: add the funnel node attribute for it in the tailnet policy file (tarfa setup --help)' };
     }
     const listed = caps.find((cap) => cap.startsWith(FUNNEL_PORTS_CAP));
     const ports = listed ? listed.slice(FUNNEL_PORTS_CAP.length).split(',').map(Number) : FUNNEL_PORTS;
@@ -252,7 +277,7 @@ function serveNeeds(
   }
   const existing = handlers[path]?.Proxy;
   if (existing !== undefined && existing.replace(/\/$/, '') !== target) {
-    return { error: `https://${hostPort}${path} is already served to ${existing}: pick another --slug or --tailscale-port (perch setup never replaces a serve entry)` };
+    return { error: `https://${hostPort}${path} is already served to ${existing}: pick another --slug or --tailscale-port (tarfa setup never replaces a serve entry)` };
   }
   return { needed: existing === undefined || (funnel && !funnelled), public: !funnel && funnelled };
 }
@@ -261,10 +286,16 @@ export function describeStep(step: SetupStep, envPath: string): string {
   switch (step.kind) {
     case 'write-env':
       return `update ${envPath} (backed up first): ${step.changes.join(', ')}`;
+    case 'stop-legacy-service':
+      return 'stop the agent service installed under its old name (perch-agent); tmux and every workspace keep running';
+    case 'move-state':
+      return 'move ~/.perch to ~/.tarfa, leaving ~/.perch as a link to it';
+    case 'remove-legacy-service':
+      return 'remove the agent service installed under its old name (perch-agent)';
     case 'create-key':
-      return 'create the agent key (~/.perch/relay-key.json)';
+      return 'create the agent key (~/.tarfa/agent-key.json)';
     case 'write-roster':
-      return `write ~/.perch/devices.json with enrolment ${step.mode}${step.mode === 'off' ? ' (pairing codes only)' : ''}`;
+      return `write ~/.tarfa/devices.json with enrolment ${step.mode}${step.mode === 'off' ? ' (pairing codes only)' : ''}`;
     case 'install-unit':
       return 'install and enable the agent service (starts at boot)';
     case 'install-hooks':
@@ -276,7 +307,7 @@ export function describeStep(step: SetupStep, envPath: string): string {
     case 'check-listener':
       return `check the phone port answers a WebSocket upgrade on 127.0.0.1:${step.port}`;
     case 'pair':
-      return 'mint a pairing link (perch pair)';
+      return 'mint a pairing link (tarfa pair)';
     case 'print':
       return `ask the node's Tailscale operator to run: ${step.line}`;
   }

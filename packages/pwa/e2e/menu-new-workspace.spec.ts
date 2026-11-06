@@ -19,7 +19,7 @@ test('the drawer creates a new workspace from inside an existing one, and Back r
   await page.goto('/');
 
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await openWorkspaceMenu(page);
   await page.getByRole('button', { name: /new workspace/i }).click();
@@ -29,7 +29,7 @@ test('the drawer creates a new workspace from inside an existing one, and Back r
   // Backing out returns to the workspace we came from — not the home list — and the
   // terminal remounts against the still-live attachment.
   await page.getByRole('button', { name: 'Back' }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 });
 
 test('the wide layout omits the drawer row, keeping the sidebar ＋ as the single entry point', async ({ page }) => {
@@ -38,7 +38,7 @@ test('the wide layout omits the drawer row, keeping the sidebar ＋ as the singl
   await page.goto('/');
 
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await openWorkspaceMenu(page);
   await expect(page.getByRole('button', { name: /new workspace/i })).toHaveCount(0);

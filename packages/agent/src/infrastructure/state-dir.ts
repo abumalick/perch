@@ -1,0 +1,141 @@
+import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { lstat, readdir, realpath, rename, rmdir, symlink } from 'node:fs/promises';
+import { join } from 'node:path';
+import { withFileLock } from './file-lock';
+
+export const STATE_DIR = '.tarfa';
+// Where the state lived before the rename. The agent moves it and leaves a symlink here for one
+// release, so an older CLI or hook still finds it.
+export const LEGACY_STATE_DIR = '.perch';
+export const AGENT_KEY_FILE = 'agent-key.json';
+// The agent key's name when relays existed; renamed in place by migrateStateDir.
+export const LEGACY_AGENT_KEY_FILE = 'relay-key.json';
+
+// The directory a process that must not move anything reads (the CLI, while an older agent may
+// still run): ~/.tarfa once it exists, else a ~/.perch not moved yet, else ~/.tarfa.
+export function resolveStateDir(home: string): string {
+  const current = join(home, STATE_DIR);
+  if (existsSync(current)) return current;
+  const legacy = join(home, LEGACY_STATE_DIR);
+  if (isRealDir(legacy)) return legacy;
+  return current;
+}
+
+// The agent key in `dir`, under its old name when the new one is absent: a key that exists must
+// never be taken for missing, since creating a new one breaks every phone that pinned it.
+export function resolveAgentKeyPath(dir: string): string {
+  const current = join(dir, AGENT_KEY_FILE);
+  if (existsSync(current)) return current;
+  const legacy = join(dir, LEGACY_AGENT_KEY_FILE);
+  return existsSync(legacy) ? legacy : current;
+}
+
+// What migrateStateDir would find, read without changing anything: setup asks before it stops
+// the old agent, so a move that would refuse never leaves the machine with no agent at all.
+export function stateDirLayout(home: string): 'moved' | 'legacy' | 'conflict' {
+  const current = join(home, STATE_DIR);
+  const legacy = join(home, LEGACY_STATE_DIR);
+  let old: 'absent' | 'dir' | 'link' | 'other' = 'absent';
+  try {
+    const s = lstatSync(legacy);
+    old = s.isSymbolicLink() ? 'link' : s.isDirectory() ? 'dir' : 'other';
+  } catch {
+    old = 'absent';
+  }
+  const hasCurrent = existsSync(current);
+  if (old === 'dir') return !hasCurrent || readdirSync(current).length === 0 ? 'legacy' : 'conflict';
+  if (old === 'link') {
+    let target: string | null = null;
+    try {
+      target = realpathSync(legacy);
+    } catch {
+      target = null;
+    }
+    if (!hasCurrent) return target !== null && isRealDir(target) ? 'legacy' : 'conflict';
+    return target === realpathSync(current) ? 'moved' : 'conflict';
+  }
+  return 'moved';
+}
+
+export type MigrationResult = 'moved' | 'unchanged';
+
+// Moves ~/.perch to ~/.tarfa (one rename(2), so atomic on one filesystem), leaves ~/.perch as a
+// symlink to it, and renames the agent key. Run by the agent at startup before it reads anything,
+// and by setup once the old service is stopped. It never merges: when both hold something it
+// refuses, since starting on an empty ~/.tarfa while ~/.perch holds the key would make a new key.
+// The lock sits beside both directories, because taking it must not create either.
+export async function migrateStateDir(home: string): Promise<MigrationResult> {
+  const current = join(home, STATE_DIR);
+  const legacy = join(home, LEGACY_STATE_DIR);
+  return withFileLock(join(home, '.tarfa-migrate'), 60_000, async () => {
+    let result: MigrationResult = 'unchanged';
+    const old = await kind(legacy);
+    if (old === 'dir') {
+      const now = await kind(current);
+      if (now === 'dir' && (await readdir(current)).length === 0) await rmdir(current);
+      else if (now !== 'absent') throw bothExist(current, legacy);
+      await rename(legacy, current);
+      await symlink(STATE_DIR, legacy);
+      result = 'moved';
+    } else if (old === 'link') {
+      const target = await realpath(legacy).catch(() => null);
+      if ((await kind(current)) === 'absent') {
+        // A link whose target is gone would leave the agent to start empty, with a new key.
+        if (target === null || !isRealDir(target)) {
+          throw new Error(`${legacy} is a link to nothing usable, and ${current} does not exist: the agent will not start without its state. Restore what ${legacy} pointed at, or move it to ${current}`);
+        }
+        // A ~/.perch kept elsewhere through a link of the user's own: the link moves, not its target.
+        await rename(legacy, current);
+        await symlink(STATE_DIR, legacy);
+        result = 'moved';
+      } else if (target !== (await realpath(current))) {
+        throw bothExist(current, legacy);
+      }
+    }
+    if ((await kind(current)) !== 'absent') await renameLegacyKey(current);
+    return result;
+  });
+}
+
+// The old name stays as a link to the new one for one release: an agent from before the rename
+// (a rollback, `serve:agent-restore`) reads relay-key.json, and finding none it would make a new key.
+async function renameLegacyKey(dir: string): Promise<void> {
+  const legacyKey = join(dir, LEGACY_AGENT_KEY_FILE);
+  const key = join(dir, AGENT_KEY_FILE);
+  const legacyKind = await kind(legacyKey);
+  if (legacyKind === 'link') return;
+  if (legacyKind === 'absent') {
+    // Moved by a build that left no link, or stopped between the rename and the link.
+    if ((await kind(key)) !== 'absent') await symlink(AGENT_KEY_FILE, legacyKey);
+    return;
+  }
+  if ((await kind(key)) !== 'absent') {
+    throw new Error(`${dir} holds both ${AGENT_KEY_FILE} and ${LEGACY_AGENT_KEY_FILE}: keep the one phones pinned (tarfa pair prints its fingerprint) and move the other away`);
+  }
+  await rename(legacyKey, key);
+  await symlink(AGENT_KEY_FILE, legacyKey);
+}
+
+function bothExist(current: string, legacy: string): Error {
+  return new Error(
+    `both ${legacy} and ${current} exist, and ${legacy} is not a link to ${current}: the agent will not merge them. Keep the one that holds the agent key, move the other away, and start again`,
+  );
+}
+
+async function kind(path: string): Promise<'absent' | 'dir' | 'link' | 'other'> {
+  try {
+    const s = await lstat(path);
+    return s.isSymbolicLink() ? 'link' : s.isDirectory() ? 'dir' : 'other';
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 'absent';
+    throw err;
+  }
+}
+
+function isRealDir(path: string): boolean {
+  try {
+    return lstatSync(path).isDirectory() || statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}

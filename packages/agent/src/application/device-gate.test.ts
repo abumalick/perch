@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deviceFingerprint, generateDeviceKeys } from '@perch/secure-channel';
+import { deviceFingerprint, generateDeviceKeys } from '@tarfa/secure-channel';
 import type { DeviceStorePort } from '../ports/device-store-port';
 import type { PairingStorePort } from '../ports/pairing-store-port';
 import { PAIRING_TTL_MS, addPairing, redeemPairing, type Pairing } from './pairing';
@@ -110,7 +110,7 @@ describe('RosterDevices', () => {
 
 describe('RosterDevices pairing', () => {
   // Every `auth` from an unknown device with a pairing-shaped token asks to spend it: a stream of
-  // made-up ones must neither rewrite the file nor hold its lock, which `perch pair` needs.
+  // made-up ones must neither rewrite the file nor hold its lock, which `tarfa pair` needs.
   it('does not touch the pairing file for a secret it never issued', async () => {
     const { devices, pairings } = setup();
     expect(await devices.redeemPairing('u'.repeat(43), 'phone')).toEqual({ redeemed: false });

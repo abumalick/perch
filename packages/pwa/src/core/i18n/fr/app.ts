@@ -28,7 +28,7 @@ export const app: Messages['app'] = {
   },
   deviceNotice: {
     newDevice: (machine, name, id) => `Nouvel appareil associé à ${machine} : ${name} (${id})`,
-    notYou: (id) => `Ce n’est pas vous ? Révoquez-le sur cette machine : perch devices revoke ${id}`,
+    notYou: (id) => `Ce n’est pas vous ? Révoquez-le sur cette machine : tarfa devices revoke ${id}`,
   },
   copyOffer: {
     label: 'Copier depuis le terminal',

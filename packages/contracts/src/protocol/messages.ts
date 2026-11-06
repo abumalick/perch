@@ -157,7 +157,7 @@ export const agentMessageSchema = z.discriminatedUnion('type', [
   // installed (`claude`, `codex`) and the custom commands launched here before. Additive like
   // `roots`: an older agent never sends it and the PWA keeps its fixed list.
   z.object({ type: z.literal('launchers'), detected: z.array(z.string()).default([]), custom: z.array(z.string()).default([]) }),
-  // The agent machine's dictation vocabulary (~/.perch/keyterms.txt), passed to ElevenLabs as
+  // The agent machine's dictation vocabulary (~/.tarfa/keyterms.txt), passed to ElevenLabs as
   // keyterms so jargon transcribes correctly. Additive like `roots`: older agents omit it,
   // so it defaults to [] instead of letting the strict client parser drop the whole message.
   z.object({ type: z.literal('keyterms'), keyterms: z.array(z.string()).default([]) }),

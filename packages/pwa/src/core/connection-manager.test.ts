@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { ConnectionManager } from './connection-manager';
 import { WorkspaceAggregator } from './workspace-aggregator';
 import type { CloseInfo, Socket } from './ports/socket';
-import type { AgentMessage } from '@perch/contracts';
-import { generateAgentKeys } from '@perch/secure-channel';
+import type { AgentMessage } from '@tarfa/contracts';
+import { generateAgentKeys } from '@tarfa/secure-channel';
 
 function fakeSocket() {
   let onMessage: (d: string) => void = () => undefined;
@@ -162,7 +162,7 @@ describe('ConnectionManager keyed machines', () => {
     h.secureFakes[0]!.fireClose({ code: 4403, reason: 'enrolment refused' });
     h.secureFakes[1]!.fireClose({ code: 4403, reason: 'enrolment refused' });
     expect(h.diagnostics).toEqual([
-      ['mini', 'Pairing refused: the code has expired, was already used, or is not valid for this machine — run `perch pair` on Mini for a new one'],
+      ['mini', 'Pairing refused: the code has expired, was already used, or is not valid for this machine — run `tarfa pair` on Mini for a new one'],
       ['mac', 'Mac refused the token — check the token in this entry'],
     ]);
   });

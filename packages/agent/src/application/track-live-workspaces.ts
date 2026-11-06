@@ -24,7 +24,7 @@ export interface TrackLiveWorkspacesDeps {
 // usually the agent with it, so nothing saw them go. The snapshot's server identity is what tells
 // that apart from an ordinary exit: one workspace ending leaves the same server running, so only
 // a changed (or absent) server makes the missing ones lost. A session on the new server without
-// its `@perch_command` is lost too: tmux-resurrect brings the name back as a bare shell, which
+// its `@tarfa_command` is lost too: tmux-resurrect brings the name back as a bare shell, which
 // `reconcileParked` then kills in favour of the record.
 //
 // Returns the ids it parked. Runs at startup before `reconcileParked` and `status.prune`, and on

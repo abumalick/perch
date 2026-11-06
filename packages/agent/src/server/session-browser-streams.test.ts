@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { AgentMessage } from '@perch/contracts';
+import type { AgentMessage } from '@tarfa/contracts';
 import type { BrowserStreamSocket } from '../ports/browser-stream-port';
 import { MAX_BROWSER_STREAMS, SessionBrowserStreams } from './session-browser-streams';
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Perch hook for Claude Code and Codex: notify the local agent of an attention event.
-# Usage: perch-hook.sh <Event> <port> [agent]   (the CLI's JSON payload arrives on stdin)
+# Tarfa hook for Claude Code and Codex: notify the local agent of an attention event.
+# Usage: tarfa-hook.sh <Event> <port> [agent]   (the CLI's JSON payload arrives on stdin)
 # `agent` names a CLI other than Claude Code (`codex`). It is spliced into the JSON body without
 # escaping, so only a plain lowercase name is passed on.
 event="$1"
@@ -44,7 +44,7 @@ else
   exit 0
 fi
 token=""
-[ -r "${HOME}/.perch/token" ] && token="$(cat "${HOME}/.perch/token")"
+[ -r "${HOME}/.tarfa/token" ] && token="$(cat "${HOME}/.tarfa/token")"
 # Every local user can read a process's argv, so the secret goes in as a header file and the body
 # on stdin: `printf` is a shell builtin and puts neither on any command line.
 printf '{%s,"event":"%s"%s,"claude":%s}' "${target}" "${event}" "${agent_field}" "${payload}" |

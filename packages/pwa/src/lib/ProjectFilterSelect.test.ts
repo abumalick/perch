@@ -5,7 +5,7 @@ import type { ProjectFolder } from '../core/project-folders';
 import { setLanguage } from '../i18n.svelte';
 
 const folders: ProjectFolder[] = [
-  { key: 'perch', label: 'perch', count: 3, depth: 0 },
+  { key: 'tarfa', label: 'tarfa', count: 3, depth: 0 },
   { key: 'other', label: 'other', count: 1, depth: 0 },
 ];
 
@@ -70,12 +70,12 @@ describe('ProjectFilterSelect', () => {
 
   it('summarises the selection with the verb of the active mode', () => {
     const { unmount } = render(ProjectFilterSelect, {
-      props: props({ selected: new Set(['perch']), mode: 'only' }),
+      props: props({ selected: new Set(['tarfa']), mode: 'only' }),
     });
-    expect(screen.getByLabelText(/filter by project/i).textContent).toContain('Only perch');
+    expect(screen.getByLabelText(/filter by project/i).textContent).toContain('Only tarfa');
     unmount();
-    render(ProjectFilterSelect, { props: props({ selected: new Set(['perch']), mode: 'hide' }) });
-    expect(screen.getByLabelText(/filter by project/i).textContent).toContain('Hiding perch');
+    render(ProjectFilterSelect, { props: props({ selected: new Set(['tarfa']), mode: 'hide' }) });
+    expect(screen.getByLabelText(/filter by project/i).textContent).toContain('Hiding tarfa');
   });
 
   it('summarises an empty selection as all projects in either mode', () => {
@@ -85,7 +85,7 @@ describe('ProjectFilterSelect', () => {
 
   it('summarises several hidden projects as a count', () => {
     render(ProjectFilterSelect, {
-      props: props({ selected: new Set(['perch', 'other']), mode: 'hide' }),
+      props: props({ selected: new Set(['tarfa', 'other']), mode: 'hide' }),
     });
     expect(screen.getByLabelText(/filter by project/i).textContent).toContain('Hiding 2 projects');
   });
@@ -109,8 +109,8 @@ describe('ProjectFilterSelect', () => {
     const ontoggle = vi.fn();
     render(ProjectFilterSelect, { props: props({ ontoggle }) });
     await fireEvent.click(screen.getByLabelText(/filter by project/i));
-    await fireEvent.click(screen.getByRole('checkbox', { name: /perch/i }));
-    expect(ontoggle).toHaveBeenCalledWith('perch');
+    await fireEvent.click(screen.getByRole('checkbox', { name: /tarfa/i }));
+    expect(ontoggle).toHaveBeenCalledWith('tarfa');
     expect(screen.getByRole('button', { name: /close project filter/i })).toBeTruthy();
   });
 
@@ -121,7 +121,7 @@ describe('ProjectFilterSelect', () => {
 
   it('clears the selection from the closed control without opening the menu', async () => {
     const onclear = vi.fn();
-    render(ProjectFilterSelect, { props: props({ selected: new Set(['perch']), onclear }) });
+    render(ProjectFilterSelect, { props: props({ selected: new Set(['tarfa']), onclear }) });
     await fireEvent.click(screen.getByRole('button', { name: /clear project filter/i }));
     expect(onclear).toHaveBeenCalledOnce();
     expect(screen.queryByRole('group', { name: /projects/i })).toBeNull();
@@ -129,7 +129,7 @@ describe('ProjectFilterSelect', () => {
 
   it('stays visible with a single folder while a selection is active', () => {
     render(ProjectFilterSelect, {
-      props: props({ folders: [folders[0]], selected: new Set(['perch']) }),
+      props: props({ folders: [folders[0]], selected: new Set(['tarfa']) }),
     });
     expect(screen.getByRole('button', { name: /clear project filter/i })).toBeTruthy();
   });

@@ -1,6 +1,6 @@
 // Web Share Target handler, imported into the Workbox-generated service worker
 // (see vite.config.ts workbox.importScripts). When the OS "Share" sheet sends a file
-// to Perch, Android POSTs a multipart body to /share-target (declared in the manifest's
+// to Tarfa, Android POSTs a multipart body to /share-target (declared in the manifest's
 // share_target). We stash the bytes in the Cache API and redirect to the app, which
 // reads them once at boot (core/shared-file.ts + store.loadSharedFile) and offers to
 // attach the file to a session.

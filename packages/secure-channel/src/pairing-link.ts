@@ -14,7 +14,7 @@ export interface PairingLink {
   secret: string;
   // The machine's name, which the new entry is called by.
   name: string;
-  // Where relative New-workspace paths resolve on that machine: PERCH_DEFAULT_PATH, when set.
+  // Where relative New-workspace paths resolve on that machine: TARFA_DEFAULT_PATH, when set.
   defaultPath?: string;
 }
 

@@ -3,16 +3,16 @@ import { parseGithubRemote, GitRepoRemote } from './git-repo-remote';
 
 describe('parseGithubRemote', () => {
   it('parses an scp-like SSH remote', () => {
-    expect(parseGithubRemote('git@github.com:someuser/perch.git')).toEqual({
+    expect(parseGithubRemote('git@github.com:someuser/tarfa.git')).toEqual({
       owner: 'someuser',
-      repo: 'perch',
+      repo: 'tarfa',
     });
   });
 
   it('parses an ssh:// URL remote', () => {
-    expect(parseGithubRemote('ssh://git@github.com/someuser/perch.git')).toEqual({
+    expect(parseGithubRemote('ssh://git@github.com/someuser/tarfa.git')).toEqual({
       owner: 'someuser',
-      repo: 'perch',
+      repo: 'tarfa',
     });
   });
 
@@ -101,11 +101,11 @@ describe('GitRepoRemote', () => {
   it('resolves owner type once per owner across repos that share it', async () => {
     const run = vi
       .fn()
-      .mockResolvedValueOnce('git@github.com:someuser/perch.git')
+      .mockResolvedValueOnce('git@github.com:someuser/tarfa.git')
       .mockResolvedValueOnce('git@github.com:someuser/foo-app.git');
     const resolveType = vi.fn().mockResolvedValue('user');
     const remote = new GitRepoRemote(run, resolveType);
-    await remote.getGithubRepo('/p/perch');
+    await remote.getGithubRepo('/p/tarfa');
     await remote.getGithubRepo('/p/foo');
     expect(resolveType).toHaveBeenCalledTimes(1);
   });

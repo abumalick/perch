@@ -1,4 +1,4 @@
-import { imageMediaType, pdfMediaType, audioMediaType } from '@perch/contracts';
+import { imageMediaType, pdfMediaType, audioMediaType } from '@tarfa/contracts';
 import type { FileReaderPort } from '../ports/file-reader-port';
 import { pathWithinRoots } from './path-within-roots';
 

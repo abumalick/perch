@@ -2,7 +2,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { ClaudeVoice } from './application/claude-voice';
 import { AplayVoicePlayer, FileClaudeSettings, LOOPBACK_DEVICE, aplayArgs } from './infrastructure/aplay-voice-player';
-import { loadConfig, assertServerConfig, configWarnings } from './infrastructure/config';
+import { loadConfig, assertServerConfig, configWarnings, withLegacyEnv } from './infrastructure/config';
+import { migrateStateDir } from './infrastructure/state-dir';
 import { systemClock, systemPathResolver } from './infrastructure/system';
 import { ShortWorkspaceIds } from './application/short-workspace-ids';
 import { TmuxAdapter } from './infrastructure/tmux-adapter';
@@ -25,8 +26,7 @@ import { CodexAppServer } from './infrastructure/codex-app-server';
 import { CodexDelivery } from './infrastructure/codex-delivery';
 import { FileWorkspaceLogStore } from './infrastructure/file-workspace-log-store';
 import { FileParkedStore } from './infrastructure/file-parked-store';
-import { reconcileParked } from './application/reconcile-parked';
-import { trackLiveWorkspaces } from './application/track-live-workspaces';
+import { reconcileAtStartup } from './application/startup-reconcile';
 import { FileLiveSnapshotStore } from './infrastructure/file-live-snapshot-store';
 import { FsProjectLister } from './infrastructure/fs-project-lister';
 import { FsFileReader } from './infrastructure/fs-file-reader';
@@ -55,55 +55,42 @@ const ROSTER_POLL_MS = 3000;
 
 async function main(): Promise<void> {
   ensureUtf8Locale(process.env);
-  const config = loadConfig(process.env, homedir());
+  // Before anything reads the state: ~/.perch becomes ~/.tarfa, and the agent key its new name.
+  if ((await migrateStateDir(homedir())) === 'moved') {
+    process.stdout.write(`tarfa agent: moved ~/.perch to ~/.tarfa (~/.perch is now a link to it)\n`);
+  }
+  const env = withLegacyEnv(process.env);
+  const config = loadConfig(env, homedir());
   assertServerConfig(config);
   for (const warning of configWarnings(process.env)) process.stderr.write(`${warning}\n`);
   // Refused before anything is served: a secret another user can read is a leaked secret.
-  await securePrivateDir(join(homedir(), '.perch'));
+  await securePrivateDir(config.stateDir);
   await assertPrivateFiles([
     config.agentKeyPath,
     config.devicesPath,
     config.pairingPath,
-    join(homedir(), '.perch', 'token'),
-    // It holds PERCH_TOKEN, which enrols a phone.
-    await locateAgentEnv(process.env),
+    join(config.stateDir, 'token'),
+    // It holds TARFA_TOKEN, which enrols a phone.
+    await locateAgentEnv(env),
   ]);
-  const hookToken = await writeHookToken(homedir());
+  const hookToken = await writeHookToken(config.stateDir);
   const tmux = new TmuxAdapter();
   const status = new FileStatusStore(config.statusStorePath);
   const parked = new FileParkedStore(config.parkedStorePath);
   const liveSnapshot = new FileLiveSnapshotStore(config.liveSnapshotPath);
   const workspaceLog = new FileWorkspaceLogStore(config.workspaceLogPath);
   const claudeSessions = new FileClaudeSessionsStore(config.claudeSessionsDir);
-  // Parks the workspaces lost with the tmux server (a reboot, a stray `pkill`) while their
-  // status entries, and so their session ids, still exist. Before reconcileParked, which then
-  // kills any bare shell tmux-resurrect put back under a now-parked id.
-  // Best-effort: failing to recover must never keep the agent from starting.
-  try {
-    const recovered = await trackLiveWorkspaces({
-      tmux,
-      snapshot: liveSnapshot,
-      parked,
-      status,
-      workspaceLog,
-      clock: systemClock,
-      machineId: config.machineId,
-      sessionPrefix: config.sessionPrefix,
-    });
-    if (recovered.length > 0) {
-      process.stdout.write(`perch agent: parked ${recovered.length} workspace(s) lost with the tmux server\n`);
-    }
-  } catch (err) {
-    process.stderr.write(`perch agent: could not check for lost workspaces: ${err instanceof Error ? err.message : String(err)}\n`);
-  }
-  // Kill any tmux session tmux-continuum resurrected under a parked workspace's id, so the
-  // parked record stays the single source of truth. Must run before prune/list below.
-  await reconcileParked({ parked, tmux });
-  const sessions = await tmux.listSessions(config.sessionPrefix);
-  const parkedIds = (await parked.list()).map((p) => p.id);
-  // Parked workspaces have no live session, so their status entries must be preserved
-  // explicitly or prune would drop them.
-  status.prune([...sessions.map((s) => s.name), ...parkedIds]);
+  await reconcileAtStartup({
+    tmux,
+    snapshot: liveSnapshot,
+    parked,
+    status,
+    workspaceLog,
+    clock: systemClock,
+    machineId: config.machineId,
+    sessionPrefix: config.sessionPrefix,
+    log: (line) => process.stdout.write(`${line}\n`),
+  });
   const server = new WsServer({
     config,
     hookToken,
@@ -152,8 +139,8 @@ async function main(): Promise<void> {
         : undefined,
   });
   await server.start();
-  process.stdout.write(`perch agent: hooks on 127.0.0.1:${server.address().port}\n`);
-  // The agent key exists from the first start, so `perch pair` works on a fresh machine.
+  process.stdout.write(`tarfa agent: hooks on 127.0.0.1:${server.address().port}\n`);
+  // The agent key exists from the first start, so `tarfa pair` works on a fresh machine.
   const keys = await loadOrCreateAgentKeys(config.agentKeyPath);
   const log = (message: string) => process.stdout.write(`${message}\n`);
   const gate = startDeviceGate({
@@ -175,11 +162,11 @@ async function main(): Promise<void> {
       limiter: new DiskReadLimiter(() => Date.now()),
       log,
     });
-    log(`perch agent: phones on 127.0.0.1:${phones.port}`);
-    if (config.phoneAddresses.length > 0) log(`perch agent: phone addresses ${config.phoneAddresses.join(', ')}`);
+    log(`tarfa agent: phones on 127.0.0.1:${phones.port}`);
+    if (config.phoneAddresses.length > 0) log(`tarfa agent: phone addresses ${config.phoneAddresses.join(', ')}`);
   } catch (err) {
     process.stderr.write(
-      `perch agent: no phone port: 127.0.0.1:${config.phonePort} ${err instanceof Error ? err.message : String(err)}; set PERCH_PHONE_PORT in deploy/agent.env\n`,
+      `tarfa agent: no phone port: 127.0.0.1:${config.phonePort} ${err instanceof Error ? err.message : String(err)}; set TARFA_PHONE_PORT in deploy/agent.env\n`,
     );
   }
 }

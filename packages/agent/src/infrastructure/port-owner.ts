@@ -38,7 +38,8 @@ async function isAgent(pid: number, platform: NodeJS.Platform): Promise<boolean>
       const { stdout } = await exec('ps', ['-o', 'command=', '-p', String(pid)], { env: childEnv() });
       return /\bsrc\/serve\.ts\b/.test(stdout);
     }
-    return (await readFile(`/proc/${pid}/cgroup`, 'utf8')).includes('/perch-agent.service');
+    // The unit had the old name until setup swaps it.
+    return /\/(tarfa|perch)-agent\.service\b/.test(await readFile(`/proc/${pid}/cgroup`, 'utf8'));
   } catch {
     return false;
   }

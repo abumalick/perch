@@ -15,7 +15,7 @@ const REPO = '/home/u/workspace/perch';
 const HOST = 'dev.example.ts.net';
 const TEMPLATE = [
   '[Unit]',
-  'Description=Perch agent',
+  'Description=Tarfa agent',
   '',
   '[Service]',
   'ExecStart=/usr/bin/env bash REPO_PATH/deploy/run-agent.sh',
@@ -58,6 +58,8 @@ function fresh(over: Partial<SetupState> = {}): SetupState {
     hasKey: false,
     roster: 'absent',
     hooksCurrent: false,
+    legacyService: false,
+    stateDir: 'moved',
     phonePortOwner: 'free',
     hooksPortOwner: 'free',
     tailscale: TAILSCALE,
@@ -96,11 +98,74 @@ function applied(f: SetupFlags, s: SetupState): SetupState {
     if (step.kind === 'install-hooks') next = { ...next, hooksCurrent: true };
     if (step.kind === 'tailscale-serve') next = { ...next, serve: SERVED };
     if (step.kind === 'restart') next = { ...next, phonePortOwner: 'ours', hooksPortOwner: 'ours' };
+    if (step.kind === 'move-state') next = { ...next, stateDir: 'moved' };
+    if (step.kind === 'remove-legacy-service') next = { ...next, legacyService: false };
   }
   return next;
 }
 
 describe('planSetup', () => {
+  describe('a machine set up before the rename', () => {
+    const OLD_ENV = 'PERCH_TOKEN=keep-me\nPERCH_MACHINE_ID=dev\nexport PERCH_PROJECT_ROOTS=/home/u/workspace:/home/u/other\nPERCH_PHONE_PORT=8797\n# PERCH_STATS=off\n';
+    const old = () =>
+      fresh({
+        envText: OLD_ENV,
+        hasKey: true,
+        roster: 'off',
+        hooksCurrent: false,
+        legacyService: true,
+        stateDir: 'legacy',
+        service: { kind: 'systemd', template: TEMPLATE, installed: null, enabled: false },
+        phonePortOwner: 'ours',
+        hooksPortOwner: 'ours',
+        serve: SERVED,
+      });
+
+    it('stops the old service, moves ~/.perch, then installs and starts the new one before any step that can fail, and removes the old one last', () => {
+      expect(plan(flags(), old()).map((s) => s.kind)).toEqual([
+        'stop-legacy-service',
+        'move-state',
+        'write-env',
+        'install-unit',
+        'restart',
+        'check-listener',
+        'install-hooks',
+        'remove-legacy-service',
+      ]);
+    });
+
+    it('renames agent.env to TARFA_ names, keeping the token and every other byte', () => {
+      const env = plan(flags(), old()).find((s) => s.kind === 'write-env');
+      expect(env).toMatchObject({
+        text: "TARFA_TOKEN=keep-me\nTARFA_MACHINE_ID=dev\nexport TARFA_PROJECT_ROOTS=/home/u/workspace:/home/u/other\nTARFA_PHONE_PORT=8797\n# PERCH_STATS=off\nTARFA_PHONE_ADDRESSES='wss://dev.example.ts.net:10000/abu'\nTARFA_PWA_ORIGIN='https://tarfa.app'\n",
+      });
+      expect(env && 'changes' in env ? env.changes.slice(0, 4) : []).toEqual([
+        'PERCH_TOKEN renamed TARFA_TOKEN',
+        'PERCH_MACHINE_ID renamed TARFA_MACHINE_ID',
+        'PERCH_PROJECT_ROOTS renamed TARFA_PROJECT_ROOTS',
+        'PERCH_PHONE_PORT renamed TARFA_PHONE_PORT',
+      ]);
+    });
+
+    it('drops a PERCH_ line its TARFA_ twin overrides', () => {
+      const env = plan(flags(), fresh({ ...old(), envText: `${OLD_ENV}TARFA_MACHINE_ID=dev\n` })).find((s) => s.kind === 'write-env');
+      expect(env && 'text' in env ? env.text.match(/MACHINE_ID/g) : null).toEqual(['MACHINE_ID']);
+    });
+
+    it('refuses before stopping anything when both ~/.perch and ~/.tarfa hold state', () => {
+      expect(errorOf(flags(), fresh({ ...old(), stateDir: 'conflict' }))).toMatch(/will not merge them, so setup stops before touching the service/);
+    });
+
+    it('renames every line of a repeated PERCH_ name, so the last still wins', () => {
+      const env = plan(flags(), fresh({ ...old(), envText: `${OLD_ENV}PERCH_MACHINE_ID=box\n` })).find((s) => s.kind === 'write-env');
+      expect(env && 'text' in env ? env.text.match(/^TARFA_MACHINE_ID=.*$/gm) : null).toEqual(["TARFA_MACHINE_ID='dev'", 'TARFA_MACHINE_ID=box']);
+    });
+
+    it('plans nothing once applied', () => {
+      expect(plan(flags(), applied(flags(), old()))).toEqual([]);
+    });
+  });
+
   it('sets a fresh machine up in order, the roster written before the service first starts', () => {
     const steps = plan(flags(), fresh());
     expect(steps.map((s) => s.kind)).toEqual([
@@ -123,13 +188,13 @@ describe('planSetup', () => {
     const env = plan(flags({ defaultPath: '/home/u/workspace' }), fresh()).find((s) => s.kind === 'write-env');
     const values = parseEnvFile(env!.kind === 'write-env' ? env!.text : '');
     expect(values).toMatchObject({
-      PERCH_TOKEN: 'generated-token',
-      PERCH_MACHINE_ID: 'dev',
-      PERCH_PROJECT_ROOTS: '/home/u/workspace:/home/u/other',
-      PERCH_DEFAULT_PATH: '/home/u/workspace',
-      PERCH_PHONE_PORT: '8797',
-      PERCH_PHONE_ADDRESSES: `wss://${HOST}:10000/abu`,
-      PERCH_PWA_ORIGIN: 'https://tarfa.app',
+      TARFA_TOKEN: 'generated-token',
+      TARFA_MACHINE_ID: 'dev',
+      TARFA_PROJECT_ROOTS: '/home/u/workspace:/home/u/other',
+      TARFA_DEFAULT_PATH: '/home/u/workspace',
+      TARFA_PHONE_PORT: '8797',
+      TARFA_PHONE_ADDRESSES: `wss://${HOST}:10000/abu`,
+      TARFA_PWA_ORIGIN: 'https://tarfa.app',
     });
   });
 
@@ -144,17 +209,17 @@ describe('planSetup', () => {
   });
 
   it('keeps an existing token, other lines and an existing PWA origin', () => {
-    const envText = 'PERCH_TOKEN=old\n# a comment\nPERCH_MACHINE_ID=dev\nPERCH_PWA_ORIGIN=https://staging.example:8443\nOTHER=1\n';
+    const envText = 'TARFA_TOKEN=old\n# a comment\nTARFA_MACHINE_ID=dev\nTARFA_PWA_ORIGIN=https://staging.example:8443\nOTHER=1\n';
     const env = plan(flags(), fresh({ envText })).find((s) => s.kind === 'write-env');
     const text = env!.kind === 'write-env' ? env!.text : '';
     expect(text).toContain('# a comment\n');
-    expect(parseEnvFile(text)).toMatchObject({ PERCH_TOKEN: 'old', OTHER: '1', PERCH_PWA_ORIGIN: 'https://staging.example:8443' });
+    expect(parseEnvFile(text)).toMatchObject({ TARFA_TOKEN: 'old', OTHER: '1', TARFA_PWA_ORIGIN: 'https://staging.example:8443' });
   });
 
   it('writes the PWA origin when --pwa names one', () => {
-    const envText = 'PERCH_TOKEN=old\nPERCH_PWA_ORIGIN=https://staging.example:8443\n';
+    const envText = 'TARFA_TOKEN=old\nTARFA_PWA_ORIGIN=https://staging.example:8443\n';
     const env = plan(flags({ pwa: 'https://self.example' }), fresh({ envText })).find((s) => s.kind === 'write-env');
-    expect(parseEnvFile(env!.kind === 'write-env' ? env!.text : '').PERCH_PWA_ORIGIN).toBe('https://self.example');
+    expect(parseEnvFile(env!.kind === 'write-env' ? env!.text : '').TARFA_PWA_ORIGIN).toBe('https://self.example');
   });
 
   it('never replaces the agent key or an existing roster', () => {
@@ -206,7 +271,7 @@ describe('planSetup', () => {
 
   it('puts the derived address first, then --address values', () => {
     const env = plan(flags({ addresses: ['wss://proxy.example/abu'] }), fresh()).find((s) => s.kind === 'write-env');
-    expect(parseEnvFile(env!.kind === 'write-env' ? env!.text : '').PERCH_PHONE_ADDRESSES).toBe(
+    expect(parseEnvFile(env!.kind === 'write-env' ? env!.text : '').TARFA_PHONE_ADDRESSES).toBe(
       `wss://${HOST}:10000/abu,wss://proxy.example/abu`,
     );
   });
@@ -228,8 +293,8 @@ describe('planSetup', () => {
     expect(plan(flags(), fresh({ phonePortOwner: 'ours' })).length).toBeGreaterThan(0);
   });
 
-  it('refuses a hooks port another process holds on a machine without PERCH_PORT', () => {
-    expect(errorOf(flags(), fresh({ hooksPortOwner: 'other' }))).toMatch(/PERCH_PORT/);
+  it('refuses a hooks port another process holds on a machine without TARFA_PORT', () => {
+    expect(errorOf(flags(), fresh({ hooksPortOwner: 'other' }))).toMatch(/TARFA_PORT/);
   });
 
   it('prints the operator line for a second user with --tailscale none and a slug', () => {
@@ -266,7 +331,7 @@ describe('planSetup', () => {
     expect(plan({ ...f, tokenEnrolment: 'on' }, fresh({ tailscale: null, roster: 'on' })).map((s) => s.kind)).not.toContain('write-roster');
     expect(plan(flags({ tailscale: 'none', slug: undefined }), fresh({ tailscale: null, roster: 'on' })).map((s) => s.kind)).not.toContain('write-roster');
     expect(plan(f, fresh({ tailscale: null }))).toContainEqual({ kind: 'write-roster', mode: 'off' });
-    const envText = `PERCH_TOKEN=t\nPERCH_PHONE_ADDRESSES=wss://${HOST}/bob\n`;
+    const envText = `TARFA_TOKEN=t\nTARFA_PHONE_ADDRESSES=wss://${HOST}/bob\n`;
     expect(errorOf(flags({ tailscale: 'none', slug: undefined }), fresh({ tailscale: null, roster: 'on', envText }))).toMatch(/--token-enrolment off/);
   });
 
@@ -345,7 +410,7 @@ describe('planSetup', () => {
 
     it('warns when a public port would be published with token enrolment on', () => {
       const result = planSetup(flags({ tokenEnrolment: 'on' }), fresh({ roster: 'on' }));
-      expect(result).toMatchObject({ checks: expect.arrayContaining([expect.stringMatching(/perch devices enrolment off/)]) });
+      expect(result).toMatchObject({ checks: expect.arrayContaining([expect.stringMatching(/tarfa devices enrolment off/)]) });
       expect(planSetup(flags(), fresh({ roster: 'off' }))).not.toMatchObject({ checks: expect.arrayContaining([expect.stringMatching(/warning/)]) });
     });
 

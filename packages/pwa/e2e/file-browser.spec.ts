@@ -19,7 +19,7 @@ test('open browser → descend → up → back to terminal', async ({ page }) =>
 
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   // Open the file browser from the terminal header. demo's projectPath is /home/u/workspace/demo.
   await page.getByRole('button', { name: /files/i }).click();
@@ -43,7 +43,7 @@ test('open browser → descend → up → back to terminal', async ({ page }) =>
 
   // Return to the terminal.
   await page.getByRole('button', { name: /back/i }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 });
 
 test('open an image → image viewer renders it', async ({ page }) => {
@@ -51,7 +51,7 @@ test('open an image → image viewer renders it', async ({ page }) => {
 
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await page.getByRole('button', { name: /files/i }).click();
   await page.getByRole('button', { name: /logo\.png/ }).click();
@@ -73,7 +73,7 @@ test('open a markdown file → rendered prose on a phone, with a raw toggle', as
 
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await openWorkspaceMenu(page);
   await page.getByRole('button', { name: /files/i }).click();
@@ -99,7 +99,7 @@ test('image viewer fills real height on a phone-width viewport', async ({ page }
 
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await openWorkspaceMenu(page);
   await page.getByRole('button', { name: /files/i }).click();
@@ -115,7 +115,7 @@ test('open an audio file → audio viewer mounts an <audio> player with a blob U
 
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await page.getByRole('button', { name: /files/i }).click();
   await page.getByRole('button', { name: /clip\.mp3/ }).click();
@@ -133,7 +133,7 @@ test('audio player steps to the next/previous track by filename', async ({ page 
 
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await page.getByRole('button', { name: /files/i }).click();
   // Audio files sorted by name: clip.mp3, song-a.mp3, song-b.mp3 → clip is 1 / 3.
@@ -157,7 +157,7 @@ test('open a pdf → pdf viewer mounts an iframe with a blob URL, sized on a pho
 
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   await openWorkspaceMenu(page);
   await page.getByRole('button', { name: /files/i }).click();

@@ -8,11 +8,11 @@ import { TmuxAdapter } from './tmux-adapter';
 import { unparkWorkspace } from '../application/unpark-workspace';
 
 // Runs only against a tmux built with the OSC 7501 patch (deploy/tmux-osc7501): set
-// PERCH_TMUX_OSC to its binary. A stock tmux keeps no program status, so without it this skips.
+// TARFA_TMUX_OSC to its binary. A stock tmux keeps no program status, so without it this skips.
 //
 // ISOLATION: every tmux call carries `-S <sandbox socket>`, which beats $TMUX, and the server
 // gets `-f /dev/null`, so neither the user's server nor their plugins are ever reached.
-const BINARY = process.env.PERCH_TMUX_OSC;
+const BINARY = process.env.TARFA_TMUX_OSC;
 const exec = promisify(execFile);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '.tmp');
 

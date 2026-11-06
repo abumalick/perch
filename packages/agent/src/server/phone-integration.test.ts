@@ -25,8 +25,8 @@ import {
   readHandshakeFrame,
   type AgentKeys,
   type DeviceKeys,
-} from '@perch/secure-channel';
-import { PROTOCOL_VERSION } from '@perch/contracts';
+} from '@tarfa/secure-channel';
+import { PROTOCOL_VERSION } from '@tarfa/contracts';
 import { WsServer } from './ws-server';
 import { startDeviceGate, type AgentDeviceGate } from './device-gate-wiring';
 import { startPhoneListener } from '../infrastructure/phone-listener';
@@ -110,7 +110,7 @@ interface StackOptions {
 async function startStack(opts: StackOptions = {}): Promise<Stack> {
   const home = await mkdtemp(join(tmpdir(), 'perch-phone-it-'));
   const keys = generateAgentKeys();
-  const config = loadConfig({ PERCH_MACHINE_ID: 'it', PERCH_TOKEN: TOKEN }, home);
+  const config = loadConfig({ TARFA_MACHINE_ID: 'it', TARFA_TOKEN: TOKEN }, home);
   const server = serverFor(config);
   const store = new FileDeviceStore(config.devicesPath);
   const gate = startDeviceGate({
@@ -230,7 +230,7 @@ async function phone(stack: Stack, device: DeviceKeys, path = '/', hello: 'plain
 
 async function newPairing(stack: Stack): Promise<string> {
   const secret = b64url.encode(randomBytes(32));
-  await new FilePairingStore(join(stack.home, '.perch', 'pairing.json')).update((list) => addPairing(list, secret, new Date()));
+  await new FilePairingStore(join(stack.home, '.tarfa', 'pairing.json')).update((list) => addPairing(list, secret, new Date()));
   return secret;
 }
 

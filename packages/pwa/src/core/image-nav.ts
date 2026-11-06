@@ -1,6 +1,6 @@
 // Navigation among the image files of a single folder. Pure; the folder's file list
 // (dirEntries.files) is already in memory when the viewer is open.
-import { imageMediaType } from '@perch/contracts';
+import { imageMediaType } from '@tarfa/contracts';
 
 export function imageFiles(files: string[]): string[] {
   return files.filter((f) => imageMediaType(f) !== '');

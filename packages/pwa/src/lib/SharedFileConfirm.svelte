@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { PerchStore } from '../store.svelte';
+  import type { TarfaStore } from '../store.svelte';
   import { msg } from '../i18n.svelte';
 
-  let { store }: { store: PerchStore } = $props();
+  let { store }: { store: TarfaStore } = $props();
 
   // A shared file is attached on this tap only: the share target cannot tell the OS share sheet
   // from a page that hides its referrer, so the user sees what would be sent, and where, first.

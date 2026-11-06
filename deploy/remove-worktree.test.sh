@@ -11,7 +11,7 @@ set -euo pipefail
 for _v in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "${_v}"; done
 
 # Flip the live symlinks without restarting the (non-existent, in this sandbox) agent.
-export PERCH_SKIP_RESTART=1
+export TARFA_SKIP_RESTART=1
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "${HERE}/.." && pwd)"

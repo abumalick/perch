@@ -3,9 +3,9 @@ export interface TmuxSessionInfo {
   startPath: string;
   command: string;
   createdAt: number;
-  // The orchestrator workspace this one was spawned for (`@perch_parent`); absent when none.
+  // The orchestrator workspace this one was spawned for (`@tarfa_parent`); absent when none.
   parent?: string;
-  // The Codex app-server thread the pane's `codex resume` is bound to (`@perch_codex_thread`).
+  // The Codex app-server thread the pane's `codex resume` is bound to (`@tarfa_codex_thread`).
   codexThread?: string;
   // The pane's OSC 7501 status (Program Status Protocol) and when tmux saw it change. Only a
   // tmux patched to keep it reports one; absent otherwise, and while the program reports nothing.
@@ -21,12 +21,12 @@ export class DuplicateSessionError extends Error {
 }
 
 export interface TmuxPort {
-  // Perch's sessions: every one it started (it sets `@perch_command` on each), and any whose
+  // Tarfa's sessions: every one it started (it sets `@tarfa_command` on each), and any whose
   // name has the old id prefix, which a tmux-resurrect bare shell keeps without the marker.
   listSessions(prefix: string): Promise<TmuxSessionInfo[]>;
-  // `storedCommand` is what `@perch_command` records when it differs from the command launched
+  // `storedCommand` is what `@tarfa_command` records when it differs from the command launched
   // (a spawn launches with its brief, but unpark must resume without it). `codexThread` is
-  // recorded as `@perch_codex_thread`.
+  // recorded as `@tarfa_codex_thread`.
   createSession(input: { name: string; cwd: string; command: string; parent?: string; storedCommand?: string; codexThread?: string }): Promise<void>;
   killSession(name: string): Promise<void>;
   hasSession(name: string): Promise<boolean>;
@@ -43,7 +43,7 @@ export interface TmuxPort {
   // so Claude Code's file/doc links reach the PWA as dead plain text. Optional because it
   // is an additive capability — an adapter that omits it just yields non-clickable links.
   ensureHyperlinks?(): Promise<void>;
-  // The CLI's additions (`perch spawn` / `peek` / `--child`), optional for the same reason.
+  // The CLI's additions (`tarfa spawn` / `peek` / `--child`), optional for the same reason.
   setPaneTitle?(name: string, title: string): Promise<void>;
   // Whether the server can stop a pane's program from setting its title (`allow-set-title`,
   // tmux 3.5+), and doing so for one session's pane. Optional for the same reason.
@@ -57,4 +57,7 @@ export interface TmuxPort {
   pidOfPane?(paneId: string): Promise<number | null>;
   // The id (`%N`) of the session's first pane, or null when the session is gone.
   firstPaneId?(name: string): Promise<string | null>;
+  // Sets each `@tarfa_*` option from the `@perch_*` an agent from before the rename set, on the
+  // sessions that have only the old one; returns how many it set. Optional for the same reason.
+  retagLegacyOptions?(): Promise<number>;
 }

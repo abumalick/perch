@@ -67,9 +67,9 @@ describe('OpenRouterTranscriber', () => {
 
   it('appends the vocabulary to the prompt when there is one', async () => {
     const fetchFn = vi.fn().mockResolvedValue(reply('ok'));
-    await transcriber(fetchFn, { keyterms: ['Perch', 'pnpm'] }).transcribe(audio);
+    await transcriber(fetchFn, { keyterms: ['Tarfa', 'pnpm'] }).transcribe(audio);
     expect(sent(fetchFn).messages[0].content).toBe(
-      'Clean it up.\n\nVocabulary the speaker may use (spell these exactly): Perch, pnpm',
+      'Clean it up.\n\nVocabulary the speaker may use (spell these exactly): Tarfa, pnpm',
     );
   });
 

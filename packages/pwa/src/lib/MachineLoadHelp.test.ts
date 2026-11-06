@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import MachineLoadHelp from './MachineLoadHelp.svelte';
 import { describeLoad } from '../core/machine-load';
-import type { MachineStats } from '@perch/contracts';
+import type { MachineStats } from '@tarfa/contracts';
 import { setLanguage } from '../i18n.svelte';
 
 const stats: MachineStats = {

@@ -48,7 +48,7 @@ const RELATION_LABEL: Record<Relation, string> = {
 // spaces and a fullwidth bracket, so the match does too; `[^\S\r\n]` keeps it from reaching back
 // across a blank line.
 function quoteHeaderLines(body: string): string {
-  return body.replace(/^([^\S\r\n]*[\[［]perch message)/gimu, '> $1');
+  return body.replace(/^([^\S\r\n]*[\[［](?:perch|tarfa) message)/gimu, '> $1');
 }
 
 export function formatAgentMessage(m: {
@@ -63,7 +63,7 @@ export function formatAgentMessage(m: {
   return [
     `[Perch message — from ${RELATION_LABEL[m.relation]}]`,
     `from: ${m.from.id} "${m.from.name}" (${m.from.cli}) · relation: ${m.relation} · machine: ${m.machineId} · msg ${m.msgId}`,
-    `reply with: perch send ${m.from.id} "<your reply>"`,
+    `reply with: tarfa send ${m.from.id} "<your reply>"`,
     '---',
     quoteHeaderLines(m.body),
   ].join('\n');

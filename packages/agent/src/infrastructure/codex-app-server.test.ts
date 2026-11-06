@@ -60,11 +60,11 @@ function daemon(handle: Record<string, Handler>): Promise<void> {
 const server = (timeoutMs?: number) => new CodexAppServer({ socketPath, ...(timeoutMs ? { timeoutMs } : {}) });
 
 describe('CodexAppServer', () => {
-  it('initializes as perch-agent, sends initialized, then the request', async () => {
+  it('initializes as tarfa-agent, sends initialized, then the request', async () => {
     await daemon({ 'thread/loaded/list': (m, ws) => reply(ws, m.id, { data: ['t1'], nextCursor: null }) });
     expect(await server().loadedThreads()).toEqual(['t1']);
     const [init, initialized, request] = received[0]!;
-    expect(init).toMatchObject({ method: 'initialize', params: { clientInfo: { name: 'perch-agent' } } });
+    expect(init).toMatchObject({ method: 'initialize', params: { clientInfo: { name: 'tarfa-agent' } } });
     expect(initialized).toEqual({ method: 'initialized' });
     expect(request).toMatchObject({ method: 'thread/loaded/list' });
   });

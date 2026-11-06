@@ -42,7 +42,7 @@ test.describe('touch (iOS)', () => {
     await page.goto('/');
     await page.getByText('source', { exact: true }).tap();
     await expect(page.getByTestId('header-name')).toHaveText('source');
-    await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY perch-a1b2c3' })).toBeVisible();
+    await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY perch-a1b2c3' })).toBeVisible();
 
     // Coloured, so each id gets its own span to tap.
     agent.sendOutput('perch-a1b2c3', 'unknown \x1b[32mperch-999999\x1b[0m\r\nparked \x1b[32mperch-e7e7e7\x1b[0m\r\nspawned \x1b[32mperch-d4e5f6\x1b[0m\r\n');
@@ -55,6 +55,6 @@ test.describe('touch (iOS)', () => {
 
     await page.locator('.xterm-rows').getByText('perch-d4e5f6', { exact: true }).tap();
     await expect(page.getByTestId('header-name')).toHaveText('target');
-    await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY perch-d4e5f6' })).toBeVisible();
+    await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY perch-d4e5f6' })).toBeVisible();
   });
 });

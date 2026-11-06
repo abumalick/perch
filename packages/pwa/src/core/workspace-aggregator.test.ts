@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { WorkspaceAggregator } from './workspace-aggregator';
-import type { Workspace } from '@perch/contracts';
-import type { WorkspaceStatus } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
+import type { WorkspaceStatus } from '@tarfa/contracts';
 
 function ws(id: string, machineId: string, status: WorkspaceStatus, lastActivityAt = 0): Workspace {
   return {
@@ -19,7 +19,7 @@ function ws(id: string, machineId: string, status: WorkspaceStatus, lastActivity
 describe('WorkspaceAggregator', () => {
   it('stamps workspaces with the connection id, not the agent-sent machineId', () => {
     const agg = new WorkspaceAggregator();
-    // The agent labels workspaces with its own PERCH_MACHINE_ID ("agent-internal"),
+    // The agent labels workspaces with its own TARFA_MACHINE_ID ("agent-internal"),
     // but the PWA connection is keyed "conn1" — routing must use "conn1".
     agg.apply('conn1', { type: 'workspaces', workspaces: [ws('a', 'agent-internal', 'idle')] });
     expect(agg.snapshot()[0]?.machineId).toBe('conn1');

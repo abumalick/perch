@@ -1,4 +1,4 @@
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 
 export type WorkspaceGroup = { workspace: Workspace; children: Workspace[] };
 

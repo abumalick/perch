@@ -15,7 +15,7 @@ trap 'rm -rf "${SB}"' EXIT
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 # Arg 1 is the hook name; stdin carries pre-push's ref lines.
-check() { (cd "${SB}/repo" && PERCH_LEAK_WORDS="${SB}/words.txt" bash "${HERE}/check-leaks.sh" "$@") >"${SB}/out" 2>&1; }
+check() { (cd "${SB}/repo" && TARFA_LEAK_WORDS="${SB}/words.txt" bash "${HERE}/check-leaks.sh" "$@") >"${SB}/out" 2>&1; }
 commit() { git -C "${SB}/repo" -c user.email=t@t -c user.name=test commit -q "$@"; }
 
 git init -q "${SB}/repo"

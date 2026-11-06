@@ -13,7 +13,7 @@ export type CommandRunner = (
 ) => Promise<void>;
 
 // argv array, never a shell string — the URL must not reach a shell. The child gets the
-// agent's env (PERCH_ variables aside): the agent runs as a service, and the child needs the
+// agent's env (TARFA_ variables aside): the agent runs as a service, and the child needs the
 // inherited PATH to locate the agent-browser mise shim. A session's launch env replaces every
 // inherited AGENT_BROWSER_* variable rather than extending them: one the session was created
 // without would still change its config.
@@ -42,9 +42,9 @@ function isHttpUrl(url: string): boolean {
 // and, for a session on a persistent profile, the profile itself — whenever a command's launch
 // config (headed, profile, executable, args, init scripts…) differs from the one the session
 // was created with, and restarts its daemon when the idle timeout or a policy differs. So each
-// command replays the session's own launch env, read from its daemon. Perch cannot impose a
+// command replays the session's own launch env, read from its daemon. Tarfa cannot impose a
 // config of its own (it once set an idle timeout, which nuked every session created without
-// one); a session with no daemon to read (Perch's own `start`) inherits the agent's env.
+// one); a session with no daemon to read (Tarfa's own `start`) inherits the agent's env.
 export class AgentBrowserCli implements BrowserCommandPort {
   constructor(
     private readonly run: CommandRunner = execFileRunner,

@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { IN_BAND_REFUSAL, MAX_FRAME_BYTES, REFUSAL } from '@perch/secure-channel';
+import { IN_BAND_REFUSAL, MAX_FRAME_BYTES, REFUSAL } from '@tarfa/secure-channel';
 import { clientAddress, isFunnelRequest, type PhoneAdmission } from '../application/phone-admission';
 import { limitedDevices, type DiskReadLimiter } from '../application/disk-read-limiter';
 import type { AgentDeviceGate } from '../server/device-gate-wiring';

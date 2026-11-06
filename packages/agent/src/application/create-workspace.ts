@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 import type { TmuxPort } from '../ports/tmux-port';
 import type { RecentStorePort } from '../ports/recent-store-port';
 import type { PathResolver } from '../ports/path-resolver';

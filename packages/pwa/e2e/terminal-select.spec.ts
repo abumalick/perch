@@ -17,12 +17,12 @@ test('select mode shows a natively selectable snapshot of the terminal', async (
   await seedMachine(page, agent);
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   const toggle = page.getByRole('button', { name: /select text/i });
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  const line = page.locator('.snapshot .line').filter({ hasText: 'PERCH_READY' });
+  const line = page.locator('.snapshot .line').filter({ hasText: 'TARFA_READY' });
   await expect(line).toBeVisible();
 
   const box = (await line.boundingBox())!;
@@ -31,7 +31,7 @@ test('select mode shows a natively selectable snapshot of the terminal', async (
   await page.mouse.down();
   await page.mouse.move(box.x + box.width - 1, y, { steps: 8 });
   await page.mouse.up();
-  expect(await page.evaluate(() => window.getSelection()?.toString())).toContain('PERCH_READY');
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toContain('TARFA_READY');
 
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');

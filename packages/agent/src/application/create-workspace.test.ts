@@ -38,27 +38,27 @@ describe('createWorkspace', () => {
         ids: { next: async () => 'perch-ab12cd' },
         machineId: 'mini',
       },
-      { projectPath: '/home/u/workspace/perch', command: 'claude' },
+      { projectPath: '/home/u/workspace/tarfa', command: 'claude' },
     );
 
     expect(ws).toEqual({
       machineId: 'mini',
       id: 'perch-ab12cd',
-      name: 'perch',
-      projectPath: '/home/u/workspace/perch',
+      name: 'tarfa',
+      projectPath: '/home/u/workspace/tarfa',
       command: 'claude',
       createdAt: 1000,
       lastActivityAt: 1000,
       status: 'idle',
     });
     expect(f.created).toEqual([
-      { name: 'perch-ab12cd', cwd: '/home/u/workspace/perch', command: 'claude' },
+      { name: 'perch-ab12cd', cwd: '/home/u/workspace/tarfa', command: 'claude' },
     ]);
-    expect(f.recorded).toEqual(['/home/u/workspace/perch']);
+    expect(f.recorded).toEqual(['/home/u/workspace/tarfa']);
   });
 
   it('canonicalizes a relative path before tmux cwd and recording', async () => {
-    const f = fakes((p) => (p === 'perch' ? '/home/u/workspace/perch' : p));
+    const f = fakes((p) => (p === 'tarfa' ? '/home/u/workspace/tarfa' : p));
     const ws = await createWorkspace(
       {
         tmux: f.tmux,
@@ -69,15 +69,15 @@ describe('createWorkspace', () => {
         ids: { next: async () => 'perch-ab12cd' },
         machineId: 'mini',
       },
-      { projectPath: 'perch', command: 'claude' },
+      { projectPath: 'tarfa', command: 'claude' },
     );
 
-    expect(ws.projectPath).toBe('/home/u/workspace/perch');
-    expect(ws.name).toBe('perch');
+    expect(ws.projectPath).toBe('/home/u/workspace/tarfa');
+    expect(ws.name).toBe('tarfa');
     expect(f.created).toEqual([
-      { name: 'perch-ab12cd', cwd: '/home/u/workspace/perch', command: 'claude' },
+      { name: 'perch-ab12cd', cwd: '/home/u/workspace/tarfa', command: 'claude' },
     ]);
-    expect(f.recorded).toEqual(['/home/u/workspace/perch']);
+    expect(f.recorded).toEqual(['/home/u/workspace/tarfa']);
   });
 
   it('rejects and creates nothing when the directory does not exist', async () => {

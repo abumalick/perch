@@ -11,16 +11,16 @@ describe('parseKeyterms', () => {
   });
 
   it('ignores blank lines, comments and surrounding whitespace', () => {
-    expect(parseKeyterms('# my vocabulary\n\n  Perch  \n\n# per project\ntmux\n')).toEqual([
-      'Perch',
+    expect(parseKeyterms('# my vocabulary\n\n  Tarfa  \n\n# per project\ntmux\n')).toEqual([
+      'Tarfa',
       'tmux',
     ]);
   });
 
   it('drops terms the API rejects: over 50 characters, over 5 words, or with forbidden characters', () => {
     const tooLong = 'x'.repeat(51);
-    const raw = ['Perch', tooLong, 'one two three four five six', 'brackets [here]', 'a<b'].join('\n');
-    expect(parseKeyterms(raw)).toEqual(['Perch']);
+    const raw = ['Tarfa', tooLong, 'one two three four five six', 'brackets [here]', 'a<b'].join('\n');
+    expect(parseKeyterms(raw)).toEqual(['Tarfa']);
   });
 
   it('keeps a term of exactly 50 characters and exactly 5 words', () => {
@@ -29,7 +29,7 @@ describe('parseKeyterms', () => {
   });
 
   it('drops case-insensitive duplicates, keeping the first spelling', () => {
-    expect(parseKeyterms('Perch\nperch\nPERCH\ntmux')).toEqual(['Perch', 'tmux']);
+    expect(parseKeyterms('Tarfa\ntarfa\nTARFA\ntmux')).toEqual(['Tarfa', 'tmux']);
   });
 
   // Over 100 terms, ElevenLabs bills every clip as at least 20 seconds — a bad trade for

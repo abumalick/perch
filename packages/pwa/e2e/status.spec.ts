@@ -22,7 +22,7 @@ test('status picker re-sorts the workspace; blocked parks it last', async ({ pag
   await expect(rowNames).toHaveText(['demo', 'other']);
 
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   // The header pill shows the current status; open it and pick Blocked.
   await page.getByRole('button', { name: /status: needs you/i }).click();

@@ -2,7 +2,7 @@ import { appendFile, mkdir, rename, stat } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { HookEventEntry, HookEventLogPort } from '../ports/hook-event-log-port';
 
-// Appends one JSON line per hook event (default ~/.perch/hook-events.jsonl), stamped with the
+// Appends one JSON line per hook event (default ~/.tarfa/hook-events.jsonl), stamped with the
 // receive time. Every tool call is an event, so the file is bounded: past `maxBytes` it moves to
 // `<file>.1`, replacing the previous one. The cap is large because a stuck workspace is usually
 // looked into days later. Two appends racing at the boundary can both rename, and the loser's

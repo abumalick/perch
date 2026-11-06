@@ -6,10 +6,10 @@ import { buildVersionJson, VERSION_FILE } from './src/core/version-file';
 import { CONTENT_SECURITY_POLICY } from './src/core/csp';
 import { buildHeadersFile, HEADERS_FILE, SECURITY_HEADERS } from './src/core/security-headers';
 
-const buildLabel = process.env.PERCH_BUILD_LABEL ?? 'main';
+const buildLabel = process.env.TARFA_BUILD_LABEL ?? 'main';
 // A per-build id (timestamp) that changes on every build, even a rebuild of the same
 // commit, written to version.json — the label alone can't distinguish two `main` builds.
-const buildId = process.env.PERCH_BUILD_ID ?? String(Date.now());
+const buildId = process.env.TARFA_BUILD_ID ?? String(Date.now());
 
 // Emit version.json at the site root with the build label and id, so a running PWA can
 // read the *incoming* build's identity when an update is waiting. Kept out of the SW
@@ -100,7 +100,7 @@ export default defineConfig({
   // device is serving. 'main' for normal builds; `pnpm serve:build` sets it to a
   // worktree slug when temporarily serving a test build (see docs/WORKTREES.md).
   define: {
-    __PERCH_BUILD_LABEL__: JSON.stringify(buildLabel),
+    __TARFA_BUILD_LABEL__: JSON.stringify(buildLabel),
   },
   // Svelte 5's mount() needs the 'browser' export condition under vitest/jsdom; vitest does not honor test.resolve.conditions, so this must stay top-level. Harmless for the production build (a browser app already resolves the browser condition).
   resolve: {

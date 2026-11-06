@@ -1,4 +1,4 @@
-import { b64url, type AgentKeys } from '@perch/secure-channel';
+import { b64url, type AgentKeys } from '@tarfa/secure-channel';
 import { PushBudget } from '../application/push-budget';
 import { LimitedLog } from '../application/limited-log';
 import { RosterDevices, RosterMonitor } from '../application/device-gate';
@@ -26,7 +26,7 @@ export interface AgentDeviceGate {
   // The roster as last read (null before the first read), which answers an enrolled key without
   // a read of its own (limitedDevices).
   roster(): DeviceRoster | null;
-  // Checks the roster for edits made by another process (`perch devices`) now, rather than on
+  // Checks the roster for edits made by another process (`tarfa devices`) now, rather than on
   // the next tick.
   pollRoster(): Promise<void>;
   stop(): void;
@@ -52,7 +52,7 @@ export function startDeviceGate(deps: DeviceGateDeps): AgentDeviceGate {
   });
   const pushBudget = new PushBudget(() => Date.now());
   const refusalLog = new LimitedLog(log, () => Date.now());
-  // `perch devices` edits the roster from another process: close the sessions of devices it
+  // `tarfa devices` edits the roster from another process: close the sessions of devices it
   // revoked.
   const monitor = new RosterMonitor(
     store,

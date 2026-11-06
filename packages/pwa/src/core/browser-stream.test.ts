@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { BrowserEndedReason } from '@perch/contracts';
+import type { BrowserEndedReason } from '@tarfa/contracts';
 import { BrowserStream, type BrowserStreamState } from './browser-stream';
 import type { Socket } from './ports/socket';
 

@@ -1,4 +1,4 @@
-import { WORKSPACE_STATUSES, type Workspace, type WorkspaceStatus } from '@perch/contracts';
+import { WORKSPACE_STATUSES, type Workspace, type WorkspaceStatus } from '@tarfa/contracts';
 import { msg } from '../i18n.svelte';
 
 // Getters, so each read at a call site takes the current language.

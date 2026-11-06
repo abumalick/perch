@@ -1,4 +1,4 @@
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 import type { TmuxPort } from '../ports/tmux-port';
 import type { StatusStorePort } from '../ports/status-store-port';
 import type { RepoRemotePort } from '../ports/repo-remote-port';

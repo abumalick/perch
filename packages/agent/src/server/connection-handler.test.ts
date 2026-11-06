@@ -3,8 +3,8 @@ import { ConnectionHandler, type ConnectionHandlerDeps } from './connection-hand
 import { ViewerRegistry } from './viewer-registry';
 import type { ClientConnection } from '../ports/client-connection';
 import type { PtyPort } from '../ports/pty-port';
-import { REFUSAL } from '@perch/secure-channel';
-import { type AgentMessage, type ClientLogBatch, type Workspace } from '@perch/contracts';
+import { REFUSAL } from '@tarfa/secure-channel';
+import { type AgentMessage, type ClientLogBatch, type Workspace } from '@tarfa/contracts';
 import type { BrowserStreamSocket } from '../ports/browser-stream-port';
 import { MEDIA_CHUNK_BYTES, MEDIA_WINDOW } from '../application/media-sender';
 import type { TmuxPort } from '../ports/tmux-port';
@@ -344,7 +344,7 @@ describe('ConnectionHandler serving an enrolled device at once', () => {
       onKeyAuthenticated: (listener: () => void) => (fire = listener),
     });
     const deps = baseDeps();
-    deps.keyterms = { list: async () => ['Perch'] };
+    deps.keyterms = { list: async () => ['Tarfa'] };
     new ConnectionHandler(keyed.conn, deps);
     return { ...keyed, fire: () => fire(), refused };
   }
@@ -356,7 +356,7 @@ describe('ConnectionHandler serving an enrolled device at once', () => {
     await settle();
     expect(p.sent.map((m) => m.type)).toEqual(['authResult', 'workspaces', 'browserSessions', 'keyterms']);
     expect(p.sent[0]).toEqual({ type: 'authResult', ok: true, credential: 'device', pushed: true });
-    expect(p.sent.at(-1)).toEqual({ type: 'keyterms', keyterms: ['Perch'] });
+    expect(p.sent.at(-1)).toEqual({ type: 'keyterms', keyterms: ['Tarfa'] });
   });
 
   it("answers the phone's own auth that follows with nothing more", async () => {
@@ -485,7 +485,7 @@ describe('ConnectionHandler control routing', () => {
     f.emit({ type: 'auth', token: 'secret' });
     f.emit({ type: 'getRecentPaths' });
     // /home/u/workspace/api is the live workspace's project path, so browsing it is allowed
-    // even though no PERCH_PROJECT_ROOTS are configured in this test.
+    // even though no TARFA_PROJECT_ROOTS are configured in this test.
     f.emit({ type: 'browseDir', path: '/home/u/workspace/api' });
     await new Promise((r) => setTimeout(r, 0));
     expect(f.sent).toContainEqual({ type: 'recentPaths', paths: ['/r1'] });
@@ -596,12 +596,12 @@ describe('ConnectionHandler control routing', () => {
 
   it('answers listKeyterms with the machine dictation vocabulary', async () => {
     const deps = baseDeps();
-    deps.keyterms = { list: async () => ['Perch', 'Claude Code'] };
+    deps.keyterms = { list: async () => ['Tarfa', 'Claude Code'] };
     new ConnectionHandler(f.conn, deps);
     f.emit({ type: 'auth', token: 'secret' });
     f.emit({ type: 'listKeyterms' });
     await new Promise((r) => setTimeout(r, 0));
-    expect(f.sent).toContainEqual({ type: 'keyterms', keyterms: ['Perch', 'Claude Code'] });
+    expect(f.sent).toContainEqual({ type: 'keyterms', keyterms: ['Tarfa', 'Claude Code'] });
   });
 
   it('answers listKeyterms with an empty list when the machine has no config file', async () => {

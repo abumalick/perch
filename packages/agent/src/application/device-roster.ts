@@ -1,4 +1,4 @@
-import { deviceFingerprint } from '@perch/secure-channel';
+import { deviceFingerprint } from '@tarfa/secure-channel';
 
 // A phone's keys, as its IK handshake presented them. `x25519` is its Noise static key, the one
 // the agent checks; `ed25519` is the key its hello names, which relays once admitted it by and
@@ -16,7 +16,7 @@ interface RevokedDevice extends Device {
 }
 
 export interface DeviceRoster {
-  // Whether an unknown key may enrol at all. False is `perch devices enrolment closed`: only
+  // Whether an unknown key may enrol at all. False is `tarfa devices enrolment closed`: only
   // listed devices get in. Its meaning predates the modes, so an older agent reading this file
   // still refuses every enrolment when the operator closed it.
   enrolment: boolean;
@@ -64,7 +64,7 @@ export function enrolDevice(
 ): DeviceRoster {
   if (standingOf(roster, keys.x25519) !== 'unknown') return roster;
   // An id is 48 bits, so two keys sharing one can be searched out; the second is refused, or
-  // `perch devices` could no longer tell them apart by id.
+  // `tarfa devices` could no longer tell them apart by id.
   const id = deviceFingerprint(keys.x25519);
   if ([...roster.devices, ...roster.revoked].some((d) => d.id === id)) return roster;
   const device: Device = { id, ...keys, enrolledAt: at.toISOString() };

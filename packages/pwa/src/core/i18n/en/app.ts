@@ -26,7 +26,7 @@ export const app = {
   },
   deviceNotice: {
     newDevice: (machine: string, name: string, id: string) => `New device paired with ${machine}: ${name} (${id})`,
-    notYou: (id: string) => `Not you? Revoke it on that machine: perch devices revoke ${id}`,
+    notYou: (id: string) => `Not you? Revoke it on that machine: tarfa devices revoke ${id}`,
   },
   copyOffer: {
     label: 'Copy from terminal',

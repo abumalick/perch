@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Workspace, WorkspaceStatus } from '@perch/contracts';
+import type { Workspace, WorkspaceStatus } from '@tarfa/contracts';
 import { nextWorkspace } from './next-workspace';
 
 const ws = (id: string, status: WorkspaceStatus, machineId = 'm'): Workspace => ({

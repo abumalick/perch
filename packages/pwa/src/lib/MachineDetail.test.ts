@@ -1,7 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { setLanguage } from '../i18n.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
-import { generateAgentKeys } from '@perch/secure-channel';
+import { generateAgentKeys } from '@tarfa/secure-channel';
 import MachineDetail from './MachineDetail.svelte';
 
 const KEY = generateAgentKeys().x25519.publicKey;
@@ -118,7 +118,7 @@ describe('MachineDetail', () => {
       await fireEvent.click(screen.getByRole('button', { name: /remove machine/i }));
       const dialog = screen.getByRole('dialog');
       expect(dialog).toHaveTextContent('Remove Mac?');
-      expect(dialog).toHaveTextContent('perch pair');
+      expect(dialog).toHaveTextContent('tarfa pair');
       expect(store.removeMachine).not.toHaveBeenCalled();
     });
 

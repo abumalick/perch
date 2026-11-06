@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 import { isUnderPath, workspaceRole } from './workspace-role';
 
 const ws = (id: string, parentId?: string): Workspace => ({

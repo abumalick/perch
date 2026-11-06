@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, type AgentMessage } from '@perch/contracts';
+import { PROTOCOL_VERSION, type AgentMessage } from '@tarfa/contracts';
 import {
   DEVICE_REFUSED,
   IN_BAND_REFUSAL,
@@ -15,7 +15,7 @@ import {
   startTimer,
   MAX_MESSAGE_BYTES,
   type DeviceHello,
-} from '@perch/secure-channel';
+} from '@tarfa/secure-channel';
 import type { DeviceStanding, EnrolmentMode } from '../application/device-roster';
 import { DeviceGateBusy, type DeviceGate, type Redemption } from '../ports/device-gate-port';
 import type { ClientConnection } from '../ports/client-connection';

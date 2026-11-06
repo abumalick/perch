@@ -22,7 +22,7 @@ test('list → open terminal → input echo → close', async ({ page }) => {
 
   await page.getByText('demo', { exact: true }).click();
   // xterm renders terminal output as multiple DOM spans; assert via .xterm-rows container.
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   // Opening an existing workspace leaves the terminal unfocused by design (keyboard stays
   // closed while reading — see store.autoFocus); tap it to type, as a user would.
@@ -60,7 +60,7 @@ test('opened-elsewhere overlay: take over reclaims the session', async ({ page, 
   await seedMachine(page, agent);
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY perch-demo' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY perch-demo' })).toBeVisible();
 
   // A second device attaches to the same workspace, evicting the first.
   const other = await browser.newContext();
@@ -68,7 +68,7 @@ test('opened-elsewhere overlay: take over reclaims the session', async ({ page, 
   await seedMachine(otherPage, agent);
   await otherPage.goto('/');
   await otherPage.getByText('demo', { exact: true }).click();
-  await expect(otherPage.locator('.xterm-rows').filter({ hasText: 'PERCH_READY perch-demo' })).toBeVisible();
+  await expect(otherPage.locator('.xterm-rows').filter({ hasText: 'TARFA_READY perch-demo' })).toBeVisible();
 
   // The first device now shows the overlay with both actions.
   await expect(page.getByText('Opened on another device.')).toBeVisible();
@@ -77,7 +77,7 @@ test('opened-elsewhere overlay: take over reclaims the session', async ({ page, 
   // Take over re-attaches and clears the overlay; the session is live again.
   await page.getByRole('button', { name: 'Take over' }).click();
   await expect(page.getByText('Opened on another device.')).toHaveCount(0);
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY perch-demo' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY perch-demo' })).toBeVisible();
 
   await other.close();
 });
@@ -86,7 +86,7 @@ test('opened-elsewhere overlay: sidebar stays usable to switch workspaces', asyn
   await seedMachine(page, agent);
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY perch-demo' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY perch-demo' })).toBeVisible();
 
   const other = await browser.newContext();
   const otherPage = await other.newPage();
@@ -98,7 +98,7 @@ test('opened-elsewhere overlay: sidebar stays usable to switch workspaces', asyn
   // The overlay is confined to the terminal pane: clicking a workspace in the sidebar
   // still works (a full-screen overlay would intercept this click and time it out).
   await page.getByText('other', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY perch-other' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY perch-other' })).toBeVisible();
   await expect(page.getByText('Opened on another device.')).toHaveCount(0);
 
   await other.close();
@@ -109,10 +109,10 @@ test('refresh clears the wedged display and re-attaches', async ({ page }) => {
 
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 
   // Put distinct output on screen, then refresh: reset() clears it and the re-attach
-  // makes the (fake) agent redraw PERCH_READY again.
+  // makes the (fake) agent redraw TARFA_READY again.
   await page.locator('.xterm-screen').click();
   await page.keyboard.type('ls\n');
   await expect(page.locator('.xterm-rows').filter({ hasText: 'echoed' })).toBeVisible();
@@ -120,5 +120,5 @@ test('refresh clears the wedged display and re-attaches', async ({ page }) => {
   await openWorkspaceMenu(page);
   await page.getByRole('button', { name: /refresh/i }).click();
   await expect(page.locator('.xterm-rows').filter({ hasText: 'echoed' })).toHaveCount(0);
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'PERCH_READY' })).toBeVisible();
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'TARFA_READY' })).toBeVisible();
 });

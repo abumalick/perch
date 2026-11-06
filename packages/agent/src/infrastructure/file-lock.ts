@@ -6,7 +6,7 @@ const LOCK_RETRY_MS = 25;
 const LOCK_WAIT_MS = 5000;
 
 // Holds `<path>.lock` for the duration of `fn`, for a file two processes update (the agent and
-// the `perch` CLI). A holder that died leaves its lock behind; nothing holds it longer than one
+// the `tarfa` CLI). A holder that died leaves its lock behind; nothing holds it longer than one
 // write, so one older than `staleLockMs` is broken.
 export async function withFileLock<T>(path: string, staleLockMs: number, fn: () => Promise<T>, retryMs = LOCK_RETRY_MS): Promise<T> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });

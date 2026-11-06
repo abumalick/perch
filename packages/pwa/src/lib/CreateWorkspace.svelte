@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { PerchStore } from '../store.svelte';
+  import type { TarfaStore } from '../store.svelte';
   import { resolveProjectPath, displayProjectPath, relativeProjectPath } from '../core/resolve-path';
   import FolderPicker from './FolderPicker.svelte';
   import { buildLauncherOptions, type LauncherOption } from '../core/launchers';
   import { msg } from '../i18n.svelte';
 
-  let { store }: { store: PerchStore } = $props();
+  let { store }: { store: TarfaStore } = $props();
 
   // Only enabled machines the agent currently reports online are selectable — an
   // offline/disabled machine can't create a workspace anyway. Alphabetical by name.

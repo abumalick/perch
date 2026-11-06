@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { PerchStore } from './store.svelte';
+  import type { TarfaStore } from './store.svelte';
   import WorkspaceList from './lib/WorkspaceList.svelte';
   import Settings from './lib/Settings.svelte';
   import AddMachine from './lib/AddMachine.svelte';
@@ -18,7 +18,7 @@
   import { trackWide } from './lib/viewport';
   import { msg } from './i18n.svelte';
 
-  let { store }: { store: PerchStore } = $props();
+  let { store }: { store: TarfaStore } = $props();
   // xterm and the markdown renderer are half the bundle and neither is needed to connect, so
   // their views are separate chunks, kept off a cold launch's path to the first connect. They
   // are fetched once the first workspace list is in, before anyone can open one.

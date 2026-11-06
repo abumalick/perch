@@ -2,13 +2,14 @@ import { chmod, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { installHooks } from '../application/install-hooks';
 import { fsIsDirectory } from './fs-directory-checker';
+import { LEGACY_STATE_DIR, STATE_DIR, resolveStateDir } from './state-dir';
 
-const SCRIPTS = ['perch-hook.sh', 'perch-guard.sh'];
-const HOOK_COMMAND = 'bash ~/.perch/perch-hook.sh';
-const GUARD_COMMAND = 'bash ~/.perch/perch-guard.sh';
+const SCRIPTS = ['tarfa-hook.sh', 'tarfa-guard.sh'];
+const HOOK_COMMAND = 'bash ~/.tarfa/tarfa-hook.sh';
+const GUARD_COMMAND = 'bash ~/.tarfa/tarfa-guard.sh';
 
 // Claude Code rewrites its settings with sorted keys and other whitespace, and install-hooks
-// re-appends Perch's entries after the user's own, so the same hooks can be spelled several ways:
+// re-appends Tarfa's entries after the user's own, so the same hooks can be spelled several ways:
 // compared with keys sorted and each event's entries in any order.
 function stable(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
@@ -48,7 +49,7 @@ export function hooksFiles(home: string, hooksDir: string, port: number) {
   async function wanted(): Promise<Array<{ path: string; current: string | null; text: string; mode?: number }>> {
     const files: Array<{ path: string; current: string | null; text: string; mode?: number }> = [];
     for (const script of SCRIPTS) {
-      const path = join(home, '.perch', script);
+      const path = join(home, STATE_DIR, script);
       files.push({ path, current: await readOrNull(path), text: await readFile(join(hooksDir, script), 'utf8'), mode: 0o755 });
     }
     const settings = await readOrNull(settingsPath);
@@ -66,7 +67,7 @@ export function hooksFiles(home: string, hooksDir: string, port: number) {
   }
 
   return {
-    scriptPath: join(home, '.perch', 'perch-hook.sh'),
+    scriptPath: join(home, STATE_DIR, 'tarfa-hook.sh'),
     settingsPath,
     codexHooksPath,
     // Whether installing would change nothing.
@@ -77,6 +78,11 @@ export function hooksFiles(home: string, hooksDir: string, port: number) {
     },
     // Returns whether Codex's hooks were written too.
     async install(): Promise<{ codex: boolean }> {
+      // The commands name ~/.tarfa: written before the agent moved ~/.perch there, the scripts
+      // would land in a directory the move then refuses to merge with.
+      if (resolveStateDir(home) !== join(home, STATE_DIR)) {
+        throw new Error(`~/${LEGACY_STATE_DIR} has not moved to ~/${STATE_DIR} yet: restart the agent (it moves it at startup) or run tarfa setup, then install the hooks`);
+      }
       const files = await wanted();
       for (const file of files) {
         await mkdir(dirname(file.path), { recursive: true });

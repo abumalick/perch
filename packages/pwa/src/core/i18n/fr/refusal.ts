@@ -1,7 +1,7 @@
 import type { Messages } from '../en';
 
 export const refusal: Messages['refusal'] = {
-  newCode: (machine) => `lancez \`perch pair\` sur ${machine} pour en obtenir un nouveau`,
+  newCode: (machine) => `lancez \`tarfa pair\` sur ${machine} pour en obtenir un nouveau`,
   badToken: (machine) => `${machine} a refusé le jeton — vérifiez le jeton de cette entrée`,
   codeExpired: (newCode) => `Ce code d’association a expiré — ${newCode}`,
   codeUsed: (newCode) => `Ce code d’association a déjà servi — ${newCode}`,
@@ -11,10 +11,10 @@ export const refusal: Messages['refusal'] = {
   revoked: (machine) => `Ce téléphone a été révoqué sur ${machine}`,
   tokenNotNeeded: (machine) =>
     `${machine} n’a plus besoin du jeton de cette entrée : la clé de l’appareil est inscrite — oubli du jeton et reconnexion`,
-  enrolmentOff: (machine) => `L’inscription est désactivée sur ${machine} — associez plutôt avec \`perch pair\``,
+  enrolmentOff: (machine) => `L’inscription est désactivée sur ${machine} — associez plutôt avec \`tarfa pair\``,
   enrolmentClosed: (machine) =>
-    `L’inscription est fermée sur ${machine} — lancez-y \`perch devices enrolment off\` pour autoriser l’association`,
-  notEnrolled: (machine) => `Ce téléphone n’est pas inscrit sur ${machine} — lancez-y \`perch pair\` pour l’associer à nouveau`,
+    `L’inscription est fermée sur ${machine} — lancez-y \`tarfa devices enrolment off\` pour autoriser l’association`,
+  notEnrolled: (machine) => `Ce téléphone n’est pas inscrit sur ${machine} — lancez-y \`tarfa pair\` pour l’associer à nouveau`,
   agentTooOld: (machine) => `${machine} fait tourner un agent trop ancien pour associer ce téléphone — mettez son agent à jour, puis associez à nouveau`,
   busy: (machine) => `${machine} est saturée : trop de téléphones s’y connectent`,
   other: (machine, detail) => `${machine} a refusé ce téléphone (${detail})`,

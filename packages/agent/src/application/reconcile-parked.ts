@@ -14,7 +14,7 @@ export interface ReconcileParkedDeps {
 // record wins: letting the shell win would discard the claudeSessionId of exactly the
 // long-parked workspaces most likely to survive to a reboot, which is the case parking exists
 // for. Killing the orphan leaves one source of truth. Each id is looked up by name: the shell
-// carries no `@perch_command`, so a listing of Perch's sessions would miss a short id.
+// carries no `@tarfa_command`, so a listing of Tarfa's sessions would miss a short id.
 //
 // Done here rather than inside listWorkspaces so that listing stays free of side effects.
 export async function reconcileParked(deps: ReconcileParkedDeps): Promise<string[]> {

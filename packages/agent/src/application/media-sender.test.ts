@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { AgentMessage } from '@perch/contracts';
+import type { AgentMessage } from '@tarfa/contracts';
 import { MEDIA_CHUNK_BYTES, MEDIA_WINDOW, MediaSender } from './media-sender';
 import type { ReadServableFileResult } from './read-servable-file';
 

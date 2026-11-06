@@ -1,4 +1,4 @@
-import { REFUSAL } from '@perch/secure-channel';
+import { REFUSAL } from '@tarfa/secure-channel';
 import type { DeviceStorePort } from '../ports/device-store-port';
 import type { PairingStorePort } from '../ports/pairing-store-port';
 import { redeemPairing } from './pairing';
@@ -7,7 +7,7 @@ import { enrolDevice, enrolmentMode, mayEnrol, standingOf, type DeviceRoster, ty
 
 export interface RosterDevicesDeps {
   store: DeviceStorePort;
-  // The pairing secrets `perch pair` handed out; each proves an enrolment like the token, once.
+  // The pairing secrets `tarfa pair` handed out; each proves an enrolment like the token, once.
   pairings: PairingStorePort;
   now: () => Date;
   // Called after this agent wrote the roster, so the gate's copy knows a new device at once.
@@ -16,7 +16,7 @@ export interface RosterDevicesDeps {
   onEnrolled?: (device: { id: string; name: string; at: string; x25519: string }, via: 'pairing' | 'token') => void;
 }
 
-// The agent's device gate, over ~/.perch/devices.json.
+// The agent's device gate, over ~/.tarfa/devices.json.
 export class RosterDevices implements DeviceGate {
   constructor(private readonly deps: RosterDevicesDeps) {}
 
@@ -62,7 +62,7 @@ export class RosterDevices implements DeviceGate {
 
   private async spend(secret: string, device: string): Promise<ReturnType<typeof redeemPairing>['outcome']> {
     // A secret this agent did not issue (or no longer keeps) changes nothing: answered without the
-    // file's lock, so a stream of made-up ones cannot keep `perch pair` from writing it.
+    // file's lock, so a stream of made-up ones cannot keep `tarfa pair` from writing it.
     if (redeemPairing(await this.deps.pairings.read(), secret, this.deps.now(), device).outcome === 'unknown') return 'unknown';
     let outcome = 'unknown' as ReturnType<typeof redeemPairing>['outcome'];
     await this.deps.pairings.update((list) => {
@@ -74,7 +74,7 @@ export class RosterDevices implements DeviceGate {
   }
 }
 
-// Notices a roster changed by someone else (`perch devices` in another process): the agent
+// Notices a roster changed by someone else (`tarfa devices` in another process): the agent
 // polls, since a rename-on-write defeats a file watch.
 export class RosterMonitor {
   private last: string | null = null;

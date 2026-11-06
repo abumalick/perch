@@ -1,4 +1,4 @@
-import type { WorkspaceStatus } from '@perch/contracts';
+import type { WorkspaceStatus } from '@tarfa/contracts';
 import type { StatusStorePort } from '../ports/status-store-port';
 import type { HookEventEntry, HookEventLogPort, HookMarks } from '../ports/hook-event-log-port';
 import { attentionDecision, type AttentionDecision } from './attention-decision';
@@ -86,7 +86,7 @@ interface Marks {
   questionPending: Set<string>;
 }
 
-// A `perch send` runs inside a tool call, whose own PostToolUse arrives after the mark is set and
+// A `tarfa send` runs inside a tool call, whose own PostToolUse arrives after the mark is set and
 // would clear it; `sentDuringTool` makes that one PostToolUse leave the mark alone.
 export function markSent(marks: Pick<Marks, 'sentDuringTool' | 'messagedLast'>, id: string): void {
   marks.sentDuringTool.add(id);
@@ -110,7 +110,7 @@ function state(marks: Marks, status: WorkspaceStatus | undefined, id: string): H
 // `deferred` is deliberately in-memory: losing it on restart costs at most one extra "Needs
 // you", never a missed one. `messagedLast` holds the sessions whose last main-loop tool call was
 // SendMessage; WsServer backs it with the status store, since it also drives a child's
-// `waitingOn` that `perch ls` reads. `questionPending` holds the Codex sessions with a question waiting on the user.
+// `waitingOn` that `tarfa ls` reads. `questionPending` holds the Codex sessions with a question waiting on the user.
 // `log` records every event and its decision; a failed write never affects the decision.
 // `oscTurnEnded` holds the sessions whose needs-feedback an OSC 7501 turn end set (applyProgramStatus).
 export function applyHookEvent(
@@ -147,7 +147,7 @@ export function applyHookEvent(
   } else if (decision.deferral === 'clear') {
     deps.deferred.delete(input.sessionName);
   }
-  if (decision.reason === 'perch-send') {
+  if (decision.reason === 'tarfa-send') {
     deps.sentDuringTool.delete(input.sessionName);
   }
   if (decision.messagedLast === 'set') {

@@ -91,7 +91,7 @@ function fakeStore(
 ) {
   return {
     machines: machines.map((m) => ({ agentKey: AGENT_KEY, addresses: ['wss://m/'], ...m })),
-    active: { machineId: 'mac', id: 'perch-a', name: 'api', projectPath: '/home/u/workspace/perch', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'idle' as const },
+    active: { machineId: 'mac', id: 'perch-a', name: 'api', projectPath: '/home/u/workspace/tarfa', command: 'claude', createdAt: 0, lastActivityAt: 0, status: 'idle' as const },
     terminalState: 'live' as const,
     autoFocus,
     terminalFontSize,
@@ -270,7 +270,7 @@ describe('TerminalView', () => {
     render(TerminalView, {
       props: { store: fakeStore(false, 13, [{ id: 'mac', name: 'Mac', defaultPath: '/home/u/workspace' }]) as never },
     });
-    expect(screen.getByTestId('header-project').textContent).toBe('perch');
+    expect(screen.getByTestId('header-project').textContent).toBe('tarfa');
     expect(screen.getByTestId('header-name').textContent).toBe('api');
   });
 

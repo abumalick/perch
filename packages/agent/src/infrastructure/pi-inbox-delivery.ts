@@ -6,7 +6,7 @@ const TIMEOUT_MS = 5_000;
 
 type Result = { ok: true } | { ok: false; reason: string };
 
-// Writes a message into the inbox socket the Perch extension for Pi binds per workspace
+// Writes a message into the inbox socket the Tarfa extension for Pi binds per workspace
 // (contract: docs/MESSAGING.md, "Pi inbox contract"). Unlike Claude's, this inbox answers, so
 // "ok" means the extension handed the message to Pi.
 export class PiInboxDelivery implements MessageDelivery {
@@ -51,7 +51,7 @@ function exchange(socketPath: string, line: string, id: string): Promise<Result>
       failed('unexpected answer');
     });
     socket.on('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'ENOENT' || err.code === 'ECONNREFUSED') return settle({ ok: false, reason: 'Pi without the Perch inbox' });
+      if (err.code === 'ENOENT' || err.code === 'ECONNREFUSED') return settle({ ok: false, reason: 'Pi without the Tarfa inbox' });
       failed(err.message);
     });
     socket.on('close', () => failed('closed without answering'));

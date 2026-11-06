@@ -1,4 +1,4 @@
-import type { AgentMessage } from '@perch/contracts';
+import type { AgentMessage } from '@tarfa/contracts';
 
 export interface ClientConnection {
   // Set once the transport itself has proven who the client is: `device`, a phone whose

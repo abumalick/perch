@@ -1,4 +1,4 @@
-import type { WorkspaceStatus } from '@perch/contracts';
+import type { WorkspaceStatus } from '@tarfa/contracts';
 
 // Which rule decided, for the hook-event log only: nothing acts on it.
 export type ProgramStatusReason =

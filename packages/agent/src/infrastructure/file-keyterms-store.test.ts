@@ -22,17 +22,17 @@ describe('FileKeytermsStore', () => {
   });
 
   it('reads the terms in file order', async () => {
-    await writeFile(file, '# vocabulary\nClaude Code\nPerch\nHeliBoard\n', 'utf8');
-    expect(await new FileKeytermsStore(file).list()).toEqual(['Claude Code', 'Perch', 'HeliBoard']);
+    await writeFile(file, '# vocabulary\nClaude Code\nTarfa\nHeliBoard\n', 'utf8');
+    expect(await new FileKeytermsStore(file).list()).toEqual(['Claude Code', 'Tarfa', 'HeliBoard']);
   });
 
   // Read fresh on every call, like the commands and hidden-folders stores: an edit takes
   // effect on the PWA's next reconnect, with no agent restart.
   it('reflects an edit without being reconstructed', async () => {
     const store = new FileKeytermsStore(file);
-    await writeFile(file, 'Perch\n', 'utf8');
-    expect(await store.list()).toEqual(['Perch']);
-    await writeFile(file, 'Perch\ntmux\n', 'utf8');
-    expect(await store.list()).toEqual(['Perch', 'tmux']);
+    await writeFile(file, 'Tarfa\n', 'utf8');
+    expect(await store.list()).toEqual(['Tarfa']);
+    await writeFile(file, 'Tarfa\ntmux\n', 'utf8');
+    expect(await store.list()).toEqual(['Tarfa', 'tmux']);
   });
 });

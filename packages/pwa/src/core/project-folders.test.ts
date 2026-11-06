@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { generateAgentKeys } from '@perch/secure-channel';
+import { generateAgentKeys } from '@tarfa/secure-channel';
 import { projectFolderLabel, deriveProjectFolders, filterWorkspaces, pruneStaleFilter } from './project-folders';
-import type { Workspace } from '@perch/contracts';
+import type { Workspace } from '@tarfa/contracts';
 import type { MachineConfig } from './settings-store';
 
 const ws = (over: Partial<Workspace> & Pick<Workspace, 'id' | 'machineId' | 'projectPath'>): Workspace => ({
@@ -25,8 +25,8 @@ const machine = (id: string, defaultPath?: string): MachineConfig => ({
 describe('projectFolderLabel', () => {
   it('shows the path relative to the machine default', () => {
     const machines = [machine('m', '/home/u/workspace')];
-    expect(projectFolderLabel(machines, ws({ id: 'a', machineId: 'm', projectPath: '/home/u/workspace/perch' }))).toBe(
-      'perch',
+    expect(projectFolderLabel(machines, ws({ id: 'a', machineId: 'm', projectPath: '/home/u/workspace/tarfa' }))).toBe(
+      'tarfa',
     );
     expect(projectFolderLabel(machines, ws({ id: 'b', machineId: 'm', projectPath: '/home/u/workspace/acme/web-app' }))).toBe(
       'acme/web-app',
@@ -48,10 +48,10 @@ describe('deriveProjectFolders', () => {
   const at = (id: string, rel: string) => ws({ id, machineId: 'm', projectPath: `/home/u/workspace/${rel}` });
 
   it('counts workspaces per folder and orders folders alphabetically, not by count', () => {
-    const folders = deriveProjectFolders([at('1', 'perch'), at('2', 'perch'), at('3', 'foo')], machines);
+    const folders = deriveProjectFolders([at('1', 'tarfa'), at('2', 'tarfa'), at('3', 'foo')], machines);
     expect(folders).toEqual([
       { key: 'foo', label: 'foo', count: 1, depth: 0 },
-      { key: 'perch', label: 'perch', count: 2, depth: 0 },
+      { key: 'tarfa', label: 'tarfa', count: 2, depth: 0 },
     ]);
   });
 
@@ -88,10 +88,10 @@ describe('deriveProjectFolders', () => {
   });
 
   it('keeps a folder that holds sessions itself as the parent of its subfolders', () => {
-    const folders = deriveProjectFolders([at('1', 'perch'), at('2', 'perch/.tmp')], machines);
+    const folders = deriveProjectFolders([at('1', 'tarfa'), at('2', 'tarfa/.tmp')], machines);
     expect(folders).toEqual([
-      { key: 'perch', label: 'perch', count: 2, depth: 0 },
-      { key: 'perch/.tmp', label: '.tmp', count: 1, depth: 1 },
+      { key: 'tarfa', label: 'tarfa', count: 2, depth: 0 },
+      { key: 'tarfa/.tmp', label: '.tmp', count: 1, depth: 1 },
     ]);
   });
 
@@ -106,12 +106,12 @@ describe('deriveProjectFolders', () => {
   it('merges the same relative path across machines into one folder', () => {
     const folders = deriveProjectFolders(
       [
-        ws({ id: '1', machineId: 'm1', projectPath: '/home/u/workspace/perch' }),
-        ws({ id: '2', machineId: 'm2', projectPath: '/Users/u/code/perch' }),
+        ws({ id: '1', machineId: 'm1', projectPath: '/home/u/workspace/tarfa' }),
+        ws({ id: '2', machineId: 'm2', projectPath: '/Users/u/code/tarfa' }),
       ],
       [machine('m1', '/home/u/workspace'), machine('m2', '/Users/u/code')],
     );
-    expect(folders).toEqual([{ key: 'perch', label: 'perch', count: 2, depth: 0 }]);
+    expect(folders).toEqual([{ key: 'tarfa', label: 'tarfa', count: 2, depth: 0 }]);
   });
 
   it('builds the tree from absolute paths when there is no default path', () => {
@@ -137,9 +137,9 @@ describe('deriveProjectFolders', () => {
 describe('filterWorkspaces', () => {
   const machines = [machine('m', '/home/u/workspace')];
   const list = [
-    ws({ id: '1', machineId: 'm', projectPath: '/home/u/workspace/perch' }),
+    ws({ id: '1', machineId: 'm', projectPath: '/home/u/workspace/tarfa' }),
     ws({ id: '2', machineId: 'm', projectPath: '/home/u/workspace/foo' }),
-    ws({ id: '3', machineId: 'm', projectPath: '/home/u/workspace/perch' }),
+    ws({ id: '3', machineId: 'm', projectPath: '/home/u/workspace/tarfa' }),
     ws({ id: '4', machineId: 'm', projectPath: '/home/u/workspace/bar/baz' }),
     ws({ id: '5', machineId: 'm', projectPath: '/home/u/workspace/bar/qux/qux-content' }),
     ws({ id: '6', machineId: 'm', projectPath: '/home/u/workspace/bar-archive' }),
@@ -155,12 +155,12 @@ describe('filterWorkspaces', () => {
   });
 
   it('keeps only workspaces in the single selected folder', () => {
-    const out = filterWorkspaces(list, machines, new Set(['perch']), 'only');
+    const out = filterWorkspaces(list, machines, new Set(['tarfa']), 'only');
     expect(out.map((w) => w.id)).toEqual(['1', '3']);
   });
 
   it('keeps workspaces across multiple selected folders, preserving order', () => {
-    const out = filterWorkspaces(list, machines, new Set(['perch', 'foo']), 'only');
+    const out = filterWorkspaces(list, machines, new Set(['tarfa', 'foo']), 'only');
     expect(out.map((w) => w.id)).toEqual(['1', '2', '3']);
   });
 
@@ -169,7 +169,7 @@ describe('filterWorkspaces', () => {
   });
 
   it('drops the selected folder in hide mode', () => {
-    const out = filterWorkspaces(list, machines, new Set(['perch']), 'hide');
+    const out = filterWorkspaces(list, machines, new Set(['tarfa']), 'hide');
     expect(out.map((w) => w.id)).toEqual(['2', '4', '5', '6']);
   });
 
@@ -184,7 +184,7 @@ describe('filterWorkspaces', () => {
   });
 
   it('returns empty when every folder is hidden', () => {
-    const all = new Set(['perch', 'foo', 'bar', 'bar-archive']);
+    const all = new Set(['tarfa', 'foo', 'bar', 'bar-archive']);
     expect(filterWorkspaces(list, machines, all, 'hide')).toEqual([]);
   });
 });
@@ -194,30 +194,30 @@ describe('pruneStaleFilter', () => {
   const keyed = (id: string, defaultPath: string): MachineConfig => ({ ...machine(id, defaultPath), agentKey });
   const machines = [keyed('m', '/home/u/workspace')];
   const list = [
-    ws({ id: '1', machineId: 'm', projectPath: '/home/u/workspace/perch' }),
+    ws({ id: '1', machineId: 'm', projectPath: '/home/u/workspace/tarfa' }),
     ws({ id: '2', machineId: 'm', projectPath: '/home/u/workspace/bar/baz' }),
   ];
 
   it('leaves the selection untouched while workspaces have not loaded yet', () => {
     // The list is empty because the async workspace list hasn't arrived yet, not because the
     // selected folder is actually gone — pruning here would wipe a persisted filter on reload.
-    expect(pruneStaleFilter(new Set(['perch']), [], machines, [])).toEqual(['perch']);
+    expect(pruneStaleFilter(new Set(['tarfa']), [], machines, [])).toEqual(['tarfa']);
   });
 
   it('prunes keys with no workspace under them once workspaces have loaded', () => {
-    expect(pruneStaleFilter(new Set(['perch', 'gone']), list, machines, ['m'])).toEqual(['perch']);
+    expect(pruneStaleFilter(new Set(['tarfa', 'gone']), list, machines, ['m'])).toEqual(['tarfa']);
   });
 
   it("keeps another machine's folder while that machine has not listed", () => {
     // One machine online, the other offline or slower to answer: its folders are missing from
     // the list only because its workspaces are, and pruning would forget them for good.
     const two = [...machines, keyed('mac', '/Users/u/code')];
-    expect(pruneStaleFilter(new Set(['perch', 'shop']), list, two, ['m'])).toEqual(['perch', 'shop']);
+    expect(pruneStaleFilter(new Set(['tarfa', 'shop']), list, two, ['m'])).toEqual(['tarfa', 'shop']);
   });
 
   it('prunes once every connectable machine has listed, ignoring a switched-off one', () => {
     const two = [...machines, { ...keyed('mac', '/Users/u/code'), enabled: false }];
-    expect(pruneStaleFilter(new Set(['perch', 'shop']), list, two, ['m'])).toEqual(['perch']);
+    expect(pruneStaleFilter(new Set(['tarfa', 'shop']), list, two, ['m'])).toEqual(['tarfa']);
   });
 
   it('keeps a parent folder that is not shown as its own entry but still holds sessions', () => {

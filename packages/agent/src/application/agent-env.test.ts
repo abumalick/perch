@@ -2,16 +2,16 @@ import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { parseEnvFile, setEnvValue } from './agent-env';
 
-const FILE = `# Perch agent
-PERCH_TOKEN=abc123
-PERCH_MACHINE_ID="dev box"
-export PERCH_PORT=8787
-# PERCH_PHONE_ADDRESSES=wss://commented.example
+const FILE = `# Tarfa agent
+TARFA_TOKEN=abc123
+TARFA_MACHINE_ID="dev box"
+export TARFA_PORT=8787
+# TARFA_PHONE_ADDRESSES=wss://commented.example
 `;
 
 describe('parseEnvFile', () => {
   it('reads assignments, quoted or exported, and skips comments', () => {
-    expect(parseEnvFile(FILE)).toEqual({ PERCH_TOKEN: 'abc123', PERCH_MACHINE_ID: 'dev box', PERCH_PORT: '8787' });
+    expect(parseEnvFile(FILE)).toEqual({ TARFA_TOKEN: 'abc123', TARFA_MACHINE_ID: 'dev box', TARFA_PORT: '8787' });
   });
 
   it("reads single quotes literally, as bash would", () => {
@@ -21,9 +21,9 @@ describe('parseEnvFile', () => {
 
 describe('setEnvValue', () => {
   it('replaces an existing value in place, or appends a new one', () => {
-    expect(setEnvValue(FILE, 'PERCH_PORT', '9000')).toContain("\nPERCH_PORT='9000'\n");
-    const added = setEnvValue(FILE, 'PERCH_PWA_ORIGIN', 'https://pwa.example:8443');
-    expect(parseEnvFile(added).PERCH_PWA_ORIGIN).toBe('https://pwa.example:8443');
+    expect(setEnvValue(FILE, 'TARFA_PORT', '9000')).toContain("\nTARFA_PORT='9000'\n");
+    const added = setEnvValue(FILE, 'TARFA_PWA_ORIGIN', 'https://pwa.example:8443');
+    expect(parseEnvFile(added).TARFA_PWA_ORIGIN).toBe('https://pwa.example:8443');
   });
 
   it('adds the missing final newline before appending', () => {
@@ -37,10 +37,10 @@ describe('setEnvValue quoting', () => {
 
   it('single-quotes every value, so bash reads a $(…) payload as text', () => {
     const value = 'wss://$(echo injected).example.com/`id`;x';
-    const text = setEnvValue('', 'PERCH_PHONE_ADDRESSES', value);
-    expect(text).toBe(`PERCH_PHONE_ADDRESSES='${value}'\n`);
-    expect(sourced(text, 'PERCH_PHONE_ADDRESSES')).toBe(value);
-    expect(parseEnvFile(text).PERCH_PHONE_ADDRESSES).toBe(value);
+    const text = setEnvValue('', 'TARFA_PHONE_ADDRESSES', value);
+    expect(text).toBe(`TARFA_PHONE_ADDRESSES='${value}'\n`);
+    expect(sourced(text, 'TARFA_PHONE_ADDRESSES')).toBe(value);
+    expect(parseEnvFile(text).TARFA_PHONE_ADDRESSES).toBe(value);
   });
 
   it('escapes a single quote the way bash reads it back', () => {

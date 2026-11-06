@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { b64url, generateAgentKeys } from '@perch/secure-channel';
+import { b64url, generateAgentKeys } from '@tarfa/secure-channel';
 import { parseAgentKey } from './agent-key';
 
 describe('parseAgentKey', () => {

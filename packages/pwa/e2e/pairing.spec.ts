@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { pairingLink } from '@perch/secure-channel';
+import { pairingLink } from '@tarfa/secure-channel';
 import { startFakeAgent, type FakeAgent } from './fake-agent';
 import { failOnCspViolation } from './csp';
 
@@ -10,7 +10,7 @@ failOnCspViolation(test);
 // request, stay in the address bar, or outlive the machine accepting it.
 
 let agent: FakeAgent;
-// A fresh code per test, minted on the agent as `perch pair` does: the first use spends it.
+// A fresh code per test, minted on the agent as `tarfa pair` does: the first use spends it.
 let SECRET: string;
 
 test.beforeAll(async () => {
@@ -105,8 +105,8 @@ test('a pasted link that is not a pairing link is refused with a reason', async 
 // The agent refuses a phone in band: a browser's WebSocket reports 1006 for any refused upgrade,
 // so the reason can only reach the phone as a close code and reason on an opened socket.
 for (const [state, message] of [
-  ['expired', 'This pairing code has expired — run `perch pair` on dev box for a new one'],
-  ['used', 'This pairing code was already used — run `perch pair` on dev box for a new one'],
+  ['expired', 'This pairing code has expired — run `tarfa pair` on dev box for a new one'],
+  ['used', 'This pairing code was already used — run `tarfa pair` on dev box for a new one'],
 ] as const) {
   test(`a refused pairing code says so on the home screen and in Settings: ${state}`, async ({ page, baseURL }) => {
     SECRET = await agent.newPairing(state);

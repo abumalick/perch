@@ -19,7 +19,7 @@ describe('DeviceEnrolledNotice', () => {
     const store = fakeStore([notice]);
     render(DeviceEnrolledNotice, { props: { store: store as never } });
     expect(screen.getByRole('alert')).toHaveTextContent('New device paired with dev: Android · Chrome (c590-c6a1-9f8d)');
-    expect(screen.getByRole('alert')).toHaveTextContent('perch devices revoke c590-c6a1-9f8d');
+    expect(screen.getByRole('alert')).toHaveTextContent('tarfa devices revoke c590-c6a1-9f8d');
     await fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
     expect(store.dismissDeviceNotice).toHaveBeenCalledWith(notice);
   });

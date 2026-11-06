@@ -12,11 +12,11 @@ describe('resumeCommand', () => {
     );
   });
 
-  // perch spawn stores a child's name and its orchestrator hook as plain flags; unparking must
+  // tarfa spawn stores a child's name and its orchestrator hook as plain flags; unparking must
   // keep both, or the resumed child asks the user again.
   it("keeps a spawned child's --name and --settings on both arms", () => {
     const base =
-      "claude --model 'opus[1m]' --name perch-a1b2c3 --settings /h/.perch/spawn/perch-a1b2c3.settings.json";
+      "claude --model 'opus[1m]' --name perch-a1b2c3 --settings /h/.tarfa/spawn/perch-a1b2c3.settings.json";
     expect(resumeCommand(base, 'abc-123')).toBe(`${base} --resume abc-123 || exec ${base}`);
   });
 
@@ -52,7 +52,7 @@ describe('resumeCommand', () => {
   });
 
   // An agent that predates storedCommand on unpark recorded the whole resume string as
-  // `@perch_command`; parking such a workspace again must not run a fresh session first.
+  // `@tarfa_command`; parking such a workspace again must not run a fresh session first.
   it('unwraps a command that is already a resume string', () => {
     const base = "claude --model 'opus[1m]'";
     expect(resumeCommand(`${base} --resume old || exec ${base}`, 'new')).toBe(

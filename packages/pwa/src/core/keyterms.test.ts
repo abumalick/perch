@@ -7,8 +7,8 @@ describe('mergeKeyterms', () => {
   });
 
   it('unions the machines, in machine order', () => {
-    expect(mergeKeyterms({ mini: ['Perch', 'tmux'], mac: ['Xcode'] })).toEqual([
-      'Perch',
+    expect(mergeKeyterms({ mini: ['Tarfa', 'tmux'], mac: ['Xcode'] })).toEqual([
+      'Tarfa',
       'tmux',
       'Xcode',
     ]);
@@ -16,8 +16,8 @@ describe('mergeKeyterms', () => {
 
   // Every machine links the same dotfiles list, so most terms arrive twice.
   it('drops case-insensitive duplicates across machines, keeping the first spelling', () => {
-    expect(mergeKeyterms({ mini: ['Perch', 'worktree'], mac: ['perch', 'HeliBoard'] })).toEqual([
-      'Perch',
+    expect(mergeKeyterms({ mini: ['Tarfa', 'worktree'], mac: ['tarfa', 'HeliBoard'] })).toEqual([
+      'Tarfa',
       'worktree',
       'HeliBoard',
     ]);

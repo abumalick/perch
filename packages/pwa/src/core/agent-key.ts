@@ -1,4 +1,4 @@
-import { b64url } from '@perch/secure-channel';
+import { b64url } from '@tarfa/secure-channel';
 
 // A machine's agent key: the agent's X25519 public key in base64url, as a pairing link's `k`
 // carries it. Anything that does not decode to exactly 32 bytes is refused, never guessed at.

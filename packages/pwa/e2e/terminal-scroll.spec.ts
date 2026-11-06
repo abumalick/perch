@@ -23,7 +23,7 @@ test('touch scrolling sends mouse reports at the touched terminal cell', async (
   await seedMachine(page, agent);
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows')).toContainText('PERCH_READY');
+  await expect(page.locator('.xterm-rows')).toContainText('TARFA_READY');
 
   agent.sendOutput('perch-demo', '\x1b[?1049h\x1b[?1003h\x1b[?1006hSCROLL_READY');
   await expect(page.locator('.xterm-rows')).toContainText('SCROLL_READY');
@@ -59,7 +59,7 @@ test('a swipe continues when xterm redraws the touched text span', async ({ page
   await seedMachine(page, agent);
   await page.goto('/');
   await page.getByText('demo', { exact: true }).click();
-  await expect(page.locator('.xterm-rows')).toContainText('PERCH_READY');
+  await expect(page.locator('.xterm-rows')).toContainText('TARFA_READY');
 
   agent.sendOutput('perch-demo', '\x1b[?1049h\x1b[?1003h\x1b[?1006h\x1b[5;1HSCROLL_TARGET\x1b[20;1H');
   const text = page.locator('.xterm-rows').getByText('SCROLL_TARGET', { exact: true });

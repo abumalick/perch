@@ -1,4 +1,4 @@
-// deploy/agent.env, edited by `perch setup`. The file is sourced by bash and hand-edited, so
+// deploy/agent.env, edited by `tarfa setup`. The file is sourced by bash and hand-edited, so
 // edits touch only the one line they are about and keep every other line byte for byte.
 
 const LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ClientMessage } from '@perch/contracts';
+import type { ClientMessage } from '@tarfa/contracts';
 import { SessionBrowser } from './session-browser';
 import { BrowserStream } from './browser-stream';
 

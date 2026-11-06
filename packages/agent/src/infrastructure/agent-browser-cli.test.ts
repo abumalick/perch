@@ -152,8 +152,8 @@ describe('execFileRunner', () => {
     await expect(
       execFileRunner(
         'node',
-        ['-e', 'process.exit(process.env.PERCH_TEST_OVERLAY === "1" && process.env.PATH ? 0 : 1)'],
-        { PERCH_TEST_OVERLAY: '1' },
+        ['-e', 'process.exit(process.env.TARFA_TEST_OVERLAY === "1" && process.env.PATH ? 0 : 1)'],
+        { TARFA_TEST_OVERLAY: '1' },
       ),
     ).resolves.toBeUndefined();
   });

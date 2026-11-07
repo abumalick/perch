@@ -1263,6 +1263,14 @@ Three hooks (`deploy/git-hooks/`) run the full suite via a shared `run-tests.sh`
 dominant integration path here), fast-forward merges, or direct ref moves. `pre-merge-commit`
 catches red merges before they land; `pre-push` is the universal backstop so nothing red
 reaches `origin`, including FF merges and `git update-ref` advances no commit hook can see.
+- **The agent suite sandboxes itself, however it is started** (`test-sandbox.test-support.ts`):
+  a private tmux server and a temporary `HOME`, with `TMUX`/`TMUX_PANE` removed. Its tests drive
+  real tmux with bare `tmux` calls, and a session on the machine's real server is listed by the
+  running agent, flashes on the phone and lands in `~/.tarfa/workspace-log.jsonl` as `exited`.
+  `test-isolation.test.ts` fails if a worker escapes it, and the root `vitest.config.ts` applies
+  the same setup to a filtered run from the repo root. `deploy/tarfa-cli.test.sh` clears `TMUX`
+  and points `TMUX_TMPDIR` at a sandbox by hand; its `HOME` stays real because mise needs it, for
+  paths that fail before touching anything.
 - **Never land code on `main` through a path that skips the gate.** Do **not** use
   `git commit --no-verify`, `git push --no-verify`, or `git update-ref refs/heads/main`
   to integrate — every one of these bypasses the suite and is how red code reached `main`

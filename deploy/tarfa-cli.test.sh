@@ -2,7 +2,8 @@
 # Tests for deploy/install-cli.sh and the deploy/tarfa-cli.sh shim it links.
 # install-cli.sh runs under a fake HOME, so the real ~/.local/bin is never touched. The shim runs
 # under the real HOME (mise needs it to find node) but only on paths that fail before any file
-# or tmux server is touched.
+# or tmux server is touched, and should one reach tmux, it finds an empty sandbox instead of the
+# server of the pane this test runs in.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,6 +11,8 @@ REPO="$(cd "${HERE}/.." && pwd)"
 mkdir -p "${REPO}/.tmp"
 SANDBOX="$(mktemp -d "${REPO}/.tmp/tarfa-cli-test.XXXXXX")"
 trap 'rm -rf "${SANDBOX}"' EXIT
+unset TMUX TMUX_PANE
+export TMUX_TMPDIR="${SANDBOX}"
 
 fails=0
 check() {

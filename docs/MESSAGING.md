@@ -37,22 +37,29 @@ there is no file option, so a body cannot smuggle a path or a binary.
   rate-limited (a bucket of 30, refilled at 0.5 a second) and at most 50 wait in the queue. The
   inbox answers nothing, so a drop is invisible: `delivered` means written. The `msg` id keeps
   the duplicate rule off distinct sends; a burst past the bucket is still lost.
-- **When several Claude sessions run in one workspace,** the message goes to the one on the
-  workspace's first pane; when that does not pick exactly one, it is refused (`several Claude
-  sessions in <id>`).
+- **When several Claude sessions run in one workspace,** a `claude -p` or SDK run yields to an
+  interactive session: both write a registry entry on the same pane and both say
+  `kind: "interactive"`, so `entrypoint` tells them apart (`sdk-*` against `cli`). If several
+  remain, the message goes to the one on the workspace's first pane; when that does not pick
+  exactly one, it is refused (`several Claude sessions in <id>; retry in a few seconds`).
 - **Refusals,** each said to the sender: the recipient is parked (run `tarfa unpark <id>` first;
   nothing is queued), runs bash or no known CLI, is a Codex started with `--no-daemon` or not
   made by `tarfa spawn --cli codex`, is the sender itself, does not exist on this machine, the
   message is empty (`empty message`), the sender is not a Tarfa workspace, or the delivery itself
   failed (`delivery failed: <reason>`, with the CLI's own wording in the sections below).
+  The refusals that pass say so (`retry in a few seconds`): several sessions, and `the Tarfa agent
+  is not running`, which is what a send sees during an agent restart.
 - **Same machine only.** The agent knows its own tmux; nothing leaves the machine.
 - **Log:** `~/.tarfa/messages.jsonl` (gitignored) records time, sender, recipient, relation,
   recipient CLI, outcome and body length, never the body. Best-effort.
 - **Status:** a delivered message sets the sender's `messagedLast` mark, so a child that ends
   its turn on a `tarfa send` to its parent reads "Needs orchestrator". The send runs inside a tool
   call whose own `PostToolUse` would clear the mark, so the agent records that it was set during
-  the tool (`sentDuringTool`) and that `PostToolUse` leaves it. The recipient's status moves to
-  `working` through its CLI's normal turn-start event.
+  the tool (`sentDuringTool`) and that `PostToolUse` leaves it. Under Codex the mark holds until
+  the next `PreToolUse`: a `write_stdin` poll that sees an earlier command exit fires that
+  command's Bash `PostToolUse`, with no `PreToolUse` and nothing in the payload to say it is a
+  poll (Codex 0.166). The recipient's status moves to `working` through its CLI's normal
+  turn-start event.
 - **Spawning:** `tarfa spawn --cli claude|codex|pi`. Codex messaging works only for
   `tarfa spawn --cli codex` workspaces (see "Codex delivery"); a Codex workspace made from the
   phone keeps `--no-daemon` and can neither send nor receive. `--cli pi` launches `pi-reviewed`

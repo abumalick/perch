@@ -106,7 +106,7 @@ describe('ClaudeInboxDelivery', () => {
       },
     };
     const delivery = new ClaudeInboxDelivery(store, async (id) => (id === 'perch-c' ? '%4' : null));
-    expect(await delivery.deliver(target, 'hi')).toEqual({ ok: false, reason: 'several Claude sessions in perch-c' });
+    expect(await delivery.deliver(target, 'hi')).toEqual({ ok: false, reason: 'several Claude sessions in perch-c; retry in a few seconds' });
     expect(asked).toEqual([['perch-c', '%4']]);
   });
 

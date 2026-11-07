@@ -23,7 +23,7 @@ export class ClaudeInboxDelivery implements MessageDelivery {
   async deliver(target: DeliveryTarget, text: string): Promise<Result> {
     const inbox = await this.sessions.inboxOf(target.id, await this.firstPane(target.id));
     if (!inbox) return { ok: false, reason: `no live Claude session in ${target.id}` };
-    if (inbox === 'ambiguous') return { ok: false, reason: `several Claude sessions in ${target.id}` };
+    if (inbox === 'ambiguous') return { ok: false, reason: `several Claude sessions in ${target.id}; retry in a few seconds` };
     if (inbox.peerProtocol !== PINNED_PEER_PROTOCOL) {
       return {
         ok: false,

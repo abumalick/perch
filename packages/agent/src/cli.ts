@@ -369,13 +369,15 @@ const UNPARK_WORDS: Record<string, string> = {
 // holds it in memory, so a write from here would be overwritten) and parked.json, and the one
 // that tells the phones. It authenticates with the hooks secret the agent writes at each start.
 function agentPost(port: number, stateDir: string, fetchFn: typeof fetch) {
+  // An agent restart is the usual cause, so the sender should retry, not reach for another route.
   const notRunning = `the Tarfa agent is not running (nothing answered on 127.0.0.1:${port})`;
+  const retry = '; retry in a few seconds';
   let token: Promise<string> | undefined;
   return async (route: string, body: unknown): Promise<{ status: number; json: Record<string, unknown> }> => {
     token ??= readFile(joinPath(stateDir, 'token'), 'utf8').then(
       (text) => text.trim(),
       () => {
-        throw new Error(`${notRunning}: no ${joinPath(stateDir, 'token')}`);
+        throw new Error(`${notRunning}: no ${joinPath(stateDir, 'token')}${retry}`);
       },
     );
     const secret = await token;
@@ -387,7 +389,7 @@ function agentPost(port: number, stateDir: string, fetchFn: typeof fetch) {
         body: JSON.stringify(body),
       });
     } catch {
-      throw new Error(notRunning);
+      throw new Error(`${notRunning}${retry}`);
     }
     if (res.status === 401) throw new Error('the agent refused the hooks secret: was it restarted since ~/.tarfa/token was read?');
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;

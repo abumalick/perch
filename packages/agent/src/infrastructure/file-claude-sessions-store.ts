@@ -40,19 +40,29 @@ export class FileClaudeSessionsStore implements ClaudeSessionsPort {
     } catch {
       return null;
     }
-    const live: Array<{ pid: number; pane: string; socketPath: string; peerProtocol: number }> = [];
+    const live: Array<{ pid: number; pane: string; socketPath: string; peerProtocol: number; print: boolean }> = [];
     for (const f of files.filter((name) => name.endsWith('.json'))) {
       const raw = await this.readJson(join(this.dirPath, f));
       if (typeof raw !== 'object' || raw === null) continue;
-      const { pid, tmux, messagingSocketPath, peerProtocol } = raw as Record<string, unknown>;
+      const { pid, tmux, messagingSocketPath, peerProtocol, entrypoint } = raw as Record<string, unknown>;
       if (typeof tmux !== 'string' || tmux.split(':')[0] !== tmuxSession) continue;
       if (typeof pid !== 'number' || !isAlive(pid)) continue;
       if (typeof messagingSocketPath !== 'string' || typeof peerProtocol !== 'number') continue;
       // `tmux` is "<session>:@<window>.%<pane>".
-      live.push({ pid, pane: tmux.split('.').pop() ?? '', socketPath: messagingSocketPath, peerProtocol });
+      live.push({
+        pid,
+        pane: tmux.split('.').pop() ?? '',
+        socketPath: messagingSocketPath,
+        peerProtocol,
+        print: typeof entrypoint === 'string' && entrypoint.startsWith('sdk-'),
+      });
     }
-    const onFirst = live.length > 1 ? live.filter((r) => firstPane && r.pane === firstPane) : live;
     if (live.length === 0) return null;
+    // A `claude -p` run or SDK process registers an inbox too, on the pane of whichever session
+    // started it, and says `kind: "interactive"` like any other; only `entrypoint` differs.
+    const interactive = live.filter((r) => !r.print);
+    const candidates = interactive.length > 0 ? interactive : live;
+    const onFirst = candidates.length > 1 ? candidates.filter((r) => firstPane && r.pane === firstPane) : candidates;
     if (onFirst.length !== 1) return 'ambiguous';
     const { pid, socketPath, peerProtocol } = onFirst[0]!;
     const token = await this.peerToken(pid, socketPath);

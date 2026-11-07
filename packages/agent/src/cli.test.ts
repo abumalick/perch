@@ -676,7 +676,12 @@ describe('tarfa ls / spawn / peek (fake tmux)', () => {
       const fetch = async () => {
         throw new TypeError('fetch failed');
       };
-      await expect(run(['send', 'perch-orch-1', 'hi'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/agent is not running/);
+      await expect(run(['send', 'perch-orch-1', 'hi'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/agent is not running.*retry in a few seconds/);
+    });
+
+    it('a permanent refusal carries no retry hint', async () => {
+      const { home, env, fetch } = await agent(() => Response.json({ result: 'refused', reason: 'no workspace perch-x on this machine' }));
+      await expect(run(['send', 'perch-x', 'hi'], env, home, io(fakeTmux().tmux, { fetch }))).rejects.toThrow(/^no workspace perch-x on this machine$/);
     });
   });
 

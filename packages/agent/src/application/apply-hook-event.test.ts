@@ -341,6 +341,44 @@ describe('applyHookEvent', () => {
       expect(deps.sentDuringTool.has('perch-aa')).toBe(false);
     });
 
+    describe('from Codex', () => {
+      const codexPost = { ...post, agent: 'codex' };
+      const codexPre = { sessionName: 'perch-aa', event: 'PreToolUse', claude: { tool_name: 'Bash' }, agent: 'codex' };
+
+      // Codex 0.166: a `write_stdin` poll that sees an earlier command exit fires that command's
+      // Bash PostToolUse, and a poll fires no PreToolUse. Only the order of events marks it.
+      it('a poll\'s PostToolUse right after the send\'s keeps the mark through Stop', () => {
+        const deps = setup();
+        applyHookEvent(deps, codexPost);
+        applyHookEvent(deps, codexPost);
+        expect(deps.messagedLast.has('perch-aa')).toBe(true);
+        expect(applyHookEvent(deps, { sessionName: 'perch-aa', event: 'Stop', agent: 'codex' })).toBeNull();
+        expect(deps.deferred.has('perch-aa')).toBe(true);
+      });
+
+      it('a later tool call clears the mark, once it has started', () => {
+        const deps = setup();
+        applyHookEvent(deps, codexPost);
+        applyHookEvent(deps, codexPre);
+        expect(deps.messagedLast.has('perch-aa')).toBe(true);
+        expect(deps.sentDuringTool.has('perch-aa')).toBe(false);
+        applyHookEvent(deps, codexPost);
+        expect(deps.messagedLast.has('perch-aa')).toBe(false);
+      });
+
+      it('a subagent\'s PreToolUse does not count as the later call', () => {
+        const deps = setup();
+        applyHookEvent(deps, { ...codexPre, claude: { tool_name: 'Bash', agent_id: 'sub1' } });
+        expect(deps.sentDuringTool.has('perch-aa')).toBe(true);
+      });
+    });
+
+    it('Claude\'s PreToolUse leaves the send mark for its own PostToolUse', () => {
+      const deps = setup();
+      applyHookEvent(deps, { sessionName: 'perch-aa', event: 'PreToolUse', claude: { tool_name: 'Bash' } });
+      expect(deps.sentDuringTool.has('perch-aa')).toBe(true);
+    });
+
     it('logs the keep as tarfa-send', async () => {
       const deps = setup();
       const entries: HookEventEntry[] = [];

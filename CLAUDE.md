@@ -475,9 +475,17 @@ See `docs/DEPLOY.md` for the full runbook. In short:
   - **No queue for a parked recipient:** it is refused ("run `tarfa unpark` first"), because a
     held message would be delivered into a conversation nobody chose to reopen.
   - **`sentDuringTool` keeps the sender's "Needs orchestrator" mark:** the send's own
-    `PostToolUse` arrives after the mark is set and would clear it.
+    `PostToolUse` arrives after the mark is set and would clear it. **Under Codex it holds until
+    the next `PreToolUse`,** since a `write_stdin` poll that sees an earlier command exit fires
+    that command's `PostToolUse` with no `PreToolUse`, and its payload looks like any other
+    (Codex 0.166). Claude's rule stays: any other main-loop `PostToolUse` clears it.
     Accepted edge: a `tarfa send` run by a subagent marks the parent workspace too, since the
     sender is proven by pane and the subagent's Bash runs in the parent's pane.
+  - **A `claude -p` or SDK run yields to an interactive session:** it registers an inbox on the
+    same pane with the same `kind`, so `inboxOf` tells them apart by `entrypoint` (`sdk-*`,
+    measured on 2.1.319). `several Claude sessions` is left for two interactive ones.
+  - **A refusal that passes says `retry in a few seconds`** (several sessions, agent not running):
+    without it, senders went to Claude's `SendMessage` during an agent restart.
   - **Codex takes messages only in workspaces made by `tarfa spawn --cli codex`:** Tarfa creates
     the thread, records `@tarfa_codex_thread` and launches exactly `codex resume <thread id>`
     (no `-c`, which would force an in-process thread nothing can reach). A phone-created Codex
